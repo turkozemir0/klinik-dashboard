@@ -23,7 +23,7 @@ export default async function AdminOnboardingPage({ searchParams }: { searchPara
     : (submissions ?? []);
 
   // Klinik başına grupla
-  const grouped = filtered.reduce((acc: Record<string, any[]>, s) => {
+  const grouped: Record<string, any[]> = filtered.reduce((acc: Record<string, any[]>, s) => {
     if (!acc[s.clinic_id]) acc[s.clinic_id] = [];
     acc[s.clinic_id].push(s);
     return acc;
