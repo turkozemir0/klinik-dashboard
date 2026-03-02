@@ -1,3 +1,4 @@
+// @ts-nocheck — Deno Edge Function; Node.js TypeScript derleyicisi tarafından işlenmemeli
 // ═══════════════════════════════════════════════════════════════
 // stoaix AI Klinik System — EDGE FUNCTION
 // Dosya: supabase/functions/handle-incoming-message/index.ts
