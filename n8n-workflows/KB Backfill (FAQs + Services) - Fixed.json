@@ -1,5 +1,5 @@
 {
-  "name": "KB Backfill (FAQs + Services) - Fixed",
+  "name": "KB Backfill (FAQs + Services)",
   "nodes": [
     {
       "parameters": {},
@@ -7,10 +7,22 @@
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [
-        -768,
-        272
-      ]
+      "position": [-768, 272]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kb-backfill-trigger",
+        "responseMode": "onReceived",
+        "responseData": "{\"status\":\"ok\",\"message\":\"KB Backfill tetiklendi\"}",
+        "options": {}
+      },
+      "id": "a3b4c5d6-3333-4333-a333-333333333333",
+      "name": "Supabase Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-768, 80],
+      "webhookId": "kb-backfill-webhook-001"
     },
     {
       "parameters": {
@@ -22,10 +34,7 @@
       "name": "Get FAQs",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
-      "position": [
-        -528,
-        192
-      ],
+      "position": [-528, 192],
       "credentials": {
         "supabaseApi": {
           "id": "MxJaIHKJhdHJkyLH",
@@ -41,10 +50,7 @@
       "name": "Code (Map FAQs)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -288,
-        192
-      ]
+      "position": [-288, 192]
     },
     {
       "parameters": {
@@ -55,10 +61,7 @@
       "name": "Embeddings OpenAI (FAQs)",
       "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "typeVersion": 1,
-      "position": [
-        240,
-        192
-      ],
+      "position": [240, 192],
       "credentials": {
         "openAiApi": {
           "id": "m7P5mbcWEATV5rWC",
@@ -81,10 +84,7 @@
       "name": "Vector Store Supabase (Insert FAQs)",
       "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
       "typeVersion": 1,
-      "position": [
-        208,
-        -16
-      ],
+      "position": [208, -16],
       "credentials": {
         "supabaseApi": {
           "id": "MxJaIHKJhdHJkyLH",
@@ -102,10 +102,7 @@
       "name": "Get Services",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
-      "position": [
-        -528,
-        432
-      ],
+      "position": [-528, 432],
       "credentials": {
         "supabaseApi": {
           "id": "MxJaIHKJhdHJkyLH",
@@ -121,10 +118,7 @@
       "name": "Code (Map Services)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -288,
-        432
-      ]
+      "position": [-288, 432]
     },
     {
       "parameters": {
@@ -135,10 +129,7 @@
       "name": "Embeddings OpenAI (Services)",
       "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "typeVersion": 1,
-      "position": [
-        96,
-        480
-      ],
+      "position": [96, 480],
       "credentials": {
         "openAiApi": {
           "id": "m7P5mbcWEATV5rWC",
@@ -161,10 +152,7 @@
       "name": "Vector Store Supabase (Insert Services)",
       "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
       "typeVersion": 1,
-      "position": [
-        256,
-        368
-      ],
+      "position": [256, 368],
       "credentials": {
         "supabaseApi": {
           "id": "MxJaIHKJhdHJkyLH",
@@ -197,10 +185,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
       "typeVersion": 1.1,
-      "position": [
-        512,
-        176
-      ],
+      "position": [512, 176],
       "id": "2584defd-02fa-4783-a401-cd71175801ed",
       "name": "Default Data Loader"
     },
@@ -229,10 +214,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
       "typeVersion": 1.1,
-      "position": [
-        400,
-        576
-      ],
+      "position": [400, 576],
       "id": "3e808638-e2d3-46d9-a7e2-df37914ffd5e",
       "name": "Default Data Loader1"
     }
@@ -240,6 +222,22 @@
   "pinData": {},
   "connections": {
     "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get FAQs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Webhook": {
       "main": [
         [
           {

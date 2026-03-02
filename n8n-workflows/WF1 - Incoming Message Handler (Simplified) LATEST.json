@@ -993,6 +993,80 @@
         1824,
         -272
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "img-check-001",
+              "leftValue": "={{ $json.containsImage }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a4b5c6d7-4444-4444-a444-444444444444",
+      "name": "If: Has Image?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Human Check').item.json.contactId }}/tags",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"tags\": [\"gorsel_gonderdi\"]}",
+        "options": {}
+      },
+      "id": "a5b6c7d8-5555-4555-a555-555555555555",
+      "name": "GHL Tag: Gorsel Alindi",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1248,
+        384
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -1057,7 +1131,7 @@
         ],
         [
           {
-            "node": "Find Conversation",
+            "node": "If: Has Image?",
             "type": "main",
             "index": 0
           }
@@ -1376,6 +1450,35 @@
         [
           {
             "node": "Release Lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Has Image?": {
+      "main": [
+        [
+          {
+            "node": "GHL Tag: Gorsel Alindi",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Tag: Gorsel Alindi": {
+      "main": [
+        [
+          {
+            "node": "Find Conversation",
             "type": "main",
             "index": 0
           }

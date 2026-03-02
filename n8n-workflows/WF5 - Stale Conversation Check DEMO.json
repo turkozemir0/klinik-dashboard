@@ -1,5 +1,5 @@
 {
-  "name": "WF5 - Stale Conversation Check DEMO",
+  "name": "WF5 - Stale Conversation Check",
   "nodes": [
     {
       "parameters": {
@@ -16,10 +16,7 @@
       "name": "Every 6 Hours",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [
-        -1152,
-        272
-      ]
+      "position": [-1152, 272]
     },
     {
       "parameters": {
@@ -41,10 +38,7 @@
       "name": "Find Stale Conversations",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        -912,
-        272
-      ],
+      "position": [-912, 272],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -54,16 +48,13 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.item.json;\nconst convs = Array.isArray(raw) ? raw : (raw && raw.id ? [raw] : []);\n\nif (convs.length === 0) return [{ json: { hasStale: false } }];\n\nreturn convs.map(c => ({\n  json: {\n    ...c,\n    hasStale: true,\n    newStatus: (c.message_count || 0) >= 2 ? 'nurturing' : 'closed',\n    newTag: (c.message_count || 0) >= 2 ? 'warm_lead' : 'cold_lead'\n  }\n}));"
+        "jsCode": "const raw = $input.item.json;\nconst convs = Array.isArray(raw) ? raw : (raw && raw.id ? [raw] : []);\n\nif (convs.length === 0) return [{ json: { hasStale: false } }];\n\nreturn convs.map(c => {\n  const msgCount = c.message_count || 0;\n  const currentScore = c.lead_score || 0;\n  // Geçerli DB statüleri: active, handed_off, closed\n  // 2+ mesaj: müşteriyle etkileşim olmuş → active tut ama skoru düşür\n  // 0-1 mesaj: hiç etkileşim yok → kapat\n  const newStatus = msgCount >= 2 ? 'active' : 'closed';\n  const newScore = Math.max(0, currentScore - 15);\n\n  return {\n    json: {\n      ...c,\n      hasStale: true,\n      newStatus,\n      newScore,\n      newTag: 'cold_lead'\n    }\n  };\n});"
       },
       "id": "507ddede-e461-4f95-a8fe-cf031b647498",
       "name": "Classify Stale",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -672,
-        272
-      ]
+      "position": [-672, 272]
     },
     {
       "parameters": {
@@ -91,10 +82,7 @@
       "name": "Has Stale?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        -432,
-        272
-      ]
+      "position": [-432, 272]
     },
     {
       "parameters": {},
@@ -102,10 +90,7 @@
       "name": "No Stale",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [
-        -192,
-        432
-      ]
+      "position": [-192, 432]
     },
     {
       "parameters": {
@@ -128,17 +113,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"status\": \"{{ $json.newStatus }}\",\n  \"updated_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "jsonBody": "={\n  \"status\": \"{{ $json.newStatus }}\",\n  \"lead_score\": {{ $json.newScore }},\n  \"updated_at\": \"{{ new Date().toISOString() }}\"\n}",
         "options": {}
       },
       "id": "12d8612c-b242-4998-88c5-63797c65936e",
       "name": "Update Conv Status",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        -192,
-        144
-      ],
+      "position": [-192, 144],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -148,8 +130,8 @@
     },
     {
       "parameters": {
-        "method": "PUT",
-        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.ghl_contact_id }}",
+        "method": "POST",
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.ghl_contact_id }}/tags",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -171,17 +153,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"tags\": [\"{{ $json.newTag }}\"],\n  \"customFields\": [{ \"key\": \"qualification_status\", \"field_value\": \"{{ $json.newStatus === 'nurturing' ? 'nurturing' : 'lost' }}\" }]\n}",
+        "jsonBody": "={\"tags\": [\"{{ $json.newTag }}\"]}",
         "options": {}
       },
       "id": "2949ae75-8391-4b02-bedf-2286da9f1746",
-      "name": "GHL Update Tags",
+      "name": "GHL Add Cold Lead Tag",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        48,
-        16
-      ],
+      "position": [48, 16],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -221,10 +200,7 @@
       "name": "Remove AI Active Tag",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        288,
-        16
-      ],
+      "position": [288, 16],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -290,14 +266,14 @@
       "main": [
         [
           {
-            "node": "GHL Update Tags",
+            "node": "GHL Add Cold Lead Tag",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "GHL Update Tags": {
+    "GHL Add Cold Lead Tag": {
       "main": [
         [
           {
