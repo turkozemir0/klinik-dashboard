@@ -36,6 +36,13 @@ export async function middleware(request: NextRequest) {
 
   // Giriş yapmış + login → nereye?
   if (user && pathname === '/login') {
+    // Önce super admin kontrolü — admin onboarding'i atlar
+    const { data: adminRow } = await supabase
+      .from('super_admin_users').select('id').eq('user_id', user.id).single();
+    if (adminRow) {
+      return NextResponse.redirect(new URL('/admin', request.url));
+    }
+
     const { data: cu } = await supabase
       .from('clinic_users')
       .select('clinic_id, clinic:clinic_id(onboarding_status)')

@@ -2,7 +2,14 @@
 
 import { useRealtimeRefresh } from '@/lib/hooks/useRealtimeRefresh';
 
-const REALTIME_TABLES = ['conversations', 'handoff_logs', 'daily_stats', 'messages'];
+const REALTIME_TABLES = [
+  'conversations',
+  'handoff_logs',
+  'daily_stats',
+  'messages',
+  'support_tickets',
+  'kb_change_requests',
+];
 
 interface RealtimeProviderProps {
   clinicId: string;
