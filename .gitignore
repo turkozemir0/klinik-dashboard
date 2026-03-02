@@ -1,0 +1,23 @@
+# Dependencies
+klinik-dashboard/node_modules/
+node_modules/
+
+# Next.js build output
+klinik-dashboard/.next/
+klinik-dashboard/out/
+
+# Environment files
+klinik-dashboard/.env.local
+klinik-dashboard/.env.*.local
+.env.local
+
+# Vercel
+.vercel
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

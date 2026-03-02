@@ -1,0 +1,582 @@
+{
+  "name": "WF3 - Nurturing Smart Followup",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "389b607f-69b9-4d7c-8cfd-d9c93867a097",
+      "name": "Hourly Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1504,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?status=in.(nurturing,active)&human_takeover=eq.false&select=*&order=last_message_at.asc",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dabbe904-d662-47f3-8e16-ee0825ea2128",
+      "name": "Find Conversations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1264,
+        336
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.item.json;\nconst allConvs = Array.isArray(raw) ? raw : [raw];\nconst now = new Date();\nconst followups = [];\n\nfor (const conv of allConvs) {\n  if (!conv || !conv.id || conv.human_takeover === true) continue;\n  \n  const lastMsg = new Date(conv.last_message_at);\n  const hoursSince = (now - lastMsg) / 36e5;\n  const daysSince = hoursSince / 24;\n  const score = conv.lead_score || 0;\n  let type = null;\n\n  // Active 24h no response\n  if (conv.status === 'active' && hoursSince >= 24 && hoursSince < 26)\n    type = 'first_reminder';\n\n  // Warm nurturing\n  if (conv.status === 'nurturing' && score >= 40) {\n    if (daysSince >= 3 && daysSince < 4) type = 'warm_day4';\n    if (daysSince >= 11 && daysSince < 12) type = 'warm_day11';\n    if (daysSince >= 14 && daysSince < 15) type = 'warm_to_cold';\n  }\n\n  // Cold nurturing\n  if (conv.status === 'nurturing' && score < 40) {\n    if (daysSince >= 30 && daysSince < 31) type = 'cold_month1';\n    if (daysSince >= 60 && daysSince < 61) type = 'cold_month2';\n    if (daysSince >= 90 && daysSince < 91) type = 'cold_final';\n  }\n\n  if (type)\n    followups.push({ json: { ...conv, followupType: type, daysSince: Math.round(daysSince) } });\n}\n\nif (followups.length === 0)\n  return [{ json: { hasFollowups: false } }];\n\nreturn followups.map(f => ({ ...f, json: { ...f.json, hasFollowups: true } }));"
+      },
+      "id": "e76604f9-6d24-4e97-ae20-78e3250a82ff",
+      "name": "Calculate Followups",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1024,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "0f78ddd4-63ba-40f6-839e-ea0ee0de6a2c",
+              "leftValue": "={{ $json.hasFollowups }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6b2f105a-46a8-43d5-885c-11a86719933e",
+      "name": "Has Followups?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        336
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "e86b5a39-7a75-41c1-98ab-18179a1080d7",
+      "name": "No Followups",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -544,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "9ccb7d12-5ddb-42bf-bab5-99efeb319a53",
+              "leftValue": "={{ $json.followupType }}",
+              "rightValue": "warm_to_cold",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd96f21a-98e2-4b70-bab8-e4ff4a33889c",
+      "name": "Is Warm To Cold?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?id=eq.{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"nurturing\",\n  \"lead_score\": {{ Math.max(0, ($json.lead_score || 0) - 10) }}\n}",
+        "options": {}
+      },
+      "id": "dac7b0e7-9fa4-40d8-a32c-1354fa73e77d",
+      "name": "Convert To Cold",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -304,
+        96
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "5a7d33b9-1e70-4304-856a-6d39f2f7d016",
+              "leftValue": "={{ $json.followupType }}",
+              "rightValue": "cold_final",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "82fec961-e583-4eee-ada0-8003b0e85628",
+      "name": "Is Cold Final?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?id=eq.{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"status\": \"closed\"}",
+        "options": {}
+      },
+      "id": "67360620-b91d-42ea-87bc-d63555eb3742",
+      "name": "Archive Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -64,
+        240
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/messages?conversation_id=eq.{{ $json.id }}&order=created_at.desc&limit=5",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aa7621f5-fa97-4c50-a9ae-fba1a9c38fb4",
+      "name": "Get Recent Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -64,
+        544
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const conv = $('Is Cold Final?').item.json;\nconst msgsRaw = $input.item.json;\nconst msgs = Array.isArray(msgsRaw) ? msgsRaw : [msgsRaw];\n\nconst text = msgs.filter(m => m && m.content).reverse().map(m => m.role + ': ' + m.content).join('\\n');\n\nconst cd = conv.collected_data || {};\n\nconst prompt = [\n  { role: 'system', content: `Sen bir klinik asistanısın. Hastaya follow-up mesajı yazacaksın. Hastanın önceki konuşma diline uygun yaz. Max 3 cümle. Doğal, sıcak, baskısız. Sadece mesaj metnini yaz.` },\n  { role: 'user', content: `Hasta: ${cd.name || 'İsimsiz'}\\nHizmet: ${cd.interested_service || 'Genel'}\\nPain point: ${cd.pain_point || '-'}\\nSon konuşma ${conv.daysSince} gün önce.\\nTür: ${conv.followupType}\\n\\nSon mesajlar:\\n${text}\\n\\n${conv.followupType === 'cold_final' ? 'Son follow-up. Nazik kapanış yap.' : conv.followupType.includes('cold') ? 'Soğuk hasta, çok yumuşak ol.' : 'Hâlâ ilgili olabilir, değer sun.'}` }\n];\n\nreturn [{ json: { ...conv, followupPrompt: prompt } }];"
+      },
+      "id": "5c177794-7e6b-4190-9eee-cf254a23f305",
+      "name": "Build Followup Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o\",\n  \"temperature\": 0.8,\n  \"max_tokens\": 200,\n  \"messages\": {{ JSON.stringify($json.followupPrompt) }}\n}",
+        "options": {}
+      },
+      "id": "f6294aeb-4ed7-4524-bf78-efdf551e1f0d",
+      "name": "Generate Followup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        416,
+        544
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cc9Z3PiEo03vJ1hN",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResp = $input.item.json;\nconst prev = $('Build Followup Prompt').item.json;\nlet msg = '';\ntry {\n  msg = aiResp.choices[0].message.content;\n} catch(e) {\n  msg = 'Merhaba, sizinle tekrar iletişime geçmek istedik. Herhangi bir sorunuz olursa bize yazabilirsiniz.';\n}\nreturn [{ json: { ...prev, followupMessage: msg } }];"
+      },
+      "id": "374c67a9-fe00-43eb-93e2-fa2ad12459e2",
+      "name": "Extract Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"SMS\",\n  \"contactId\": \"{{ $json.ghl_contact_id }}\",\n  \"message\": {{ JSON.stringify($json.followupMessage) }}\n}",
+        "options": {}
+      },
+      "id": "0d8e869d-a635-4560-898e-79a59deb9f63",
+      "name": "Send Followup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        544
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?id=eq.{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"last_message_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "id": "843913ca-307c-44e0-871d-5beae9c37614",
+      "name": "Update Conv Time",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1136,
+        544
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Hourly Check": {
+      "main": [
+        [
+          {
+            "node": "Find Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Conversations": {
+      "main": [
+        [
+          {
+            "node": "Calculate Followups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Followups": {
+      "main": [
+        [
+          {
+            "node": "Has Followups?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Followups?": {
+      "main": [
+        [
+          {
+            "node": "Is Warm To Cold?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Followups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Warm To Cold?": {
+      "main": [
+        [
+          {
+            "node": "Convert To Cold",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Cold Final?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Cold Final?": {
+      "main": [
+        [
+          {
+            "node": "Archive Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Recent Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Recent Messages": {
+      "main": [
+        [
+          {
+            "node": "Build Followup Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Followup Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Followup": {
+      "main": [
+        [
+          {
+            "node": "Extract Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message": {
+      "main": [
+        [
+          {
+            "node": "Send Followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Followup": {
+      "main": [
+        [
+          {
+            "node": "Update Conv Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4b1dfdc3-2306-47fa-9814-f0d6b9b6e4be",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e7ca8ba8500495191ee82da116d3a2d4871317bef04b1593bd69df3fd909701b"
+  },
+  "id": "JI7jUONRhWWkxzdj",
+  "tags": []
+}

@@ -1,0 +1,536 @@
+{
+  "name": "WF2 - Lead Handoff",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "01fa9ece-4f42-419e-8d1c-cf505dac9d0b",
+      "name": "Handoff Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        -464
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?id=eq.{{ $('Handoff Input').item.json.id }}&select=*",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "97b577af-a027-4aa6-aff1-6caaca66edc1",
+      "name": "Get Full Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -48,
+        -464
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/messages?conversation_id=eq.{{ $('Handoff Input').item.json.id }}&order=created_at.asc&limit=30",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "31a26b79-af5b-421c-8bfc-399d72fddff6",
+      "name": "Get All Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        192,
+        -464
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const conversation = $('Get Full Conversation').item.json;\nconst conv = Array.isArray(conversation) ? conversation[0] : conversation;\nconst messagesRaw = $('Get All Messages').item.json;\nconst messages = Array.isArray(messagesRaw) ? messagesRaw : [messagesRaw];\nconst inputData = $('Handoff Input').item.json;\n\nconst messagesText = messages.filter(m => m && m.content).map(m => \n  `${m.role === 'user' ? 'HASTA' : 'ASİSTAN'}: ${m.content}`\n).join('\\n');\n\nconst summaryPrompt = [\n  { role: 'system', content: `Sen bir satış analisti asistanısın. Hasta-asistan WhatsApp konuşmasını analiz et. HER ZAMAN TÜRKÇE yaz.\\n\\nJSON formatında yanıt ver:\\n{\\n  \"summary\": \"2-3 cümlelik konuşma özeti\",\\n  \"suggested_approach\": \"Satışcı bu hastayla nasıl konuşmalı? Hassas noktalar, öneriler\"\\n}` },\n  { role: 'user', content: `Konuşma:\\n${messagesText}\\n\\nToplanan Veriler: ${JSON.stringify(conv.collected_data || {})}\\nLead Score: ${inputData.lead_score || 0}` }\n];\n\nreturn [{ json: {\n  ...inputData,\n  summaryPrompt,\n  collectedData: conv.collected_data || {},\n  leadSignals: conv.lead_signals || {},\n  imagesReceived: conv.images_received || 0,\n  score: inputData.lead_score || 0\n} }];"
+      },
+      "id": "4bdbba56-c9a5-4341-9ecb-b215d6f2ca33",
+      "name": "Build Summary Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        -464
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o\",\n  \"temperature\": 0.5,\n  \"max_tokens\": 400,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": {{ JSON.stringify($json.summaryPrompt) }}\n}",
+        "options": {}
+      },
+      "id": "b2d73b56-1d2c-4f43-bee7-8e1c358a529f",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        -464
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cc9Z3PiEo03vJ1hN",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResp = $input.item.json;\nconst prev = $('Build Summary Prompt').item.json;\nlet summary = '', approach = '';\n\ntry {\n  const parsed = JSON.parse(aiResp.choices[0].message.content);\n  summary = parsed.summary || 'Özet oluşturulamadı';\n  approach = parsed.suggested_approach || 'Standart yaklaşım önerilir';\n} catch(e) {\n  summary = 'Özet oluşturulamadı';\n  approach = 'Standart yaklaşım önerilir';\n}\n\nconst cd = prev.collectedData || {};\n\nconst noteBody = `🤖 AI Qualification Raporu\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n📋 ÖZET\\n${summary}\\n\\n👤 HASTA BİLGİLERİ\\nAd: ${cd.name || 'Belirtilmedi'}\\nHizmet: ${cd.interested_service || 'Belirtilmedi'}\\nPain Point: ${cd.pain_point || 'Belirtilmedi'}\\nTimeline: ${cd.timeline || 'Belirtilmedi'}\\nBütçe: ${cd.budget_awareness || 'Sorulmadı'}\\nDaha Önce: ${cd.previous_consultation || 'Belirtilmedi'}\\nÖn Görüşme: ${cd.preferred_consultation_type || 'Belirtilmedi'}\\nTercih: ${cd.preferred_day_time || 'Belirtilmedi'}\\nSağlık: ${cd.special_health_notes || 'Yok'}\\n${prev.imagesReceived > 0 ? '📎 Görsel: ' + prev.imagesReceived + ' adet' : ''}\\n\\n📊 LEAD SCORE: ${prev.score}/100\\n\\n💡 ÖNERİLEN YAKLAŞIM\\n${approach}\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;\n\nreturn [{ json: { ...prev, summary, approach, noteBody } }];"
+      },
+      "id": "36029a3b-1ee4-4548-a953-c0283ed3c29e",
+      "name": "Parse Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        -464
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Parse Summary').item.json.ghl_contact_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"tags\": [\"hot_lead\", \"human_handoff\", \"appointment_ready\"],\n  \"customFields\": [\n    { \"id\": \"9cZwMpve2bzDM0mNQ08Q\", \"field_value\": \"{{ $('Parse Summary').item.json.score }}\" },\n    { \"id\": \"ABqnbHbNfG6aDlFVAztP\", \"field_value\": \"qualified\" },\n    { \"id\": \"a4FUZNdUU4qar1HMtNAi\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.pain_point_duration || '' }}\" },\n    { \"id\": \"KUjTWtCUUVoYpy2UgJxa\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.collectedData.interested_service || '') }} },\n    { \"id\": \"8xETKWnQ53EnCQMXdnKz\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.collectedData.pain_point || '') }} },\n    { \"id\": \"U2yNuDV5l9oMT7x6XLX3\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.timeline || '' }}\" },\n    { \"id\": \"FMS0gxGnyIv3TNObPdJU\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.budget_awareness || '' }}\" },\n    { \"id\": \"yeYqHGTcqWZNMGPob2YG\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.previous_consultation || '' }}\" },\n    { \"id\": \"LjAXj1FT3s6GnBO85pFq\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.summary) }} },\n    { \"id\": \"1NAEgwt7JS1EF1J1uXHj\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.approach) }} },\n    { \"id\": \"ESUJMTgVCvQr1IHLhwEK\", \"field_value\": \"{{ $('Parse Summary').item.json.imagesReceived > 0 }}\" }\n  ]\n}",
+        "options": {}
+      },
+      "id": "8e2cc83b-20a7-4ac6-ab9b-0f520823b9d9",
+      "name": "GHL Handoff Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1152,
+        -464
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Parse Summary').item.json.ghl_contact_id }}/tags",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"tags\": [\"ai_active\", \"warm_lead\"]}",
+        "options": {}
+      },
+      "id": "fe6b2e01-4c11-4955-b6d8-81b18818cd87",
+      "name": "GHL Remove AI Tag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1392,
+        -464
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Parse Summary').item.json.ghl_contact_id }}/notes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"body\": {{ JSON.stringify($('Parse Summary').item.json.noteBody) }} }",
+        "options": {}
+      },
+      "id": "5df96a8a-3589-4223-95fb-d28c3c886f2d",
+      "name": "GHL Add Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1632,
+        -464
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"SMS\",\n  \"contactId\": \"{{ $('Parse Summary').item.json.ghl_contact_id }}\",\n  \"message\": \"Bilgilerinizi ekibimize ilettim. En kısa sürede sizinle iletişime geçecekler ve uygun zamanınızı birlikte belirleyeceksiniz. O zamana kadar aklınıza takılan bir şey olursa buradan yazabilirsiniz. 😊\"\n}",
+        "options": {}
+      },
+      "id": "6bf3b439-8ef7-4712-8c53-e922617c0c69",
+      "name": "GHL Closing Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1872,
+        -464
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?id=eq.{{ $('Parse Summary').item.json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"handed_off\",\n  \"handoff_triggered\": true,\n  \"handoff_at\": \"{{ new Date().toISOString() }}\",\n  \"handoff_summary\": {{ JSON.stringify($('Parse Summary').item.json.summary) }},\n  \"handoff_suggested_approach\": {{ JSON.stringify($('Parse Summary').item.json.approach) }},\n  \"human_takeover\": true,\n  \"human_takeover_at\": \"{{ new Date().toISOString() }}\",\n  \"updated_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "id": "da8af41e-7e77-42b2-b97b-3a49ea9b2193",
+      "name": "Update Conv Handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2112,
+        -464
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/handoff_logs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"clinic_id\": \"{{ $('Parse Summary').item.json.clinic_id }}\",\n  \"conversation_id\": \"{{ $('Parse Summary').item.json.id }}\",\n  \"ghl_contact_id\": \"{{ $('Parse Summary').item.json.ghl_contact_id }}\",\n  \"trigger_type\": \"score_threshold\",\n  \"lead_score_at_handoff\": {{ $('Parse Summary').item.json.score }}\n}",
+        "options": {}
+      },
+      "id": "454fa9e4-7355-45fd-95e4-1148c541aea6",
+      "name": "Log Handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2352,
+        -464
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Handoff Input": {
+      "main": [
+        [
+          {
+            "node": "Get Full Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Full Conversation": {
+      "main": [
+        [
+          {
+            "node": "Get All Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Messages": {
+      "main": [
+        [
+          {
+            "node": "Build Summary Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Summary": {
+      "main": [
+        [
+          {
+            "node": "Parse Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Summary": {
+      "main": [
+        [
+          {
+            "node": "GHL Handoff Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Handoff Update": {
+      "main": [
+        [
+          {
+            "node": "GHL Remove AI Tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Remove AI Tag": {
+      "main": [
+        [
+          {
+            "node": "GHL Add Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Add Note": {
+      "main": [
+        [
+          {
+            "node": "GHL Closing Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Closing Message": {
+      "main": [
+        [
+          {
+            "node": "Update Conv Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Conv Handoff": {
+      "main": [
+        [
+          {
+            "node": "Log Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "446e72e0-a526-40ea-87c4-82ee31918f9b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e7ca8ba8500495191ee82da116d3a2d4871317bef04b1593bd69df3fd909701b"
+  },
+  "id": "aIi64niJ90ZWmfCb",
+  "tags": [
+    {
+      "updatedAt": "2026-02-27T10:27:03.994Z",
+      "createdAt": "2026-02-27T10:27:03.994Z",
+      "id": "VfntH0O8QWGekkEI",
+      "name": "CoreProduct"
+    }
+  ]
+}

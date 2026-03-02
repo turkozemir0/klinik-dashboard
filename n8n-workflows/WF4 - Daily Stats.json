@@ -1,0 +1,231 @@
+{
+  "name": "WF4 - Daily Stats",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "3eb0cca0-f1e2-4d98-910a-2b6c2a61700d",
+      "name": "Every 1 Min (TEST)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -304,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/clinics?status=eq.active&select=id,name",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7dbfe757-c19a-46c7-bcdf-76143eb06ffc",
+      "name": "Get Active Clinics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -64,
+        -320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.item.json;\nconst clinics = Array.isArray(raw) ? raw : [raw];\nreturn clinics.filter(c => c && c.id).map(c => ({ json: c }));"
+      },
+      "id": "9c35ca5f-b219-463c-9869-90c7185ff1ca",
+      "name": "Split Clinics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?clinic_id=eq.{{ $json.id }}&select=created_at,lead_score,handoff_triggered,status&limit=1000",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e805ff27-08e5-4fdc-8a2a-acf315813e7a",
+      "name": "Get Clinic Conversations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        432,
+        -320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const clinicId = $('Split Clinics').item.json.id;\n\n// n8n'de HTTP node array döndürürse her biri ayrı item olur\nconst convItems = $input.all();\nconst convs = convItems.map(i => i.json);\n\nconst today = new Date().toISOString().split('T')[0];\n\nlet newLeads = 0, hot = 0, warm = 0, cold = 0, handoffs = 0, totalScore = 0, count = 0;\n\nfor (const c of convs) {\n  if (!c) continue;\n\n  if (c.created_at && c.created_at.startsWith(today)) newLeads++;\n\n  count++;\n\n  const s = c.lead_score || 0;\n  totalScore += s;\n\n  if (s >= 70) hot++;\n  else if (s >= 40) warm++;\n  else cold++;\n\n  if (c.handoff_triggered) handoffs++;\n}\n\nreturn [{\n  json: {\n    clinic_id: clinicId,\n    date: today,\n    new_conversations: newLeads,\n    hot_leads: hot,\n    warm_leads: warm,\n    cold_leads: cold,\n    handed_off_leads: handoffs,\n    avg_lead_score: count > 0 ? parseFloat((totalScore / count).toFixed(2)) : 0\n  }\n}];"
+      },
+      "id": "0892385f-c3d8-4747-b4df-540fc972c6fe",
+      "name": "Calculate Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/daily_stats",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"clinic_id\": \"{{ $json.clinic_id }}\",\n  \"date\": \"{{ $json.date }}\",\n  \"new_conversations\": {{ $json.new_conversations }},\n  \"hot_leads\": {{ $json.hot_leads }},\n  \"warm_leads\": {{ $json.warm_leads }},\n  \"cold_leads\": {{ $json.cold_leads }},\n  \"handed_off_leads\": {{ $json.handed_off_leads }},\n  \"avg_lead_score\": {{ $json.avg_lead_score }}\n}",
+        "options": {}
+      },
+      "id": "e6fac65f-5505-426f-987f-8268ce8de0bf",
+      "name": "Upsert Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        912,
+        -320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 1 Min (TEST)": {
+      "main": [
+        [
+          {
+            "node": "Get Active Clinics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Clinics": {
+      "main": [
+        [
+          {
+            "node": "Split Clinics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Clinics": {
+      "main": [
+        [
+          {
+            "node": "Get Clinic Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Clinic Conversations": {
+      "main": [
+        [
+          {
+            "node": "Calculate Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Stats": {
+      "main": [
+        [
+          {
+            "node": "Upsert Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "89f94887-1fe6-4fab-be23-57ab59dcff4e",
+  "meta": {
+    "instanceId": "e7ca8ba8500495191ee82da116d3a2d4871317bef04b1593bd69df3fd909701b"
+  },
+  "id": "MIRiNZ3R05QUl6kI",
+  "tags": [
+    {
+      "updatedAt": "2026-02-27T10:27:03.994Z",
+      "createdAt": "2026-02-27T10:27:03.994Z",
+      "id": "VfntH0O8QWGekkEI",
+      "name": "CoreProduct"
+    }
+  ]
+}

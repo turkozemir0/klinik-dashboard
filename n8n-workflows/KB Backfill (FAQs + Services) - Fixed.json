@@ -1,0 +1,358 @@
+{
+  "name": "KB Backfill (FAQs + Services) - Fixed",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "be46eaef-b903-4cd1-8d2c-eaf70d8f133f",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "faqs",
+        "returnAll": true
+      },
+      "id": "5ea33560-b2ea-4c4d-90e1-3518fc333baa",
+      "name": "Get FAQs",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        192
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "MxJaIHKJhdHJkyLH",
+          "name": "Supabase Clinic DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const q = Array.isArray(item.json.question_patterns)\n    ? item.json.question_patterns.join(\", \")\n    : \"\";\n\n  const a = item.json.answer || \"\";\n\n  return {\n    json: {\n      pageContent: `Sorular: ${q}\\nCevap: ${a}`,\n      metadata: {\n        clinic_id: item.json.clinic_id || null,\n        source_type: \"faq\",\n        source_id: item.json.id\n      }\n    }\n  };\n});"
+      },
+      "id": "d7c83701-f6cd-464a-b552-0dcfb216de2c",
+      "name": "Code (Map FAQs)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "143d894d-90b7-40a2-8ee1-0079169426a3",
+      "name": "Embeddings OpenAI (FAQs)",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        240,
+        192
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "m7P5mbcWEATV5rWC",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "kb_documents",
+          "cachedResultName": "kb_documents"
+        },
+        "options": {}
+      },
+      "id": "bba4ca74-7eab-4f09-b4bd-b141d6536547",
+      "name": "Vector Store Supabase (Insert FAQs)",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [
+        208,
+        -16
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "MxJaIHKJhdHJkyLH",
+          "name": "Supabase Clinic DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "services",
+        "returnAll": true
+      },
+      "id": "03c72267-f829-4bad-b9c5-d98c459c1b08",
+      "name": "Get Services",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        432
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "MxJaIHKJhdHJkyLH",
+          "name": "Supabase Clinic DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const name = item.json.display_name || \"\";\n  const desc = item.json.description_for_ai || \"\";\n  const concerns = Array.isArray(item.json.common_patient_concerns)\n    ? item.json.common_patient_concerns.join(\", \")\n    : \"\";\n\n  return {\n    json: {\n      pageContent: `Hizmet: ${name}\\nAçıklama: ${desc}\\nHasta Endişeleri: ${concerns}`,\n      metadata: {\n        clinic_id: item.json.clinic_id || null,\n        source_type: \"service\",\n        source_id: item.json.id\n      }\n    }\n  };\n});"
+      },
+      "id": "2ef53cc4-6d43-4157-8ea7-480177d8b51d",
+      "name": "Code (Map Services)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "bb518ea2-887c-46b8-86bb-c66855aa8b48",
+      "name": "Embeddings OpenAI (Services)",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        96,
+        480
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "m7P5mbcWEATV5rWC",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "kb_documents",
+          "cachedResultName": "kb_documents"
+        },
+        "options": {}
+      },
+      "id": "1b7adda7-970d-481e-95d6-b5501c4cfb3c",
+      "name": "Vector Store Supabase (Insert Services)",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [
+        256,
+        368
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "MxJaIHKJhdHJkyLH",
+          "name": "Supabase Clinic DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.pageContent }}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "clinic_id",
+                "value": "={{ $json.metadata.clinic_id }}"
+              },
+              {
+                "name": "source_type",
+                "value": "={{ $json.metadata.source_type }}"
+              },
+              {
+                "name": "source_id",
+                "value": "={{ $json.metadata.source_id }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        176
+      ],
+      "id": "2584defd-02fa-4783-a401-cd71175801ed",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.pageContent }}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "clinic_id",
+                "value": "={{ $json.metadata.clinic_id }}"
+              },
+              {
+                "name": "source_type",
+                "value": "={{ $json.metadata.source_type }}"
+              },
+              {
+                "name": "source_id",
+                "value": "={{ $json.metadata.source_id }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        576
+      ],
+      "id": "3e808638-e2d3-46d9-a7e2-df37914ffd5e",
+      "name": "Default Data Loader1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get FAQs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get FAQs": {
+      "main": [
+        [
+          {
+            "node": "Code (Map FAQs)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code (Map FAQs)": {
+      "main": [
+        [
+          {
+            "node": "Vector Store Supabase (Insert FAQs)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI (FAQs)": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Vector Store Supabase (Insert FAQs)",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Services": {
+      "main": [
+        [
+          {
+            "node": "Code (Map Services)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code (Map Services)": {
+      "main": [
+        [
+          {
+            "node": "Vector Store Supabase (Insert Services)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI (Services)": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Vector Store Supabase (Insert Services)",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Vector Store Supabase (Insert FAQs)",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader1": {
+      "ai_document": [
+        [
+          {
+            "node": "Vector Store Supabase (Insert Services)",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "19ec182a-1c97-46ef-9598-440492808357",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e7ca8ba8500495191ee82da116d3a2d4871317bef04b1593bd69df3fd909701b"
+  },
+  "id": "f4trGHIgqurYnqeP",
+  "tags": []
+}

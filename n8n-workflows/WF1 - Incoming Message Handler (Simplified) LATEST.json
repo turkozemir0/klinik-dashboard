@@ -1,0 +1,1397 @@
+{
+  "name": "WF1 - Incoming Message Handler (Simplified) LATEST",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clinic-incoming",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "bd7f242c-ab84-4d4f-9e4f-ab71617d8ab0",
+      "name": "Webhook Incoming",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -80
+      ],
+      "webhookId": "bd4b7351-7949-4615-a824-93a5ab98fd80"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\":\"received\"}",
+        "options": {}
+      },
+      "id": "7a61378c-d9c7-4959-b3dc-aba54b740ccc",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        688,
+        -272
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"supabaseUrl\": \"https://iylabpsokydolhuhvvwi.supabase.co\",\n  \"supabaseKey\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM\",\n  \"clinicId\": \"0dc1ab7f-824f-4bad-a801-dfe39fad6c09\",\n  \"ghlPitToken\": \"pit-3078af89-45b0-459f-8e7e-91aafc5a78ad\",\n  \"ghlApiBase\": \"https://services.leadconnectorhq.com\",\n  \"ghlApiVersion\": \"2021-07-28\",\n  \"openaiApiBase\": \"https://api.openai.com/v1\",\n  \"ghlFieldLeadScore\": \"9cZwMpve2bzDM0mNQ08Q\",\n  \"ghlFieldQualificationStatus\": \"ABqnbHbNfG6aDlFVAztP\",\n  \"ghlFieldInterestedService\": \"KUjTWtCUUVoYpy2UgJxa\",\n  \"ghlFieldPainPoint\": \"8xETKWnQ53EnCQMXdnKz\",\n  \"ghlFieldTimeline\": \"U2yNuDV5l9oMT7x6XLX3\",\n  \"ghlFieldConversationId\": \"B7dIFrR44PwVM8n87yyw\",\n  \"ghlFieldBudgetAwareness\": \"FMS0gxGnyIv3TNObPdJU\",\n  \"ghlFieldPreviousConsultation\": \"yeYqHGTcqWZNMGPob2YG\",\n  \"ghlFieldAiSummary\": \"LjAXj1FT3s6GnBO85pFq\",\n  \"ghlFieldAiSuggestedApproach\": \"1NAEgwt7JS1EF1J1uXHj\",\n  \"ghlFieldServiceDetail\": \"a4FUZNdUU4qar1HMtNAi\",\n  \"ghlFieldImageShared\": \"ESUJMTgVCvQr1IHLhwEK\"\n}",
+        "options": {}
+      },
+      "id": "669661b1-313a-44a7-8fae-b8d0fe812a72",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        688,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').item.json.ghlApiBase }}/contacts/{{ $('Config').item.json.contactId || $('Webhook Incoming').item.json.body.contactId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "={{ $('Config').item.json.ghlApiVersion }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.ghlPitToken }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d7d6f1ac-002b-45db-ad77-debb7495c209",
+      "name": "GHL Get Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        976,
+        -80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const contactResp = $('GHL Get Contact').item.json;\nconst contact = contactResp.contact || contactResp;\n\n// 1. DÜZELTME: Veriyi doğrudan root'tan değil, webhook'un 'body' kısmından alıyoruz.\nconst webhook = $('Webhook Incoming').item.json.body || $('Webhook Incoming').item.json;\n\nconst tags = contact.tags || [];\nif (tags.includes('human_handoff') || tags.includes('urgent_handoff')) {\n  return [{ json: { action: 'STOP_HUMAN', reason: 'human_handoff tag' } }];\n}\nif (contact.assignedTo && contact.assignedTo !== '') {\n  return [{ json: { action: 'STOP_HUMAN', reason: 'assigned to user' } }];\n}\n\n// 2. DÜZELTME: GHL'den gelen JSON string formatındaki karmaşık mesajı temiz metne çeviriyoruz.\nlet cleanMessage = webhook.mergedMessage || '';\ntry {\n    const parsed = JSON.parse(cleanMessage);\n    if (parsed.body) {\n        cleanMessage = parsed.body;\n    }\n} catch(e) {\n    // Zaten düz metinse olduğu gibi kalır\n}\n\nreturn [{ json: {\n  action: 'CONTINUE',\n  contactId: webhook.contactId,\n  contactName: contact.name || contact.firstName || 'Hasta',\n  contactPhone: contact.phone || '',\n  contactEmail: contact.email || '',\n  clinicId: webhook.clinicId || $('Config').item.json.clinicId,\n  mergedMessage: cleanMessage, \n  containsImage: webhook.containsImage || false,\n  imageCount: webhook.imageCount || 0\n} }];"
+      },
+      "id": "f208ef11-7b94-4c48-bc6a-9dfa2440f466",
+      "name": "Human Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "ff77dfb5-8572-4056-a963-c63f7226cc6e",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "STOP_HUMAN",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c4d8d2b9-57e3-41a4-a1f9-0ae7d5622b35",
+      "name": "Human Active?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').item.json.supabaseUrl }}/rest/v1/conversations?ghl_contact_id=eq.{{ $json.contactId }}&status=in.(active,nurturing)&order=created_at.desc&limit=1",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').item.json.supabaseKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d7ef0146-0b2e-4145-abac-15e65fa5ca96",
+      "name": "Find Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1824,
+        128
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.item.json;\nconst conversations = Array.isArray(result) ? result : [result];\nconst prev = $('Human Check').item.json;\n\nif (conversations.length > 0 && conversations[0] && conversations[0].id) {\n  const c = conversations[0];\n  return [{ json: {\n    ...prev, conversationExists: true,\n    conversationId: c.id,\n    currentStage: c.current_stage || 'GREETING',\n    collectedData: c.collected_data || {},\n    leadSignals: c.lead_signals || {},\n    currentScore: c.lead_score || 0,\n    humanTakeover: c.human_takeover || false,\n    imagesReceived: c.images_received || 0,\n    messageCount: c.message_count || 0\n  } }];\n}\nreturn [{ json: {\n  ...prev, conversationExists: false,\n  conversationId: null, currentStage: 'GREETING',\n  collectedData: {}, leadSignals: {},\n  currentScore: 0, humanTakeover: false,\n  imagesReceived: 0, messageCount: 0\n} }];"
+      },
+      "id": "d0387207-5458-4af4-82a8-b75b4d59970d",
+      "name": "Check Conversation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2096,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "61425a1a-035c-4135-b459-0ed5600f1918",
+              "leftValue": "={{ $json.conversationExists }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a6b99c48-11d2-4d01-ab80-296d7f56df51",
+      "name": "New Conversation?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.supabaseUrl }}/rest/v1/conversations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').item.json.supabaseKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"clinic_id\": $('Config').item.json.clinicId,\n  \"ghl_contact_id\": $json.contactId,\n  \"contact_name\": $json.contactName,\n  \"contact_phone\": $json.contactPhone,\n  \"status\": \"active\",\n  \"current_stage\": \"GREETING\"\n}) }}",
+        "options": {}
+      },
+      "id": "6841ff47-bd33-4bf3-bf6d-7fbd9f36a271",
+      "name": "Create Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2656,
+        -80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prev = $('Check Conversation').item.json;\nconst created = $input.item.json;\nconst arr = Array.isArray(created) ? created : [created];\nreturn [{ json: { ...prev, conversationId: arr[0]?.id, conversationExists: true } }];"
+      },
+      "id": "ab4f36cf-25f1-4a57-b7ac-a212523a9a7a",
+      "name": "Set New Conv ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2944,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.ghlApiBase }}/contacts/{{ $json.contactId }}/tags",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "={{ $('Config').item.json.ghlApiVersion }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.ghlPitToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"tags\": [\"ai_active\", \"chatbot-lead\"]}",
+        "options": {}
+      },
+      "id": "8213b6c7-55ad-478d-92a4-bd1185d540e0",
+      "name": "GHL Add Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3216,
+        -80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const checkData = $('Check Conversation').item.json;\n\nif (checkData.conversationExists === false) {\n  return [{ json: $('Set New Conv ID').item.json }];\n} else {\n  return [{ json: checkData }];\n}"
+      },
+      "id": "21a3ae40-d7ca-4f7b-91b0-c0e3255a50b4",
+      "name": "Get Conv Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3776,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').item.json.supabaseUrl }}/rest/v1/messages?conversation_id=eq.{{ $json.conversationId }}&order=created_at.asc&limit=20",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').item.json.supabaseKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "990392dc-86ec-4663-a6b1-d37259aa5b6b",
+      "name": "Get History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        416,
+        528
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').item.json.supabaseUrl }}/rest/v1/clinics?id=eq.{{ $('Get Conv Data').item.json.clinicId }}&limit=1",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').item.json.supabaseKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0ea43949-08a9-4789-b3f3-4e314d919ef6",
+      "name": "Get Clinic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').item.json.supabaseUrl }}/rest/v1/services?clinic_id=eq.{{ $('Get Conv Data').item.json.clinicId }}&is_active=eq.true",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').item.json.supabaseKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "588b23a8-51a1-4676-8fc4-d1c09f2501da",
+      "name": "Get Services",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        976,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').item.json.supabaseUrl }}/rest/v1/faqs?clinic_id=eq.{{ $('Get Conv Data').item.json.clinicId }}&is_active=eq.true",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').item.json.supabaseKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "437d9d4c-3638-48b5-a5e1-6c0c80e88a99",
+      "name": "Get FAQs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1248,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const convData = $('Get Conv Data').first().json;\nconst clinicArr = $('Get Clinic').first().json;\nconst clinic = Array.isArray(clinicArr) ? clinicArr[0] : clinicArr;\nconst servicesArr = $('Get Services').first().json;\nconst services = Array.isArray(servicesArr) ? servicesArr : [servicesArr];\nconst faqsArr = $('Get FAQs').first().json;\nconst faqs = Array.isArray(faqsArr) ? faqsArr : [faqsArr];\nconst historyArr = $('Get History').first().json;\nconst history = Array.isArray(historyArr) ? historyArr : (historyArr && historyArr.id ? [historyArr] : []);\n\n// === FULL services text for reply stage ===\nconst servicesText = services\n  .filter(s => s && s.display_name)\n  .map(s => `\\nHİZMET: ${s.display_name} (${s.category || ''})\nAçıklama: ${s.description_for_ai || ''}\nSüre: ${s.procedure_duration || 'Belirtilmemiş'}\nAnestezi: ${s.anesthesia_type || 'Belirtilmemiş'}\nİyileşme: ${s.recovery_time || 'Belirtilmemiş'}\nTam Sonuç: ${s.final_result_time || 'Belirtilmemiş'}\nHastanede Kalış: ${s.hospital_stay || 'Belirtilmemiş'}\nHasta Endişeleri: ${(s.common_patient_concerns || []).join(', ')}\nFiyat Sorusuna Yanıt: ${s.pricing_response || 'Kişiye özel belirlenir'}\nSöyleyebileceklerin: ${(s.what_ai_can_say || []).join(', ')}\nASLA Söyleme: ${(s.what_ai_must_not_say || []).join(', ')}\nİtiraz Yanıtları: ${JSON.stringify(s.objections || {})}`)\n  .join('\\n---\\n');\n\n// === SHORT services list for analysis stage ===\nconst servicesShort = services\n  .filter(s => s && s.display_name)\n  .map(s => `${s.service_key}: ${s.display_name} (${s.category || ''})`)\n  .join('\\n');\n\nconst faqsText = faqs\n  .filter(f => f && f.answer)\n  .map(f => `Tetikleyiciler: [${(f.question_patterns || []).join(', ')}] → Yanıt: ${f.answer}`)\n  .join('\\n');\n\nlet imageNote = '';\nif (convData.containsImage) {\n  imageNote = `\\n[SİSTEM NOTU: Hasta bu mesajla birlikte ${convData.imageCount} adet görsel gönderdi. Empatik karşıla, doktorun ön görüşmede değerlendireceğini belirt. Görseli analiz etme.]`;\n}\n\n// ══════════════════════════════════════\n// STAGE 1: ANALYSIS SYSTEM PROMPT\n// ══════════════════════════════════════\nconst analysisSystemPrompt = `Sen bir klinik konuşma analiz motorusun. Hasta mesajını analiz edip yapılandırılmış veri çıkar.\n\n## KLİNİK\nAd: ${clinic.name}\nTür: ${clinic.clinic_type}\n\n## HİZMETLER\n${servicesShort}\n\n## MEVCUT DURUM\nAşama: ${convData.currentStage}\nÖNCEKİ TOPLANAN VERİLER (BUNLARI ASLA SİLME!): ${JSON.stringify(convData.collectedData)}\nSinyaller: ${JSON.stringify(convData.leadSignals)}\n\n## SİNYAL SINIFLANDIRMA KURALLARI (ÇOK ÖNEMLİ)\n- Eğer hasta mesajında: \"acil\", \"hemen\", \"bugün\", \"en kısa sürede\", \"acele\", \"urgent\" gibi ifadeler varsa:\n  → lead_signals.urgency = \"high\"\n- Eğer hasta \"yakında\", \"bu hafta\", \"önümüzdeki günler\", \"kısa zamanda\" gibi ifadeler kullanıyorsa:\n  → lead_signals.urgency = \"medium\"\n- Eğer zaman belirtmiyorsa:\n  → lead_signals.urgency = \"low\" veya \"unknown\"\n\n- Eğer hasta açıkça randevu istiyorsa, gün/saat soruyorsa, \"gelmek istiyorum\", \"ön görüşme istiyorum\" diyorsa:\n  → lead_signals.buying_intent = \"ready\"\n- Eğer sadece bilgi alıyorsa:\n  → lead_signals.buying_intent = \"considering\"\n- Eğer sadece bakınıyorsa:\n  → lead_signals.buying_intent = \"just_browsing\"\n\n- Eğer hasta kısa, tek kelimelik cevaplar veriyorsa:\n  → lead_signals.engagement_level = \"low\"\n- Eğer detaylı anlatıyorsa, soru soruyorsa:\n  → lead_signals.engagement_level = \"high\"\n- Aksi halde:\n  → lead_signals.engagement_level = \"medium\"\n\n- Eğer hasta fiyat, ücret, ödeme, taksit, bütçe gibi konuları soruyorsa:\n  → collected_data.budget_awareness = \"fiyat_sordu\" veya \"butce_belirti\"\n\n## GÖREV\nSADECE aşağıdaki JSON formatında yanıt ver:\n{\n  \"metadata\": {\n    \"current_stage\": \"GREETING|DISCOVERY|TRUST_BUILDING|APPOINTMENT_OFFER|INFO_COLLECTION|CLOSING|NURTURING\",\n    \"collected_data\": {\n      \"name\": null, \"interested_service\": null, \"interested_service_key\": null,\n      \"pain_point\": null, \"pain_point_duration\": null,\n      \"timeline\": null, \"previous_consultation\": null, \"previous_procedure\": null,\n      \"budget_awareness\": \"not_asked\", \"referral_source\": null,\n      \"special_health_notes\": null, \"preferred_consultation_type\": null,\n      \"preferred_day_time\": null\n    },\n    \"lead_signals\": {\n      \"urgency\": \"unknown\", \"engagement_level\": \"unknown\",\n      \"buying_intent\": \"unknown\", \"objections_raised\": [], \"objections_resolved\": []\n    },\n    \"handoff_recommended\": false,\n    \"handoff_reason\": null\n  },\n  \"reply_guidance\": \"Yanıt asistanı için 1-2 cümlelik yönlendirme\"\n}\n\nÇOK ÖNEMLİ KURAL: JSON çıktısı üretirken 'ÖNCEKİ TOPLANAN VERİLER' içindeki dolu olan verileri ASLA null yapma! \nSadece yeni mesajda yeni bir bilgi varsa üzerine ekle. \nEğer hasta sadece \"randevu istiyorum\" diyorsa, önceki hizmeti hafızanda tut ve current_stage'i APPOINTMENT_OFFER yap.`;\n\n// ══════════════════════════════════════\n// STAGE 2: REPLY SYSTEM PROMPT (base)\n// ══════════════════════════════════════\nconst replySystemPrompt = `Sen ${clinic.name} kliniğinin WhatsApp asistanısın. Hastaları karşılıyor, bilgilendiriyor ve ön görüşme randevusuna yönlendiriyorsun.\n\n## KLİNİK PROFİLİ\nAd: ${clinic.name}\nTür: ${clinic.clinic_type}\nAdres: ${clinic.address}, ${clinic.district}, ${clinic.city}\nTelefon: ${clinic.phone}\nÇalışma Saatleri: ${JSON.stringify(clinic.working_hours)}\nOtopark: ${clinic.parking_info || 'Bilgi yok'}\nBaş Doktor: ${clinic.lead_doctor_name}, ${clinic.lead_doctor_title}\n\n## HİZMETLER\n${servicesText}\n\n## SIK SORULAN SORULAR\n${faqsText}\n\n## KONUŞMA KURALLARI\n1. Her mesajda SADECE 1 soru sor.\n2. Yanıtların 2-4 cümle olsun ancak bilgi vermekten kaçınma. Robotik konuşma.\n3. KESİNLİKLE her mesajda \"Merhaba\" veya \"Hoş geldiniz\" DEME. Sadece ilk mesajda selam ver.\n4. HAFIZANI KULLAN: Konuşma geçmişinde hastanın ilgilendiği işlem zaten belli olduysa, randevu istediğinde ASLA \"Hangi işlemle ilgileniyorsunuz?\" diye TEKRAR SORMA. Doğrudan o işlem için gün ve saat sor.\n5. Asla tıbbi teşhis koyma, garanti verme.\n6. Rakip klinik kötüleme.\n7. Fiyat sorulursa kişiye özel olduğunu belirt, ön görüşmeye yönlendir.`;\n\n// === Build conversation history for reuse ===\nconst historyMessages = [];\nfor (const msg of history) {\n  if (msg && msg.content) {\n    historyMessages.push({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: msg.content });\n  }\n}\n\n// === Stage 1 messages ===\nconst analysisMessages = [\n  { role: 'system', content: analysisSystemPrompt },\n  ...historyMessages,\n  { role: 'user', content: convData.mergedMessage + imageNote }\n];\n\nreturn [{\n  json: {\n    analysisMessages,\n    replySystemPrompt,\n    historyMessages,\n    userMessage: convData.mergedMessage,\n    imageNote,\n    conversationId: convData.conversationId,\n    contactId: convData.contactId,\n    clinicId: convData.clinicId,\n    containsImage: convData.containsImage,\n    imageCount: convData.imageCount,\n    currentScore: convData.currentScore,\n    imagesReceived: convData.imagesReceived,\n    messageCount: convData.messageCount,\n    contactName: convData.contactName\n  }\n}];"
+      },
+      "id": "834eb59e-85c1-498d-8cdc-93ca6a92b7c9",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.supabaseKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"conversation_id\": $json.conversationId,\n  \"clinic_id\": $json.clinicId,\n  \"role\": \"user\",\n  \"content\": $json.userMessage,\n  \"contains_image\": $json.containsImage,\n  \"image_count\": $json.imageCount || 0\n}) }}",
+        "options": {}
+      },
+      "id": "9d0e01f5-f535-464b-bf42-3b4100a9dcd5",
+      "name": "Save User Msg",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1808,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.openaiApiBase }}/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"model\": \"gpt-4o-mini\",\n  \"temperature\": 0.3,\n  \"max_tokens\": 500,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": $('Build AI Prompt').item.json.analysisMessages\n}) }}",
+        "options": {}
+      },
+      "id": "72a99fe5-381d-4d34-84ea-01a38477c2e2",
+      "name": "OpenAI Analyze",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2080,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cc9Z3PiEo03vJ1hN",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResponse = $input.item.json;\nlet metadata = {}, replyGuidance = '';\n\ntry {\n  const raw = aiResponse.choices[0].message.content;\n  const parsed = JSON.parse(raw);\n  metadata = parsed.metadata || {};\n  replyGuidance = parsed.reply_guidance || '';\n} catch (e) {\n  metadata = {\n    current_stage: 'GREETING',\n    collected_data: {},\n    lead_signals: {},\n    handoff_recommended: false,\n    handoff_reason: null\n  };\n  replyGuidance = 'Hastayı sıcak karşıla.';\n}\n\nreturn [{ json: {\n  metadata,\n  replyGuidance,\n  analysisTokens: aiResponse.usage?.total_tokens || 0\n} }];"
+      },
+      "id": "1d8288de-71b0-42c2-86f8-e9b097330526",
+      "name": "Parse Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2352,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const analysis = $('Parse Analysis').item.json;\nconst promptData = $('Build AI Prompt').item.json;\n\nconst analysisContext = `\\n\\n## ANALİZ SONUÇLARI (İç kullanım - hastaya gösterme)\\nMevcut Aşama: ${analysis.metadata.current_stage}\\nToplanan Veriler: ${JSON.stringify(analysis.metadata.collected_data)}\\nLead Sinyalleri: ${JSON.stringify(analysis.metadata.lead_signals)}\\nYönlendirme: ${analysis.replyGuidance}${analysis.metadata.handoff_recommended ? '\\nNOT: Bu hasta satış ekibine yönlendirilecek. Nazikçe bilgilendirmeye devam et.' : ''}\\n\\n## GÖREV\\nYukarıdaki analiz sonuçlarına ve konuşma geçmişine dayanarak hastaya doğal, empatik bir WhatsApp mesajı yaz.\\nSADECE mesaj metnini yaz. JSON veya başka format KULLANMA. Markdown KULLANMA.`;\n\nconst replyMessages = [\n  { role: 'system', content: promptData.replySystemPrompt + analysisContext },\n  ...promptData.historyMessages,\n  { role: 'user', content: promptData.userMessage + promptData.imageNote }\n];\n\nreturn [{ json: { replyMessages } }];"
+      },
+      "id": "93fe1ebc-1246-4cb0-8a5b-6712d4116e92",
+      "name": "Build Reply Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.openaiApiBase }}/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"model\": \"gpt-4o\",\n  \"temperature\": 0.7,\n  \"max_tokens\": 400,\n  \"messages\": $('Build Reply Prompt').item.json.replyMessages\n}) }}",
+        "options": {}
+      },
+      "id": "24b869f9-a581-4556-b9ba-6819aa04f516",
+      "name": "OpenAI Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2896,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cc9Z3PiEo03vJ1hN",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const replyResponse = $input.item.json;\nconst analysis = $('Parse Analysis').item.json;\nconst promptData = $('Build AI Prompt').item.json;\nlet reply = '';\n\ntry {\n  reply = replyResponse.choices[0].message.content || '';\n  reply = reply.replace(/^```[\\s\\S]*?```$/gm, '').trim();\n  if (reply.startsWith('{')) {\n    try {\n      const p = JSON.parse(reply);\n      reply = p.reply || p.message || p.text || reply;\n    } catch(e) {}\n  }\n  if (reply.startsWith('\"') && reply.endsWith('\"')) {\n    reply = reply.slice(1, -1);\n  }\n  reply = reply.trim();\n} catch (e) {\n  reply = 'Mesajınız için teşekkür ederim. Size nasıl yardımcı olabilirim?';\n}\n\nif (!reply) reply = 'Mesajınız için teşekkür ederim. Size nasıl yardımcı olabilirim?';\n\nconst metadata = analysis.metadata || {};\nconst cd = metadata.collected_data || {};\nconst ls = metadata.lead_signals || {};\nlet score = 0, breakdown = {};\n\nif (cd.interested_service) { score += 10; breakdown.service = 10; }\nif (cd.pain_point && cd.pain_point.length > 20) { score += 10; breakdown.pain_detailed = 10; }\nelse if (cd.pain_point) { score += 5; breakdown.pain_basic = 5; }\n\nconst tScores = { 'hemen': 20, '1_hafta': 15, '1_ay': 8, '3_ay': 3, 'belirsiz': 0 };\nif (cd.timeline && tScores[cd.timeline] !== undefined) { score += tScores[cd.timeline]; breakdown.timeline = tScores[cd.timeline]; }\nif (cd.previous_consultation === 'baska_klinik') { score += 10; breakdown.researched = 10; }\nif (cd.previous_consultation === 'ameliyat_olmus') { score += 12; breakdown.revision = 12; }\nif (['fiyat_sordu','taksit_sordu','butce_belirti'].includes(cd.budget_awareness)) { score += 8; breakdown.budget = 8; }\nif (cd.preferred_consultation_type) { score += 10; breakdown.consult_pref = 10; }\nif (cd.preferred_day_time) { score += 15; breakdown.appt_interest = 15; }\nif (ls.engagement_level === 'high') { score += 8; breakdown.high_eng = 8; }\nelse if (ls.engagement_level === 'medium') { score += 4; breakdown.med_eng = 4; }\nif (ls.buying_intent === 'ready') { score += 15; breakdown.ready = 15; }\nelse if (ls.buying_intent === 'considering') { score += 8; breakdown.considering = 8; }\nif (ls.urgency === 'high') { score += 7; breakdown.urgency = 7; }\nif (ls.buying_intent === 'just_browsing') { score -= 5; breakdown.browsing = -5; }\n\nconst totalImages = (promptData.imagesReceived || 0) + (promptData.imageCount || 0);\nif (totalImages > 0) { const s = Math.min(totalImages * 15, 30); score += s; breakdown.images = s; }\nscore = Math.max(0, Math.min(100, score));\n\nconst totalTokens = (analysis.analysisTokens || 0) + (replyResponse.usage?.total_tokens || 0);\n\nreturn [{ json: {\n  reply, metadata, score, breakdown,\n  handoffNeeded: metadata.handoff_recommended === true || score >= 70,\n  conversationId: promptData.conversationId,\n  contactId: promptData.contactId,\n  clinicId: promptData.clinicId,\n  containsImage: promptData.containsImage,\n  imageCount: promptData.imageCount,\n  totalImages, messageCount: promptData.messageCount + 1,\n  contactName: promptData.contactName,\n  tokensUsed: totalTokens\n} }];"
+      },
+      "id": "e3620fe5-50a7-4dde-98f7-d656b1346415",
+      "name": "Parse AI + Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3168,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.supabaseKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"conversation_id\": $json.conversationId,\n  \"clinic_id\": $json.clinicId,\n  \"role\": \"assistant\",\n  \"content\": $json.reply,\n  \"ai_metadata\": $json.metadata,\n  \"tokens_used\": $json.tokensUsed,\n  \"contains_image\": false\n}) }}",
+        "options": {}
+      },
+      "id": "90473f4f-352a-4046-bd38-cbd499a23819",
+      "name": "Save AI Msg",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3424,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/conversations?id=eq.{{ $('Parse AI + Score').first().json.conversationId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.supabaseKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"current_stage\": $('Parse AI + Score').first().json.metadata.current_stage,\n  \"collected_data\": $('Parse AI + Score').first().json.metadata.collected_data,\n  \"lead_signals\": $('Parse AI + Score').first().json.metadata.lead_signals,\n  \"lead_score\": $('Parse AI + Score').first().json.score,\n  \"score_breakdown\": $('Parse AI + Score').first().json.breakdown,\n  \"images_received\": $('Parse AI + Score').first().json.totalImages,\n  \"message_count\": $('Parse AI + Score').first().json.messageCount,\n  \"last_message_at\": new Date().toISOString(),\n  \"updated_at\": new Date().toISOString()\n}) }}",
+        "options": {}
+      },
+      "id": "d7f76b5b-45b5-4ad3-95a0-1972d89be914",
+      "name": "Update Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3696,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "6ed8875b-145e-4749-bdf0-cf54c46e8e5c",
+              "leftValue": "={{ $('Parse AI + Score').first().json.handoffNeeded }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c073ba36-10d6-48cc-bbbd-03b99df556dd",
+      "name": "Handoff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3968,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "=cHyLhW3d9UmcEFAG",
+        "mode": "each",
+        "options": {}
+      },
+      "id": "f83a94e2-1e35-4542-8006-106f3c382218",
+      "name": "Trigger Handoff",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        4240,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "af12c53a-19f5-4421-88d4-e8b0f4a35339",
+              "leftValue": "={{ $('Parse AI + Score').first().json.metadata.current_stage }}",
+              "rightValue": "NURTURING",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dcf3244d-d9a3-4c40-a4c2-4c4284e64f09",
+      "name": "Is Nurturing?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4240,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Config').first().json.ghlApiBase }}/contacts/{{ $json.contactId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "={{ $('Config').first().json.ghlApiVersion }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.ghlPitToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"tags\": [\"warm_lead\"],\n  \"customFields\": [\n    {\n      \"id\": $('Config').first().json.ghlFieldQualificationStatus,\n      \"field_value\": \"nurturing\"\n    }\n  ]\n}) }}",
+        "options": {}
+      },
+      "id": "915d2be4-5d86-4486-9c41-3d226a24ca94",
+      "name": "GHL Tag Warm",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4512,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $('Config').first().json.ghlApiBase }}/contacts/{{ $json.contactId }}/tags",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "={{ $('Config').first().json.ghlApiVersion }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.ghlPitToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"tags\": [\"ai_active\"]}",
+        "options": {}
+      },
+      "id": "f32ad33b-7f8f-4fbb-86f3-4e55ba1c1d44",
+      "name": "GHL Remove AI Tag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4784,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ghlApiBase }}/conversations/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "={{ $('Config').first().json.ghlApiVersion }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.ghlPitToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"type\": \"SMS\",\n  \"contactId\": $('Parse AI + Score').first().json.contactId,\n  \"message\": $('Parse AI + Score').first().json.reply\n}) }}",
+        "options": {}
+      },
+      "id": "ad575f88-1544-4662-9f98-36558f0829a7",
+      "name": "Send WhatsApp Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        416,
+        928
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Config').first().json.ghlApiBase }}/contacts/{{ $('Parse AI + Score').item.json.contactId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "={{ $('Config').first().json.ghlApiVersion }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.ghlPitToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"customFields\": [\n    {\n      \"id\": $('Config').first().json.ghlFieldLeadScore,\n      \"field_value\": $('Parse AI + Score').first().json.score\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldQualificationStatus,\n      \"field_value\": \"qualifying\"\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldInterestedService,\n      \"field_value\": $('Parse AI + Score').first().json.metadata.collected_data.interested_service || \"\"\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldPainPoint,\n      \"field_value\": $('Parse AI + Score').first().json.metadata.collected_data.pain_point || \"\"\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldTimeline,\n      \"field_value\": $('Parse AI + Score').first().json.metadata.collected_data.timeline || \"\"\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldConversationId,\n      \"field_value\": $('Parse AI + Score').first().json.conversationId || \"\"\n    }\n  ]\n}) }}",
+        "options": {}
+      },
+      "id": "828a9693-0238-4754-9ae5-872539e7d029",
+      "name": "GHL Update Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        928
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/conversation_locks?ghl_contact_id=eq.{{ $('Parse AI + Score').item.json.contactId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.supabaseKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"status\": \"idle\"}",
+        "options": {}
+      },
+      "id": "0240e18a-cc69-4008-8a20-0c39837f4aa6",
+      "name": "Release Lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        976,
+        928
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "f22ee51f-7a0b-4a1a-a803-67fc62b2e6f3",
+      "name": "Stop - Human Active",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1824,
+        -272
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Incoming": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "GHL Get Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Get Contact": {
+      "main": [
+        [
+          {
+            "node": "Human Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Human Check": {
+      "main": [
+        [
+          {
+            "node": "Human Active?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Human Active?": {
+      "main": [
+        [
+          {
+            "node": "Stop - Human Active",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Conversation": {
+      "main": [
+        [
+          {
+            "node": "Check Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Conversation": {
+      "main": [
+        [
+          {
+            "node": "New Conversation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Conversation?": {
+      "main": [
+        [
+          {
+            "node": "Create Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Conv Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Conversation": {
+      "main": [
+        [
+          {
+            "node": "Set New Conv ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set New Conv ID": {
+      "main": [
+        [
+          {
+            "node": "GHL Add Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Add Tags": {
+      "main": [
+        [
+          {
+            "node": "Get Conv Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Conv Data": {
+      "main": [
+        [
+          {
+            "node": "Get History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get History": {
+      "main": [
+        [
+          {
+            "node": "Get Clinic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Clinic": {
+      "main": [
+        [
+          {
+            "node": "Get Services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Services": {
+      "main": [
+        [
+          {
+            "node": "Get FAQs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get FAQs": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Save User Msg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save User Msg": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Analyze",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Analyze": {
+      "main": [
+        [
+          {
+            "node": "Parse Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Analysis": {
+      "main": [
+        [
+          {
+            "node": "Build Reply Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Reply Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Reply": {
+      "main": [
+        [
+          {
+            "node": "Parse AI + Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI + Score": {
+      "main": [
+        [
+          {
+            "node": "Save AI Msg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save AI Msg": {
+      "main": [
+        [
+          {
+            "node": "Update Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Conversation": {
+      "main": [
+        [
+          {
+            "node": "Handoff?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handoff?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Nurturing?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Handoff": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Nurturing?": {
+      "main": [
+        [
+          {
+            "node": "GHL Tag Warm",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send WhatsApp Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Tag Warm": {
+      "main": [
+        [
+          {
+            "node": "GHL Remove AI Tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Remove AI Tag": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Reply": {
+      "main": [
+        [
+          {
+            "node": "GHL Update Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Update Contact": {
+      "main": [
+        [
+          {
+            "node": "Release Lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "36fb87ae-fc6f-444f-8137-32dd265efe74",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e7ca8ba8500495191ee82da116d3a2d4871317bef04b1593bd69df3fd909701b"
+  },
+  "id": "b6aIJ9406xTf0r81",
+  "tags": []
+}

@@ -1,0 +1,322 @@
+{
+  "name": "WF5 - Stale Conversation Check DEMO",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "1b4477a2-4be0-4bc7-8faa-9ba123b1b227",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1152,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?status=eq.active&human_takeover=eq.false&last_message_at=lt.{{ new Date(Date.now() - 48*60*60*1000).toISOString() }}&select=id,ghl_contact_id,message_count,lead_score,clinic_id",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "23fa0c33-2c67-41bf-a02d-092d94a5c4df",
+      "name": "Find Stale Conversations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -912,
+        272
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.item.json;\nconst convs = Array.isArray(raw) ? raw : (raw && raw.id ? [raw] : []);\n\nif (convs.length === 0) return [{ json: { hasStale: false } }];\n\nreturn convs.map(c => ({\n  json: {\n    ...c,\n    hasStale: true,\n    newStatus: (c.message_count || 0) >= 2 ? 'nurturing' : 'closed',\n    newTag: (c.message_count || 0) >= 2 ? 'warm_lead' : 'cold_lead'\n  }\n}));"
+      },
+      "id": "507ddede-e461-4f95-a8fe-cf031b647498",
+      "name": "Classify Stale",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "e05bbb53-c5ff-4e2d-b82a-019d82c93f59",
+              "leftValue": "={{ $json.hasStale }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "605261f2-da16-4ae9-9e40-39d08bc1388b",
+      "name": "Has Stale?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        272
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a4e2e8df-6940-4021-b454-44f2c1eb9f70",
+      "name": "No Stale",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?id=eq.{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"{{ $json.newStatus }}\",\n  \"updated_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "id": "12d8612c-b242-4998-88c5-63797c65936e",
+      "name": "Update Conv Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -192,
+        144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.ghl_contact_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"tags\": [\"{{ $json.newTag }}\"],\n  \"customFields\": [{ \"key\": \"qualification_status\", \"field_value\": \"{{ $json.newStatus === 'nurturing' ? 'nurturing' : 'lost' }}\" }]\n}",
+        "options": {}
+      },
+      "id": "2949ae75-8391-4b02-bedf-2286da9f1746",
+      "name": "GHL Update Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        48,
+        16
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.ghl_contact_id }}/tags",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"tags\": [\"ai_active\"]}",
+        "options": {}
+      },
+      "id": "c99fdfae-71c5-411e-94b3-b90b16dc3018",
+      "name": "Remove AI Active Tag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        288,
+        16
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Find Stale Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Stale Conversations": {
+      "main": [
+        [
+          {
+            "node": "Classify Stale",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Stale": {
+      "main": [
+        [
+          {
+            "node": "Has Stale?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Stale?": {
+      "main": [
+        [
+          {
+            "node": "Update Conv Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Stale",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Conv Status": {
+      "main": [
+        [
+          {
+            "node": "GHL Update Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Update Tags": {
+      "main": [
+        [
+          {
+            "node": "Remove AI Active Tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5b3bd5c0-fb82-4fc1-ae7b-89e23e12b557",
+  "meta": {
+    "instanceId": "e7ca8ba8500495191ee82da116d3a2d4871317bef04b1593bd69df3fd909701b"
+  },
+  "id": "2ZNbfuqpF8cvSFXB",
+  "tags": []
+}
