@@ -50,7 +50,8 @@ export default async function DashboardLayout({
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar clinic={clinic} />
-      <main className="flex-1 min-w-0 overflow-auto">
+      {/* pt-14: mobil top bar yüksekliği kadar boşluk; lg'de sıfırlanır */}
+      <main className="flex-1 min-w-0 overflow-auto pt-14 lg:pt-0">
         <RealtimeProvider clinicId={clinic.id} />
         {children}
       </main>

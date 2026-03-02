@@ -13,11 +13,10 @@ export default async function AdminTicketsPage({ searchParams }: PageProps) {
   const activeTab: StatusTab = searchParams.status ?? 'open';
   const activeClinic = searchParams.clinic ?? 'all';
 
-  // Klinikleri getir
+  // Tüm klinikleri getir — statüsünden bağımsız (admin tümünü görebilir)
   const { data: clinics } = await supabase
     .from('clinics')
     .select('id, name')
-    .eq('status', 'active')
     .order('name');
 
   // Ticketları getir

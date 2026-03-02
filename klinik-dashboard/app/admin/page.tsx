@@ -13,11 +13,10 @@ export default async function AdminPage({ searchParams }: PageProps) {
   const activeTab: StatusTab = searchParams.status ?? 'pending';
   const activeClinic = searchParams.clinic ?? 'all';
 
-  // Tüm klinikleri getir (admin tümünü görebilir)
+  // Tüm klinikleri getir — statüsünden bağımsız (admin tümünü görebilir)
   const { data: clinics } = await supabase
     .from('clinics')
     .select('id, name, slug')
-    .eq('status', 'active')
     .order('name');
 
   // İstekler — clinic filtresi
