@@ -1,15 +1,21 @@
 # Dependencies
 klinik-dashboard/node_modules/
 node_modules/
+/.pnp
+.pnp.js
 
 # Next.js build output
 klinik-dashboard/.next/
 klinik-dashboard/out/
+/.next/
+/out/
+/build
 
 # Environment files
 klinik-dashboard/.env.local
 klinik-dashboard/.env.*.local
-.env.local
+.env*.local
+.env
 
 # Vercel
 .vercel
@@ -17,7 +23,17 @@ klinik-dashboard/.env.*.local
 # OS
 .DS_Store
 Thumbs.db
+*.pem
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
 
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage
+/coverage
