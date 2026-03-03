@@ -16,11 +16,14 @@
       "name": "Every 6 Hours",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-1152, 272]
+      "position": [
+        -1152,
+        272
+      ]
     },
     {
       "parameters": {
-        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?status=eq.active&human_takeover=eq.false&last_message_at=lt.{{ new Date(Date.now() - 48*60*60*1000).toISOString() }}&select=id,ghl_contact_id,message_count,lead_score,clinic_id",
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?status=eq.active&human_takeover=eq.false&last_message_at=lt.{{ new Date(Date.now() - 48*60*60*1000).toISOString() }}&select=id,contact_id,message_count,lead_score,clinic_id",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -38,7 +41,10 @@
       "name": "Find Stale Conversations",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-912, 272],
+      "position": [
+        -912,
+        272
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -54,7 +60,10 @@
       "name": "Classify Stale",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-672, 272]
+      "position": [
+        -672,
+        272
+      ]
     },
     {
       "parameters": {
@@ -82,7 +91,10 @@
       "name": "Has Stale?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-432, 272]
+      "position": [
+        -432,
+        272
+      ]
     },
     {
       "parameters": {},
@@ -90,7 +102,10 @@
       "name": "No Stale",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [-192, 432]
+      "position": [
+        -192,
+        432
+      ]
     },
     {
       "parameters": {
@@ -120,7 +135,10 @@
       "name": "Update Conv Status",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-192, 144],
+      "position": [
+        -192,
+        144
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -131,82 +149,74 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.ghl_contact_id }}/tags",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "2021-07-28"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"tags\": [\"{{ $json.newTag }}\"]}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"add_tags\",\n  \"clinic_id\": $json.clinic_id,\n  \"correlation_id\": $json.contact_id + \"_coldtag_\" + Date.now(),\n  \"idempotency_key\": $json.contact_id + \"_cold_lead_tag\",\n  \"params\": {\n    \"contact_id\": $json.contact_id,\n    \"tags\": [$json.newTag]\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "2949ae75-8391-4b02-bedf-2286da9f1746",
       "name": "GHL Add Cold Lead Tag",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [48, 16],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "position": [
+        48,
+        16
+      ],
+      "credentials": {}
     },
     {
       "parameters": {
-        "method": "DELETE",
-        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.ghl_contact_id }}/tags",
+        "method": "POST",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "2021-07-28"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"tags\": [\"ai_active\"]}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"remove_tags\",\n  \"clinic_id\": $json.clinic_id,\n  \"correlation_id\": $json.contact_id + \"_rmtag_\" + Date.now(),\n  \"idempotency_key\": $json.contact_id + \"_remove_ai_active\",\n  \"params\": {\n    \"contact_id\": $json.contact_id,\n    \"tags\": [\"ai_active\"]\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "c99fdfae-71c5-411e-94b3-b90b16dc3018",
       "name": "Remove AI Active Tag",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [288, 16],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "position": [
+        288,
+        16
+      ],
+      "credentials": {}
     }
   ],
   "pinData": {},
