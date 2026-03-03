@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
-import { Shield, ArrowLeft, LifeBuoy, BookOpen, Users, ClipboardList, Link2 } from 'lucide-react';
+import { Shield, ArrowLeft, LifeBuoy, BookOpen, Users, ClipboardList, Link2, Building2 } from 'lucide-react';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
@@ -76,6 +76,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/admin/invites" className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white hover:bg-white/10 px-3 py-1.5 rounded-lg transition-colors">
             <Link2 className="w-3.5 h-3.5" />
             Davetiyeler
+          </Link>
+          <Link href="/admin/clinics" className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white hover:bg-white/10 px-3 py-1.5 rounded-lg transition-colors">
+            <Building2 className="w-3.5 h-3.5" />
+            CRM
           </Link>
         </div>
 
