@@ -1190,6 +1190,78 @@
           "name": "Header Auth account 4"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "crm-router-001",
+              "leftValue": "={{ (.first().json.body.crmType || 'ghl') }}",
+              "rightValue": "ghl",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "crm-router-if-001",
+      "name": "CRM Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        416,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ .first().json.body.crmConfig?.send_message_url || '' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + .first().json.clinics?.crm_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  contactId: .first().json.contactId,\n  message: .first().json.reply,\n  ...(.first().json.body.crmConfig?.field_map || {})\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "send-custom-crm-001",
+      "name": "Send Custom CRM Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        272,
+        1024
+      ]
     }
   ],
   "pinData": {},
@@ -1510,7 +1582,7 @@
       "main": [
         [
           {
-            "node": "Send WhatsApp Reply",
+            "node": "CRM Router",
             "type": "main",
             "index": 0
           }
@@ -1528,7 +1600,7 @@
         ],
         [
           {
-            "node": "Send WhatsApp Reply",
+            "node": "CRM Router",
             "type": "main",
             "index": 0
           }
@@ -1550,7 +1622,7 @@
       "main": [
         [
           {
-            "node": "Send WhatsApp Reply",
+            "node": "CRM Router",
             "type": "main",
             "index": 0
           }
@@ -1653,6 +1725,35 @@
         [
           {
             "node": "Find Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Router": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Custom CRM Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Custom CRM Reply": {
+      "main": [
+        [
+          {
+            "node": "Release Lock",
             "type": "main",
             "index": 0
           }
