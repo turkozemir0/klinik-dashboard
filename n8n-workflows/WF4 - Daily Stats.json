@@ -35,7 +35,7 @@
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             }
           ]
         },
@@ -83,7 +83,7 @@
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             }
           ]
         },
@@ -132,7 +132,7 @@
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             },
             {
               "name": "Content-Type",

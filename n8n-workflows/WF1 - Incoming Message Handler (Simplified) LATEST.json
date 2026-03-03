@@ -137,11 +137,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ .first().json.supabaseKey }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             }
           ]
         },
@@ -218,11 +218,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ .first().json.supabaseKey }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
@@ -326,11 +326,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ .first().json.supabaseKey }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             }
           ]
         },
@@ -362,11 +362,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ .first().json.supabaseKey }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             }
           ]
         },
@@ -397,11 +397,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ .first().json.supabaseKey }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             }
           ]
         },
@@ -432,11 +432,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ .first().json.supabaseKey }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             }
           ]
         },
@@ -485,7 +485,7 @@
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
@@ -641,7 +641,7 @@
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
@@ -688,7 +688,7 @@
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
@@ -967,7 +967,7 @@
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+              "value": "={{ 'Bearer ' + $('Config').first().json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
