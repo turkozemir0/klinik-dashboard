@@ -7,7 +7,10 @@
       "name": "Handoff Input",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [-288, -560]
+      "position": [
+        -288,
+        -560
+      ]
     },
     {
       "parameters": {
@@ -21,7 +24,10 @@
       "name": "Dashboard Handoff Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-288, -368],
+      "position": [
+        -288,
+        -368
+      ],
       "webhookId": "handoff-dashboard-webhook-001"
     },
     {
@@ -32,7 +38,10 @@
       "name": "Prepare Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-48, -464]
+      "position": [
+        -48,
+        -464
+      ]
     },
     {
       "parameters": {
@@ -54,7 +63,10 @@
       "name": "Get Full Conversation",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [192, -464],
+      "position": [
+        192,
+        -464
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -70,7 +82,10 @@
       "name": "Merge Conv Data",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [432, -464]
+      "position": [
+        432,
+        -464
+      ]
     },
     {
       "parameters": {
@@ -92,7 +107,10 @@
       "name": "Get All Messages",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [672, -464],
+      "position": [
+        672,
+        -464
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -108,7 +126,10 @@
       "name": "Build Summary Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [912, -464]
+      "position": [
+        912,
+        -464
+      ]
     },
     {
       "parameters": {
@@ -134,7 +155,10 @@
       "name": "Generate Summary",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1152, -464],
+      "position": [
+        1152,
+        -464
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "cc9Z3PiEo03vJ1hN",
@@ -150,207 +174,210 @@
       "name": "Parse Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1392, -464]
+      "position": [
+        1392,
+        -464
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.ghl_contact_id }}/tags",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "2021-07-28"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             },
             {
-              "name": "Authorization",
-              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+              "name": "x-gateway-secret",
+              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"tags\": [\"hot_lead\", \"human_handoff\", \"appointment_ready\"]}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"add_tags\",\n  \"clinic_id\": \"$('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_hotlead_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_hotlead\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"tags\": [\"hot_lead\",\"human_handoff\",\"appointment_ready\"]\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "ghl-tags01-0000-4000-a000-hotleadtag01",
       "name": "GHL Add Hot Lead Tags",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1632, -608],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "position": [
+        1632,
+        -608
+      ],
+      "credentials": {}
     },
     {
       "parameters": {
-        "method": "PUT",
-        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Parse Summary').item.json.ghl_contact_id }}",
+        "method": "POST",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "2021-07-28"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             },
             {
-              "name": "Authorization",
-              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+              "name": "x-gateway-secret",
+              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"customFields\": [\n    { \"id\": \"9cZwMpve2bzDM0mNQ08Q\", \"field_value\": \"{{ $('Parse Summary').item.json.score }}\" },\n    { \"id\": \"ABqnbHbNfG6aDlFVAztP\", \"field_value\": \"qualified\" },\n    { \"id\": \"a4FUZNdUU4qar1HMtNAi\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.pain_point_duration || '' }}\" },\n    { \"id\": \"KUjTWtCUUVoYpy2UgJxa\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.collectedData.interested_service || '') }} },\n    { \"id\": \"8xETKWnQ53EnCQMXdnKz\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.collectedData.pain_point || '') }} },\n    { \"id\": \"U2yNuDV5l9oMT7x6XLX3\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.timeline || '' }}\" },\n    { \"id\": \"FMS0gxGnyIv3TNObPdJU\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.budget_awareness || '' }}\" },\n    { \"id\": \"yeYqHGTcqWZNMGPob2YG\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.previous_consultation || '' }}\" },\n    { \"id\": \"LjAXj1FT3s6GnBO85pFq\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.summary) }} },\n    { \"id\": \"1NAEgwt7JS1EF1J1uXHj\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.approach) }} },\n    { \"id\": \"ESUJMTgVCvQr1IHLhwEK\", \"field_value\": \"{{ $('Parse Summary').item.json.imagesReceived > 0 }}\" }\n  ]\n}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"update_contact_fields\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_handoff_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_handoff_fields\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"fields\": {\n      \"lead_score\":            $('Parse Summary').first().json.score,\n      \"qualification_status\":  \"qualified\",\n      \"ai_summary\":            $('Parse Summary').first().json.summary,\n      \"ai_suggested_approach\": $('Parse Summary').first().json.suggested_approach,\n      \"interested_service\":    $('Parse Summary').first().json.interested_service\n    }\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "8e2cc83b-20a7-4ac6-ab9b-0f520823b9d9",
       "name": "GHL Update Custom Fields",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1632, -320],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "position": [
+        1632,
+        -320
+      ],
+      "credentials": {}
     },
     {
       "parameters": {
-        "method": "DELETE",
-        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Parse Summary').item.json.ghl_contact_id }}/tags",
+        "method": "POST",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "2021-07-28"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             },
             {
-              "name": "Authorization",
-              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+              "name": "x-gateway-secret",
+              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"tags\": [\"ai_active\", \"warm_lead\"]}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"remove_tags\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_rmtag_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_remove_ai_handoff\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"tags\": [\"ai_active\",\"warm_lead\"]\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "fe6b2e01-4c11-4955-b6d8-81b18818cd87",
       "name": "GHL Remove AI Tag",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1872, -464],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "position": [
+        1872,
+        -464
+      ],
+      "credentials": {}
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Parse Summary').item.json.ghl_contact_id }}/notes",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "2021-07-28"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             },
             {
-              "name": "Authorization",
-              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+              "name": "x-gateway-secret",
+              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"body\": {{ JSON.stringify($('Parse Summary').item.json.noteBody) }} }",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"create_note\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_note_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_handoff_note\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"note\":       $('Parse Summary').first().json.noteBody,\n    \"note_type\":  \"handoff_summary\"\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "5df96a8a-3589-4223-95fb-d28c3c886f2d",
       "name": "GHL Add Note",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2112, -464],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "position": [
+        2112,
+        -464
+      ],
+      "credentials": {}
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "2021-07-28"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             },
             {
-              "name": "Authorization",
-              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+              "name": "x-gateway-secret",
+              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"type\": \"SMS\",\n  \"contactId\": \"{{ $('Parse Summary').item.json.ghl_contact_id }}\",\n  \"message\": \"Bilgilerinizi ekibimize ilettim. En kısa sürede sizinle iletişime geçecekler ve uygun zamanınızı birlikte belirleyeceksiniz. O zamana kadar aklınıza takılan bir şey olursa buradan yazabilirsiniz. 😊\"\n}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"send_message\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_closing_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_closing_msg\",\n  \"params\": {\n    \"contact_id\":   $('Merge Conv Data').first().json.ghl_contact_id,\n    \"message\":      $('Parse Summary').first().json.closingMessage || \"Bilgilerinizi ekibimize ilettim. En kısa sürede sizinle iletişime geçecekler.\",\n    \"message_type\": \"SMS\"\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "6bf3b439-8ef7-4712-8c53-e922617c0c69",
       "name": "GHL Closing Message",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2352, -464],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      },
+      "position": [
+        2352,
+        -464
+      ],
+      "credentials": {},
       "disabled": true
     },
     {
@@ -381,7 +408,10 @@
       "name": "Update Conv Handoff",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2592, -464],
+      "position": [
+        2592,
+        -464
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -421,7 +451,10 @@
       "name": "Log Handoff",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2832, -464],
+      "position": [
+        2832,
+        -464
+      ],
       "continueOnFail": true,
       "credentials": {
         "httpHeaderAuth": {

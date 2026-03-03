@@ -262,30 +262,32 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Config').item.json.ghlApiBase }}/contacts/{{ $json.contactId }}/tags",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "={{ $('Config').item.json.ghlApiVersion }}"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             },
             {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.ghlPitToken }}"
+              "name": "x-gateway-secret",
+              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"tags\": [\"ai_active\", \"chatbot-lead\"]}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  version: 'v1',\n  action: 'add_tags',\n  clinic_id: .first().json.clinic_id,\n  correlation_id: .first().json.body.clinicId + '_' + Date.now(),\n  idempotency_key: .first().json.body.contactId + '_add_tags',\n  params: {\n    contact_id: .first().json.body.contactId,\n    tags: ['ai_active']\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "8213b6c7-55ad-478d-92a4-bd1185d540e0",
       "name": "GHL Add Tags",
@@ -295,12 +297,7 @@
         3216,
         -80
       ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "credentials": {}
     },
     {
       "parameters": {
@@ -774,31 +771,33 @@
     },
     {
       "parameters": {
-        "method": "PUT",
-        "url": "={{ $('Config').first().json.ghlApiBase }}/contacts/{{ $json.contactId }}",
+        "method": "POST",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "={{ $('Config').first().json.ghlApiVersion }}"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             },
             {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').item.json.ghlPitToken }}"
+              "name": "x-gateway-secret",
+              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"tags\": [\"warm_lead\"],\n  \"customFields\": [\n    {\n      \"id\": $('Config').first().json.ghlFieldQualificationStatus,\n      \"field_value\": \"nurturing\"\n    }\n  ]\n}) }}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  version: 'v1',\n  action: 'add_tags',\n  clinic_id: .first().json.clinic_id,\n  correlation_id: .first().json.body.contactId + '_warm_' + Date.now(),\n  idempotency_key: .first().json.body.contactId + '_warm',\n  params: {\n    contact_id: .first().json.body.contactId,\n    tags: ['warm_lead']\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "915d2be4-5d86-4486-9c41-3d226a24ca94",
       "name": "GHL Tag Warm",
@@ -808,40 +807,37 @@
         4512,
         528
       ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "credentials": {}
     },
     {
       "parameters": {
-        "method": "DELETE",
-        "url": "={{ $('Config').first().json.ghlApiBase }}/contacts/{{ $json.contactId }}/tags",
+        "method": "POST",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "={{ $('Config').first().json.ghlApiVersion }}"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             },
             {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.ghlPitToken }}"
+              "name": "x-gateway-secret",
+              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"tags\": [\"ai_active\"]}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  version: 'v1',\n  action: 'remove_tags',\n  clinic_id: .first().json.clinic_id,\n  correlation_id: .first().json.body.contactId + '_rmtag_' + Date.now(),\n  idempotency_key: .first().json.body.contactId + '_remove_ai',\n  params: {\n    contact_id: .first().json.body.contactId,\n    tags: ['ai_active']\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "f32ad33b-7f8f-4fbb-86f3-4e55ba1c1d44",
       "name": "GHL Remove AI Tag",
@@ -851,12 +847,7 @@
         4784,
         528
       ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "credentials": {}
     },
     {
       "parameters": {
@@ -903,31 +894,33 @@
     },
     {
       "parameters": {
-        "method": "PUT",
-        "url": "={{ $('Config').first().json.ghlApiBase }}/contacts/{{ $('Parse AI + Score').item.json.contactId }}",
+        "method": "POST",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "={{ $('Config').first().json.ghlApiVersion }}"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             },
             {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.ghlPitToken }}"
+              "name": "x-gateway-secret",
+              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"customFields\": [\n    {\n      \"id\": $('Config').first().json.ghlFieldLeadScore,\n      \"field_value\": $('Parse AI + Score').first().json.score\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldQualificationStatus,\n      \"field_value\": \"qualifying\"\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldInterestedService,\n      \"field_value\": $('Parse AI + Score').first().json.metadata.collected_data.interested_service || \"\"\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldPainPoint,\n      \"field_value\": $('Parse AI + Score').first().json.metadata.collected_data.pain_point || \"\"\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldTimeline,\n      \"field_value\": $('Parse AI + Score').first().json.metadata.collected_data.timeline || \"\"\n    },\n    {\n      \"id\": $('Config').first().json.ghlFieldConversationId,\n      \"field_value\": $('Parse AI + Score').first().json.conversationId || \"\"\n    }\n  ]\n}) }}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  version: 'v1',\n  action: 'update_contact_fields',\n  clinic_id: .first().json.clinic_id,\n  correlation_id: .first().json.body.contactId + '_update_' + Date.now(),\n  idempotency_key: .first().json.body.contactId + '_update_' + .first().json.metadata?.turn_count,\n  params: {\n    contact_id: .first().json.body.contactId,\n    fields: {\n      lead_score:           .first().json.leadScore,\n      qualification_status: .first().json.metadata?.qualification_status,\n      interested_service:   .first().json.metadata?.interested_service,\n      pain_point:           .first().json.metadata?.pain_point,\n      timeline:             .first().json.metadata?.timeline,\n      budget_awareness:     .first().json.metadata?.budget_awareness,\n      ai_summary:           .first().json.metadata?.summary\n    }\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "828a9693-0238-4754-9ae5-872539e7d029",
       "name": "GHL Update Contact",
@@ -937,12 +930,7 @@
         688,
         928
       ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "credentials": {}
     },
     {
       "parameters": {
