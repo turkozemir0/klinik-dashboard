@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import { saveCrmSettings, saveCrmToken } from '@/lib/actions/crm-actions';
 import Link from 'next/link';
-import { ArrowLeft, Copy, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import CopyButton from './CopyButton';
 
 interface PageProps {
@@ -43,9 +43,12 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   const webhookUrl  = `${supabaseUrl}/functions/v1/handle-incoming-message?token=${clinic.webhook_token ?? ''}`;
   const crmConfig   = (clinic.crm_config || {}) as Record<string, unknown>;
-  const fieldMapStr = JSON.stringify(crmConfig.field_map || { contact_id: 'contactId', message: 'mergedMessage' }, null, 2);
+  const fieldMapStr = JSON.stringify(
+    crmConfig.field_map || { contact_id: 'contactId', message: 'mergedMessage' },
+    null,
+    2
+  );
 
-  // Token masked gösterim: son 4 karakter görünür
   const rawToken    = clinic.crm_token || '';
   const maskedToken = rawToken.length > 4
     ? '*'.repeat(rawToken.length - 4) + rawToken.slice(-4)
@@ -63,7 +66,6 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
         </div>
       </div>
 
-      {/* Bildirim */}
       {searchParams.saved && (
         <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-sm">
           <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
@@ -82,7 +84,7 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
         <div>
           <h2 className="font-semibold text-slate-900">Webhook URL</h2>
           <p className="text-slate-500 text-sm mt-0.5">
-            Bu URL'i CRM'inizde webhook olarak tanımlayın. Gelen mesajlar buraya POST edilmeli.
+            Bu URL&apos;i CRM&apos;inizde webhook olarak tanımlayın.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -93,24 +95,13 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
         </div>
       </div>
 
-      {/* CRM Ayarları Formu */}
+      {/* CRM Ayarları */}
       <div className="card p-5 space-y-5">
         <h2 className="font-semibold text-slate-900">CRM Konfigürasyonu</h2>
 
-        <form
-          action={async (formData: FormData) => {
-            'use server';
-            const result = await saveCrmSettings(formData);
-            if (result.error) {
-              redirect(`/admin/clinics/${params.id}/crm-settings?error=${encodeURIComponent(result.error)}`);
-            }
-            redirect(`/admin/clinics/${params.id}/crm-settings?saved=1`);
-          }}
-          className="space-y-4"
-        >
+        <form action={saveCrmSettings} className="space-y-4">
           <input type="hidden" name="clinic_id" value={clinic.id} />
 
-          {/* CRM Provider */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">CRM Tipi</label>
             <select
@@ -124,7 +115,6 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
             </select>
           </div>
 
-          {/* GHL-specific: location_id */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               Location ID <span className="text-slate-400 font-normal">(GHL için)</span>
@@ -138,22 +128,20 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
             />
           </div>
 
-          {/* Send Message URL */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Mesaj Gönderme URL</label>
             <input
-              type="url"
+              type="text"
               name="send_message_url"
               defaultValue={(crmConfig.send_message_url as string) || ''}
               placeholder="https://crm.example.com/api/send"
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
             <p className="text-xs text-slate-400 mt-1">
-              GHL için: https://services.leadconnectorhq.com/conversations/messages
+              GHL: https://services.leadconnectorhq.com/conversations/messages
             </p>
           </div>
 
-          {/* Field Map */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               Field Map <span className="text-slate-400 font-normal">(JSON)</span>
@@ -166,15 +154,11 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
               spellCheck={false}
             />
             <p className="text-xs text-slate-400 mt-1">
-              Gelen webhook payload'undan hangi alanın hangi değeri taşıdığını belirtir.
-              Nokta notasyonu desteklenir: <code className="bg-slate-100 px-1 rounded">data.contact.id</code>
+              Gelen webhook&apos;tan alan eşlemesi. Nokta notasyonu desteklenir: <code className="bg-slate-100 px-1 rounded">data.contact.id</code>
             </p>
           </div>
 
-          <button
-            type="submit"
-            className="w-full btn-primary"
-          >
+          <button type="submit" className="w-full btn-primary">
             Ayarları Kaydet
           </button>
         </form>
@@ -185,7 +169,7 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
         <div>
           <h2 className="font-semibold text-slate-900">CRM API Token</h2>
           <p className="text-slate-500 text-sm mt-0.5">
-            Token şifreli olarak saklanır. Mevcut token: {' '}
+            Mevcut token:{' '}
             {maskedToken ? (
               <code className="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{maskedToken}</code>
             ) : (
@@ -194,17 +178,7 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
           </p>
         </div>
 
-        <form
-          action={async (formData: FormData) => {
-            'use server';
-            const result = await saveCrmToken(formData);
-            if (result.error) {
-              redirect(`/admin/clinics/${params.id}/crm-settings?error=${encodeURIComponent(result.error)}`);
-            }
-            redirect(`/admin/clinics/${params.id}/crm-settings?saved=1`);
-          }}
-          className="flex gap-3"
-        >
+        <form action={saveCrmToken} className="flex gap-3">
           <input type="hidden" name="clinic_id" value={clinic.id} />
           <input
             type="password"
