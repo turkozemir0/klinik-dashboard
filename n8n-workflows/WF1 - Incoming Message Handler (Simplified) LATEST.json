@@ -276,7 +276,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  version: 'v1',\n  action: 'add_tags',\n  clinic_id: .first().json.clinic_id,\n  correlation_id: .first().json.body.clinicId + '_' + Date.now(),\n  idempotency_key: .first().json.body.contactId + '_add_tags',\n  params: {\n    contact_id: .first().json.body.contactId,\n    tags: ['ai_active']\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"add_tags\",\n  \"clinic_id\": $json.clinicId,\n  \"correlation_id\": $json.contactId + \"_active_\" + Date.now(),\n  \"idempotency_key\": $json.contactId + \"_add_ai_active\",\n  \"params\": {\n    \"contact_id\": $json.contactId,\n    \"tags\": [\"ai_active\"]\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -782,7 +782,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  version: 'v1',\n  action: 'add_tags',\n  clinic_id: .first().json.clinic_id,\n  correlation_id: .first().json.body.contactId + '_warm_' + Date.now(),\n  idempotency_key: .first().json.body.contactId + '_warm',\n  params: {\n    contact_id: .first().json.body.contactId,\n    tags: ['warm_lead']\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"add_tags\",\n  \"clinic_id\": $json.clinicId,\n  \"correlation_id\": $json.contactId + \"_warm_\" + Date.now(),\n  \"idempotency_key\": $json.contactId + \"_warm_lead\",\n  \"params\": {\n    \"contact_id\": $json.contactId,\n    \"tags\": [\"warm_lead\"]\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -818,7 +818,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  version: 'v1',\n  action: 'remove_tags',\n  clinic_id: .first().json.clinic_id,\n  correlation_id: .first().json.body.contactId + '_rmtag_' + Date.now(),\n  idempotency_key: .first().json.body.contactId + '_remove_ai',\n  params: {\n    contact_id: .first().json.body.contactId,\n    tags: ['ai_active']\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"remove_tags\",\n  \"clinic_id\": $json.clinicId,\n  \"correlation_id\": $json.contactId + \"_rmtag_\" + Date.now(),\n  \"idempotency_key\": $json.contactId + \"_remove_ai_active\",\n  \"params\": {\n    \"contact_id\": $json.contactId,\n    \"tags\": [\"ai_active\"]\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -897,7 +897,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  version: 'v1',\n  action: 'update_contact_fields',\n  clinic_id: .first().json.clinic_id,\n  correlation_id: .first().json.body.contactId + '_update_' + Date.now(),\n  idempotency_key: .first().json.body.contactId + '_update_' + .first().json.metadata?.turn_count,\n  params: {\n    contact_id: .first().json.body.contactId,\n    fields: {\n      lead_score:           .first().json.leadScore,\n      qualification_status: .first().json.metadata?.qualification_status,\n      interested_service:   .first().json.metadata?.interested_service,\n      pain_point:           .first().json.metadata?.pain_point,\n      timeline:             .first().json.metadata?.timeline,\n      budget_awareness:     .first().json.metadata?.budget_awareness,\n      ai_summary:           .first().json.metadata?.summary\n    }\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"update_contact_fields\",\n  \"clinic_id\": $('Parse AI + Score').first().json.clinicId,\n  \"correlation_id\": $('Parse AI + Score').first().json.contactId + \"_update_\" + Date.now(),\n  \"idempotency_key\": $('Parse AI + Score').first().json.contactId + \"_update_fields\",\n  \"params\": {\n    \"contact_id\": $('Parse AI + Score').first().json.contactId,\n    \"fields\": {\n      \"lead_score\":           $('Parse AI + Score').first().json.score,\n      \"qualification_status\": $('Parse AI + Score').first().json.metadata?.qualification_status,\n      \"interested_service\":   $('Parse AI + Score').first().json.metadata?.collected_data?.interested_service,\n      \"pain_point\":           $('Parse AI + Score').first().json.metadata?.collected_data?.pain_point,\n      \"timeline\":             $('Parse AI + Score').first().json.metadata?.collected_data?.timeline,\n      \"budget_awareness\":     $('Parse AI + Score').first().json.metadata?.collected_data?.budget_awareness,\n      \"ai_summary\":           $('Parse AI + Score').first().json.reply\n    }\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
