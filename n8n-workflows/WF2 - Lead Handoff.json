@@ -76,7 +76,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Merge conversation data from Supabase with trigger metadata\nconst prepareData = $('Prepare Input').item.json;\nconst convRaw = $('Get Full Conversation').item.json;\nconst conv = Array.isArray(convRaw) ? convRaw[0] : convRaw;\nreturn [{ json: {\n  id: conv.id,\n  ghl_contact_id: conv.ghl_contact_id,\n  clinic_id: conv.clinic_id,\n  lead_score: conv.lead_score || 0,\n  current_stage: conv.current_stage,\n  collected_data: conv.collected_data || {},\n  lead_signals: conv.lead_signals || {},\n  images_received: conv.images_received || 0,\n  trigger_type: prepareData.trigger_type,\n  triggered_by: prepareData.triggered_by\n} }];"
+        "jsCode": "// Merge conversation data from Supabase with trigger metadata\nconst prepareData = $('Prepare Input').item.json;\nconst convRaw = $('Get Full Conversation').item.json;\nconst conv = Array.isArray(convRaw) ? convRaw[0] : convRaw;\nreturn [{ json: {\n  id: conv.id,\n  contact_id: conv.contact_id,\n  clinic_id: conv.clinic_id,\n  lead_score: conv.lead_score || 0,\n  current_stage: conv.current_stage,\n  collected_data: conv.collected_data || {},\n  lead_signals: conv.lead_signals || {},\n  images_received: conv.images_received || 0,\n  trigger_type: prepareData.trigger_type,\n  triggered_by: prepareData.triggered_by\n} }];"
       },
       "id": "merge001-0000-4000-a000-mergeconv001",
       "name": "Merge Conv Data",
@@ -196,7 +196,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"add_tags\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_hotlead_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_hotlead\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"tags\": [\"hot_lead\",\"human_handoff\",\"appointment_ready\"]\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"add_tags\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.contact_id + \"_hotlead_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.contact_id + \"_hotlead\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.contact_id,\n    \"tags\": [\"hot_lead\",\"human_handoff\",\"appointment_ready\"]\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -232,7 +232,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"update_contact_fields\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_handoff_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_handoff_fields\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"fields\": {\n      \"lead_score\":            $('Parse Summary').first().json.score,\n      \"qualification_status\":  \"qualified\",\n      \"ai_summary\":            $('Parse Summary').first().json.summary,\n      \"ai_suggested_approach\": $('Parse Summary').first().json.suggested_approach,\n      \"interested_service\":    $('Parse Summary').first().json.interested_service\n    }\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"update_contact_fields\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.contact_id + \"_handoff_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.contact_id + \"_handoff_fields\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.contact_id,\n    \"fields\": {\n      \"lead_score\":            $('Parse Summary').first().json.score,\n      \"qualification_status\":  \"qualified\",\n      \"ai_summary\":            $('Parse Summary').first().json.summary,\n      \"ai_suggested_approach\": $('Parse Summary').first().json.suggested_approach,\n      \"interested_service\":    $('Parse Summary').first().json.interested_service\n    }\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -268,7 +268,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"remove_tags\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_rmtag_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_remove_ai_handoff\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"tags\": [\"ai_active\",\"warm_lead\"]\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"remove_tags\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.contact_id + \"_rmtag_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.contact_id + \"_remove_ai_handoff\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.contact_id,\n    \"tags\": [\"ai_active\",\"warm_lead\"]\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -304,7 +304,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"create_note\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_note_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_handoff_note\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"note\":       $('Parse Summary').first().json.noteBody,\n    \"note_type\":  \"handoff_summary\"\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"create_note\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.contact_id + \"_note_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.contact_id + \"_handoff_note\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.contact_id,\n    \"note\":       $('Parse Summary').first().json.noteBody,\n    \"note_type\":  \"handoff_summary\"\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -340,7 +340,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"send_message\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_closing_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_closing_msg\",\n  \"params\": {\n    \"contact_id\":   $('Merge Conv Data').first().json.ghl_contact_id,\n    \"message\":      $('Parse Summary').first().json.closingMessage || \"Bilgilerinizi ekibimize ilettim. En kısa sürede sizinle iletişime geçecekler.\",\n    \"message_type\": \"SMS\"\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"send_message\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.contact_id + \"_closing_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.contact_id + \"_closing_msg\",\n  \"params\": {\n    \"contact_id\":   $('Merge Conv Data').first().json.contact_id,\n    \"message\":      $('Parse Summary').first().json.closingMessage || \"Bilgilerinizi ekibimize ilettim. En kısa sürede sizinle iletişime geçecekler.\",\n    \"message_type\": \"SMS\"\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -424,7 +424,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"clinic_id\": \"{{ $('Parse Summary').item.json.clinic_id }}\",\n  \"conversation_id\": \"{{ $('Parse Summary').item.json.id }}\",\n  \"ghl_contact_id\": \"{{ $('Parse Summary').item.json.ghl_contact_id }}\",\n  \"trigger_type\": \"{{ $('Parse Summary').item.json.trigger_type }}\",\n  \"triggered_by\": \"{{ $('Parse Summary').item.json.triggered_by }}\",\n  \"lead_score_at_handoff\": {{ $('Parse Summary').item.json.score }}\n}",
+        "jsonBody": "={\n  \"clinic_id\": \"{{ $('Parse Summary').item.json.clinic_id }}\",\n  \"conversation_id\": \"{{ $('Parse Summary').item.json.id }}\",\n  \"contact_id\": \"{{ $('Parse Summary').item.json.contact_id }}\",\n  \"trigger_type\": \"{{ $('Parse Summary').item.json.trigger_type }}\",\n  \"triggered_by\": \"{{ $('Parse Summary').item.json.triggered_by }}\",\n  \"lead_score_at_handoff\": {{ $('Parse Summary').item.json.score }}\n}",
         "options": {}
       },
       "id": "454fa9e4-7355-45fd-95e4-1148c541aea6",

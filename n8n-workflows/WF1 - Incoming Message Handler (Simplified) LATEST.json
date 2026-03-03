@@ -129,7 +129,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $('Config').item.json.supabaseUrl }}/rest/v1/conversations?ghl_contact_id=eq.{{ $json.contactId }}&status=in.(active,nurturing)&order=created_at.desc&limit=1",
+        "url": "={{ $('Config').item.json.supabaseUrl }}/rest/v1/conversations?contact_id=eq.{{ $json.contactId }}&status=in.(active,nurturing)&order=created_at.desc&limit=1",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -228,7 +228,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"clinic_id\": $('Config').item.json.clinicId,\n  \"ghl_contact_id\": $json.contactId,\n  \"contact_name\": $json.contactName,\n  \"contact_phone\": $json.contactPhone,\n  \"status\": \"active\",\n  \"current_stage\": \"GREETING\"\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"clinic_id\": $('Config').item.json.clinicId,\n  \"contact_id\": $json.contactId,\n  \"contact_name\": $json.contactName,\n  \"contact_phone\": $json.contactPhone,\n  \"status\": \"active\",\n  \"current_stage\": \"GREETING\"\n}) }}",
         "options": {}
       },
       "id": "6841ff47-bd33-4bf3-bf6d-7fbd9f36a271",
@@ -919,7 +919,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/conversation_locks?ghl_contact_id=eq.{{ $('Parse AI + Score').item.json.contactId }}",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/conversation_locks?contact_id=eq.{{ $('Parse AI + Score').item.json.contactId }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,

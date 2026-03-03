@@ -16,10 +16,16 @@
 //     action: "send_message" | "update_contact_fields" | "add_tags" |
 //             "remove_tags" | "move_pipeline_stage" | "create_note",
 //     clinic_id: "uuid",
-//     correlation_id: "uuid",
+//     correlation_id: "string",
 //     idempotency_key: "string",
 //     params: { ... }
 //   }
+//
+// crm_config alanları (provider'a göre):
+//   GHL:     custom_fields, pipeline_id, pipeline_stages, send_message_url
+//   HubSpot: field_map (logical → hubspot property adı)
+//   Kommo:   subdomain, pipeline_id, pipeline_stages, field_map
+//   Custom:  send_message_url, field_map
 // ═══════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -77,7 +83,7 @@ function gatewayError(type: string, message: string, extra = {}) {
 }
 
 // ── GHL Helpers ───────────────────────────────────────────────
-const GHL_BASE = 'https://services.leadconnectorhq.com'
+const GHL_BASE    = 'https://services.leadconnectorhq.com'
 const GHL_VERSION = '2021-07-28'
 
 function ghlHeaders(token: string) {
@@ -147,17 +153,16 @@ async function ghlRemoveTags(config: any, token: string, params: any) {
 }
 
 async function ghlMovePipelineStage(config: any, token: string, params: any) {
-  const stages = config.pipeline_stages || {}
+  const stages  = config.pipeline_stages || {}
   const stageId = stages[params.stage_name] || params.stage_id
   if (!stageId) return { ok: false, status: 400, data: { error: `stage_name "${params.stage_name}" crm_config.pipeline_stages içinde bulunamadı` } }
 
-  // Mevcut opportunity'yi bul veya oluştur
   const searchRes = await fetch(
     `${GHL_BASE}/opportunities/search?pipeline_id=${config.pipeline_id}&contact_id=${params.contact_id}`,
     { headers: ghlHeaders(token) }
   )
   const searchData = await searchRes.json().catch(() => ({ opportunities: [] }))
-  const existing = searchData.opportunities?.[0]
+  const existing   = searchData.opportunities?.[0]
 
   if (existing) {
     const res = await fetch(`${GHL_BASE}/opportunities/${existing.id}`, {
@@ -192,6 +197,298 @@ async function ghlCreateNote(config: any, token: string, params: any) {
     method: 'POST',
     headers: ghlHeaders(token),
     body: JSON.stringify({ body: params.note }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, status: res.status, data }
+  return { ok: true, data }
+}
+
+// ── HubSpot Helpers ───────────────────────────────────────────
+const HS_BASE = 'https://api.hubapi.com'
+
+function hsHeaders(token: string) {
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+// ── HubSpot Implementations ───────────────────────────────────
+
+async function hsUpdateContactFields(config: any, token: string, params: any) {
+  // field_map: { "lead_score": "hs_lead_score", "ai_summary": "stoaix_ai_summary", ... }
+  const fieldMap   = config.field_map || {}
+  const properties: Record<string, string> = {}
+
+  for (const [key, value] of Object.entries(params.fields || {})) {
+    const hsProp = fieldMap[key] || key   // mapping yoksa logical adı olduğu gibi kullan
+    properties[hsProp] = String(value)
+  }
+
+  if (Object.keys(properties).length === 0) return { ok: true, data: { skipped: 'no fields' } }
+
+  const res = await fetch(`${HS_BASE}/crm/v3/objects/contacts/${params.contact_id}`, {
+    method: 'PATCH',
+    headers: hsHeaders(token),
+    body: JSON.stringify({ properties }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, status: res.status, data }
+  return { ok: true, data }
+}
+
+async function hsAddTags(config: any, token: string, params: any) {
+  // HubSpot'ta native tag yok; crm_config.tags_property belirtilmişse o property'ye ekle
+  // Yoksa "stoaix_tags" adlı custom property kullanılır
+  const tagsProp = config.tags_property || 'stoaix_tags'
+
+  // Mevcut değeri oku
+  const getRes = await fetch(
+    `${HS_BASE}/crm/v3/objects/contacts/${params.contact_id}?properties=${tagsProp}`,
+    { headers: hsHeaders(token) }
+  )
+  const getData = await getRes.json().catch(() => ({}))
+  const existing = (getData?.properties?.[tagsProp] || '')
+    .split(',').map((t: string) => t.trim()).filter(Boolean)
+
+  const merged = [...new Set([...existing, ...(params.tags || [])])].join(',')
+
+  const res = await fetch(`${HS_BASE}/crm/v3/objects/contacts/${params.contact_id}`, {
+    method: 'PATCH',
+    headers: hsHeaders(token),
+    body: JSON.stringify({ properties: { [tagsProp]: merged } }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, status: res.status, data }
+  return { ok: true, data }
+}
+
+async function hsRemoveTags(config: any, token: string, params: any) {
+  const tagsProp = config.tags_property || 'stoaix_tags'
+
+  const getRes = await fetch(
+    `${HS_BASE}/crm/v3/objects/contacts/${params.contact_id}?properties=${tagsProp}`,
+    { headers: hsHeaders(token) }
+  )
+  const getData = await getRes.json().catch(() => ({}))
+  const existing = (getData?.properties?.[tagsProp] || '')
+    .split(',').map((t: string) => t.trim()).filter(Boolean)
+
+  const toRemove = new Set(params.tags || [])
+  const updated  = existing.filter((t: string) => !toRemove.has(t)).join(',')
+
+  const res = await fetch(`${HS_BASE}/crm/v3/objects/contacts/${params.contact_id}`, {
+    method: 'PATCH',
+    headers: hsHeaders(token),
+    body: JSON.stringify({ properties: { [tagsProp]: updated } }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, status: res.status, data }
+  return { ok: true, data }
+}
+
+async function hsMovePipelineStage(config: any, token: string, params: any) {
+  const stages  = config.pipeline_stages || {}
+  const stageId = stages[params.stage_name] || params.stage_id
+  if (!stageId) return { ok: false, status: 400, data: { error: `stage_name "${params.stage_name}" bulunamadı` } }
+
+  // Mevcut deal ara
+  const searchRes = await fetch(`${HS_BASE}/crm/v3/objects/deals/search`, {
+    method: 'POST',
+    headers: hsHeaders(token),
+    body: JSON.stringify({
+      filterGroups: [{
+        filters: [{ propertyName: 'associations.contact', operator: 'EQ', value: params.contact_id }],
+      }],
+      limit: 1,
+    }),
+  })
+  const searchData = await searchRes.json().catch(() => ({ results: [] }))
+  const dealId     = searchData.results?.[0]?.id
+
+  if (dealId) {
+    const res = await fetch(`${HS_BASE}/crm/v3/objects/deals/${dealId}`, {
+      method: 'PATCH',
+      headers: hsHeaders(token),
+      body: JSON.stringify({ properties: { dealstage: stageId } }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, status: res.status, data }
+    return { ok: true, data }
+  } else {
+    const res = await fetch(`${HS_BASE}/crm/v3/objects/deals`, {
+      method: 'POST',
+      headers: hsHeaders(token),
+      body: JSON.stringify({
+        properties: {
+          dealname:  params.opportunity_name || 'stoaix Lead',
+          dealstage: stageId,
+          pipeline:  config.pipeline_id || 'default',
+          amount:    params.opportunity_value || 0,
+        },
+        associations: [{
+          to:    { id: params.contact_id },
+          types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }],
+        }],
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, status: res.status, data }
+    return { ok: true, data }
+  }
+}
+
+async function hsCreateNote(config: any, token: string, params: any) {
+  const res = await fetch(`${HS_BASE}/crm/v3/objects/notes`, {
+    method: 'POST',
+    headers: hsHeaders(token),
+    body: JSON.stringify({
+      properties: {
+        hs_note_body:      params.note,
+        hs_timestamp:      Date.now(),
+      },
+      associations: [{
+        to:    { id: params.contact_id },
+        types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }],
+      }],
+    }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, status: res.status, data }
+  return { ok: true, data }
+}
+
+// ── Kommo Helpers ─────────────────────────────────────────────
+// crm_config.subdomain gerekli: "myaccount" → https://myaccount.kommo.com/api/v4
+
+function kommoBase(config: any) {
+  const subdomain = config.subdomain || ''
+  return `https://${subdomain}.kommo.com/api/v4`
+}
+
+function kommoHeaders(token: string) {
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+// ── Kommo Implementations ─────────────────────────────────────
+
+async function kommoSendMessage(config: any, token: string, params: any) {
+  // Kommo salesbot / talk endpoint
+  const base = kommoBase(config)
+  const res  = await fetch(`${base}/talks`, {
+    method: 'POST',
+    headers: kommoHeaders(token),
+    body: JSON.stringify({
+      contact_id: Number(params.contact_id),
+      message:    params.message,
+    }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, status: res.status, data }
+  return { ok: true, data }
+}
+
+async function kommoUpdateContactFields(config: any, token: string, params: any) {
+  const base     = kommoBase(config)
+  const fieldMap = config.field_map || {}
+
+  const custom_fields_values = Object.entries(params.fields || {})
+    .filter(([key]) => fieldMap[key])
+    .map(([key, value]) => ({ field_id: Number(fieldMap[key]), values: [{ value: String(value) }] }))
+
+  if (custom_fields_values.length === 0) return { ok: true, data: { skipped: 'no mapped fields' } }
+
+  const res = await fetch(`${base}/contacts`, {
+    method: 'PATCH',
+    headers: kommoHeaders(token),
+    body: JSON.stringify([{ id: Number(params.contact_id), custom_fields_values }]),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, status: res.status, data }
+  return { ok: true, data }
+}
+
+async function kommoAddTags(config: any, token: string, params: any) {
+  const base = kommoBase(config)
+  const res  = await fetch(`${base}/contacts/tags`, {
+    method: 'POST',
+    headers: kommoHeaders(token),
+    body: JSON.stringify(
+      (params.tags || []).map((name: string) => ({ request_id: `${params.contact_id}_${name}`, entity_id: Number(params.contact_id), tag: { name } }))
+    ),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, status: res.status, data }
+  return { ok: true, data }
+}
+
+async function kommoRemoveTags(config: any, token: string, params: any) {
+  const base = kommoBase(config)
+  const res  = await fetch(`${base}/contacts/tags`, {
+    method: 'DELETE',
+    headers: kommoHeaders(token),
+    body: JSON.stringify(
+      (params.tags || []).map((name: string) => ({ request_id: `${params.contact_id}_${name}`, entity_id: Number(params.contact_id), tag: { name } }))
+    ),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, status: res.status, data }
+  return { ok: true, data }
+}
+
+async function kommoMovePipelineStage(config: any, token: string, params: any) {
+  const base    = kommoBase(config)
+  const stages  = config.pipeline_stages || {}
+  const stageId = stages[params.stage_name] || params.stage_id
+  if (!stageId) return { ok: false, status: 400, data: { error: `stage_name "${params.stage_name}" bulunamadı` } }
+
+  // Mevcut lead'i bul
+  const searchRes = await fetch(
+    `${base}/leads?filter[contact_id]=${params.contact_id}&limit=1`,
+    { headers: kommoHeaders(token) }
+  )
+  const searchData = await searchRes.json().catch(() => ({}))
+  const leadId     = searchData?._embedded?.leads?.[0]?.id
+
+  if (leadId) {
+    const res = await fetch(`${base}/leads`, {
+      method: 'PATCH',
+      headers: kommoHeaders(token),
+      body: JSON.stringify([{ id: leadId, status_id: Number(stageId) }]),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, status: res.status, data }
+    return { ok: true, data }
+  } else {
+    const res = await fetch(`${base}/leads`, {
+      method: 'POST',
+      headers: kommoHeaders(token),
+      body: JSON.stringify([{
+        name:      params.opportunity_name || 'stoaix Lead',
+        status_id: Number(stageId),
+        pipeline_id: config.pipeline_id ? Number(config.pipeline_id) : undefined,
+        _embedded: { contacts: [{ id: Number(params.contact_id) }] },
+      }]),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, status: res.status, data }
+    return { ok: true, data }
+  }
+}
+
+async function kommoCreateNote(config: any, token: string, params: any) {
+  const base = kommoBase(config)
+  const res  = await fetch(`${base}/notes`, {
+    method: 'POST',
+    headers: kommoHeaders(token),
+    body: JSON.stringify([{
+      entity_id:  Number(params.contact_id),
+      note_type:  'common',
+      params:     { text: params.note },
+    }]),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) return { ok: false, status: res.status, data }
@@ -238,6 +535,27 @@ async function executeAction(
     }
   }
 
+  if (provider === 'hubspot') {
+    switch (action) {
+      case 'update_contact_fields': return hsUpdateContactFields(config, token, params)
+      case 'add_tags':              return hsAddTags(config, token, params)
+      case 'remove_tags':           return hsRemoveTags(config, token, params)
+      case 'move_pipeline_stage':   return hsMovePipelineStage(config, token, params)
+      case 'create_note':           return hsCreateNote(config, token, params)
+    }
+  }
+
+  if (provider === 'kommo') {
+    switch (action) {
+      case 'send_message':          return kommoSendMessage(config, token, params)
+      case 'update_contact_fields': return kommoUpdateContactFields(config, token, params)
+      case 'add_tags':              return kommoAddTags(config, token, params)
+      case 'remove_tags':           return kommoRemoveTags(config, token, params)
+      case 'move_pipeline_stage':   return kommoMovePipelineStage(config, token, params)
+      case 'create_note':           return kommoCreateNote(config, token, params)
+    }
+  }
+
   if (provider === 'custom') {
     switch (action) {
       case 'send_message': return customSendMessage(config, token, params)
@@ -255,11 +573,11 @@ Deno.serve(async (req) => {
   const startMs = Date.now()
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const supabaseUrl  = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const gatewaySecret = Deno.env.get('GATEWAY_SECRET') ?? ''
 
-    // ── Auth: n8n secret kontrolü ─────────────────────────────
+    // ── Auth ──────────────────────────────────────────────────
     const incomingSecret = req.headers.get('x-gateway-secret') ?? ''
     if (gatewaySecret && incomingSecret !== gatewaySecret) {
       return new Response(JSON.stringify({ error: 'Yetkisiz erişim' }), {
@@ -269,7 +587,7 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey)
-    const body = await req.json()
+    const body     = await req.json()
     const { version, action, clinic_id, correlation_id, idempotency_key, params = {} } = body
 
     // ── Validasyon ────────────────────────────────────────────
@@ -294,9 +612,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    const provider  = clinic.crm_provider || 'ghl'
-    const config    = (clinic.crm_config  || {}) as Record<string, any>
-    const token     = clinic.crm_token    || ''
+    const provider = clinic.crm_provider || 'ghl'
+    const config   = (clinic.crm_config  || {}) as Record<string, any>
+    const token    = clinic.crm_token    || ''
 
     // ── Capability kontrolü ───────────────────────────────────
     const cap = CAPABILITIES[provider] ?? {}
@@ -318,12 +636,12 @@ Deno.serve(async (req) => {
         capabilities: cap,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200, // n8n fallback için 200 dön, içeriğe bak
+        status: 200,
       })
     }
 
     // ── Action çalıştır ───────────────────────────────────────
-    const result = await executeAction(provider, action, config, token, params)
+    const result     = await executeAction(provider, action, config, token, params)
     const durationMs = Date.now() - startMs
 
     if (!result.ok) {
@@ -349,7 +667,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    // ── Başarılı ─────────────────────────────────────────────
+    // ── Başarılı ──────────────────────────────────────────────
     await logAction(supabase, {
       clinic_id, correlation_id, idempotency_key,
       provider, action, params,

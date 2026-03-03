@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
     const { error: insertError } = await supabase
       .from('message_buffer')
       .insert({
-        ghl_contact_id: contactId,
+        contact_id: contactId,
         message_text:   message || '',
         contains_image: (attachments as unknown[]).length > 0,
         image_url:      (attachments as unknown[]).length > 0 ? (attachments[0] as Record<string, unknown>).url as string : null,
@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
     const { data: lockData } = await supabase
       .from('conversation_locks')
       .select('*')
-      .eq('ghl_contact_id', contactId)
+      .eq('contact_id', contactId)
       .single()
 
     const now = new Date()
@@ -161,11 +161,11 @@ Deno.serve(async (req) => {
     await supabase
       .from('conversation_locks')
       .upsert({
-        ghl_contact_id: contactId,
+        contact_id: contactId,
         status:     'waiting',
         locked_at:  now.toISOString(),
         expires_at: new Date(now.getTime() + 60000).toISOString(),
-      }, { onConflict: 'ghl_contact_id' })
+      }, { onConflict: 'contact_id' })
 
     // ── 7. Debounce (4 saniye — arka arkaya mesajları birleştir) ──
     await new Promise(resolve => setTimeout(resolve, 4000))
@@ -174,14 +174,14 @@ Deno.serve(async (req) => {
     const { data: messages } = await supabase
       .from('message_buffer')
       .select('*')
-      .eq('ghl_contact_id', contactId)
+      .eq('contact_id', contactId)
       .order('received_at', { ascending: true })
 
     if (!messages || messages.length === 0) {
       await supabase
         .from('conversation_locks')
         .update({ status: 'idle' })
-        .eq('ghl_contact_id', contactId)
+        .eq('contact_id', contactId)
       return new Response(JSON.stringify({ status: 'empty' }), { headers: corsHeaders })
     }
 
@@ -223,7 +223,7 @@ Deno.serve(async (req) => {
     await supabase
       .from('conversation_locks')
       .update({ status: 'processing' })
-      .eq('ghl_contact_id', contactId)
+      .eq('contact_id', contactId)
 
     return new Response(JSON.stringify({
       status:    'forwarded',
