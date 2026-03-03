@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import LeadScoreBadge from '@/components/dashboard/LeadScoreBadge';
 import { format, parseISO } from 'date-fns';
 import { tr } from 'date-fns/locale';
-import { Search, Filter } from 'lucide-react';
+import { Search } from 'lucide-react';
+import HandoffButton from '@/components/dashboard/HandoffButton';
 
 type StatusFilter = 'all' | 'active' | 'handed_off' | 'closed';
 type TierFilter = 'all' | 'hot' | 'warm' | 'cold';
@@ -196,11 +197,10 @@ export default async function LeadsPage({ searchParams }: PageProps) {
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
-                        {conv.handoff_triggered ? (
-                          <span className="text-purple-600 font-medium text-xs">✓ Yapıldı</span>
-                        ) : (
-                          <span className="text-slate-300 text-xs">—</span>
-                        )}
+                        <HandoffButton
+                          conversationId={conv.id}
+                          alreadyHandedOff={conv.handoff_triggered || conv.status === 'handed_off'}
+                        />
                       </td>
                       <td className="px-5 py-3.5 text-xs text-slate-500 font-mono">
                         {conv.current_stage}

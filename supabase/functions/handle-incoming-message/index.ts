@@ -122,6 +122,7 @@ Deno.serve(async (req) => {
     const fullText = messages.map(m => m.message_text).filter(Boolean).join('\n')
     const hasImage = messages.some(m => m.contains_image)
     const imageCount = messages.filter(m => m.contains_image).length
+    const imageUrl = messages.find(m => m.image_url)?.image_url || null
     const bufferIds = messages.map(m => m.id)
 
     // 7. n8n'e gönder
@@ -131,6 +132,7 @@ Deno.serve(async (req) => {
       mergedMessage: fullText || (hasImage ? '(Görsel gönderildi)' : ''),
       containsImage: hasImage,
       imageCount: imageCount,
+      imageUrl: imageUrl,
       isSpam: isSpam,
       spamReply: spamReply,
       bufferIds: bufferIds,

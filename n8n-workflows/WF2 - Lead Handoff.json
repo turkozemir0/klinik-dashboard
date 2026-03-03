@@ -7,14 +7,36 @@
       "name": "Handoff Input",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [
-        -288,
-        -464
-      ]
+      "position": [-288, -560]
     },
     {
       "parameters": {
-        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?id=eq.{{ $('Handoff Input').item.json.id }}&select=*",
+        "httpMethod": "POST",
+        "path": "handoff-dashboard",
+        "responseMode": "onReceived",
+        "responseData": "{\"status\":\"ok\",\"message\":\"Handoff tetiklendi\"}",
+        "options": {}
+      },
+      "id": "wb2dash01-0000-4000-a000-dashboard0001",
+      "name": "Dashboard Handoff Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-288, -368],
+      "webhookId": "handoff-dashboard-webhook-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize both trigger sources into a common format.\n// executeWorkflowTrigger (WF1 auto): has conversationId, contactId, lead_score\n// webhook (Dashboard manual): has conversationId, triggeredBy\nlet id, triggerType, triggeredBy;\ntry {\n  const data = $('Handoff Input').item.json;\n  id = data.conversationId || data.id;\n  triggerType = 'score_threshold';\n  triggeredBy = 'ai_system';\n} catch(e) {\n  const body = $('Dashboard Handoff Webhook').item.json.body || $('Dashboard Handoff Webhook').item.json;\n  id = body.conversationId;\n  triggerType = 'manual';\n  triggeredBy = body.triggeredBy || 'dashboard';\n}\nreturn [{ json: { id, trigger_type: triggerType, triggered_by: triggeredBy } }];"
+      },
+      "id": "prep0001-0000-4000-a000-prepare00001",
+      "name": "Prepare Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-48, -464]
+    },
+    {
+      "parameters": {
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/conversations?id=eq.{{ $json.id }}&select=*",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -32,10 +54,7 @@
       "name": "Get Full Conversation",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        -48,
-        -464
-      ],
+      "position": [192, -464],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -45,7 +64,17 @@
     },
     {
       "parameters": {
-        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/messages?conversation_id=eq.{{ $('Handoff Input').item.json.id }}&order=created_at.asc&limit=30",
+        "jsCode": "// Merge conversation data from Supabase with trigger metadata\nconst prepareData = $('Prepare Input').item.json;\nconst convRaw = $('Get Full Conversation').item.json;\nconst conv = Array.isArray(convRaw) ? convRaw[0] : convRaw;\nreturn [{ json: {\n  id: conv.id,\n  ghl_contact_id: conv.ghl_contact_id,\n  clinic_id: conv.clinic_id,\n  lead_score: conv.lead_score || 0,\n  current_stage: conv.current_stage,\n  collected_data: conv.collected_data || {},\n  lead_signals: conv.lead_signals || {},\n  images_received: conv.images_received || 0,\n  trigger_type: prepareData.trigger_type,\n  triggered_by: prepareData.triggered_by\n} }];"
+      },
+      "id": "merge001-0000-4000-a000-mergeconv001",
+      "name": "Merge Conv Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [432, -464]
+    },
+    {
+      "parameters": {
+        "url": "=https://iylabpsokydolhuhvvwi.supabase.co/rest/v1/messages?conversation_id=eq.{{ $json.id }}&order=created_at.asc&limit=30",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -63,10 +92,7 @@
       "name": "Get All Messages",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        192,
-        -464
-      ],
+      "position": [672, -464],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -76,16 +102,13 @@
     },
     {
       "parameters": {
-        "jsCode": "const conversation = $('Get Full Conversation').item.json;\nconst conv = Array.isArray(conversation) ? conversation[0] : conversation;\nconst messagesRaw = $('Get All Messages').item.json;\nconst messages = Array.isArray(messagesRaw) ? messagesRaw : [messagesRaw];\nconst inputData = $('Handoff Input').item.json;\n\nconst messagesText = messages.filter(m => m && m.content).map(m => \n  `${m.role === 'user' ? 'HASTA' : 'ASİSTAN'}: ${m.content}`\n).join('\\n');\n\nconst summaryPrompt = [\n  { role: 'system', content: `Sen bir satış analisti asistanısın. Hasta-asistan WhatsApp konuşmasını analiz et. HER ZAMAN TÜRKÇE yaz.\\n\\nJSON formatında yanıt ver:\\n{\\n  \"summary\": \"2-3 cümlelik konuşma özeti\",\\n  \"suggested_approach\": \"Satışcı bu hastayla nasıl konuşmalı? Hassas noktalar, öneriler\"\\n}` },\n  { role: 'user', content: `Konuşma:\\n${messagesText}\\n\\nToplanan Veriler: ${JSON.stringify(conv.collected_data || {})}\\nLead Score: ${inputData.lead_score || 0}` }\n];\n\nreturn [{ json: {\n  ...inputData,\n  summaryPrompt,\n  collectedData: conv.collected_data || {},\n  leadSignals: conv.lead_signals || {},\n  imagesReceived: conv.images_received || 0,\n  score: inputData.lead_score || 0\n} }];"
+        "jsCode": "const convData = $('Merge Conv Data').item.json;\nconst messagesRaw = $('Get All Messages').item.json;\nconst messages = Array.isArray(messagesRaw) ? messagesRaw : [messagesRaw];\n\nconst messagesText = messages.filter(m => m && m.content).map(m => \n  `${m.role === 'user' ? 'HASTA' : 'ASİSTAN'}: ${m.content}`\n).join('\\n');\n\nconst summaryPrompt = [\n  { role: 'system', content: `Sen bir satış analisti asistanısın. Hasta-asistan WhatsApp konuşmasını analiz et. HER ZAMAN TÜRKÇE yaz.\\n\\nJSON formatında yanıt ver:\\n{\\n  \"summary\": \"2-3 cümlelik konuşma özeti\",\\n  \"suggested_approach\": \"Satışcı bu hastayla nasıl konuşmalı? Hassas noktalar, öneriler\"\\n}` },\n  { role: 'user', content: `Konuşma:\\n${messagesText}\\n\\nToplanan Veriler: ${JSON.stringify(convData.collected_data || {})}\\nLead Score: ${convData.lead_score || 0}` }\n];\n\nreturn [{ json: {\n  ...convData,\n  summaryPrompt,\n  collectedData: convData.collected_data || {},\n  leadSignals: convData.lead_signals || {},\n  imagesReceived: convData.images_received || 0,\n  score: convData.lead_score || 0\n} }];"
       },
       "id": "4bdbba56-c9a5-4341-9ecb-b215d6f2ca33",
       "name": "Build Summary Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        432,
-        -464
-      ]
+      "position": [912, -464]
     },
     {
       "parameters": {
@@ -111,10 +134,7 @@
       "name": "Generate Summary",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        672,
-        -464
-      ],
+      "position": [1152, -464],
       "credentials": {
         "httpHeaderAuth": {
           "id": "cc9Z3PiEo03vJ1hN",
@@ -124,16 +144,53 @@
     },
     {
       "parameters": {
-        "jsCode": "const aiResp = $input.item.json;\nconst prev = $('Build Summary Prompt').item.json;\nlet summary = '', approach = '';\n\ntry {\n  const parsed = JSON.parse(aiResp.choices[0].message.content);\n  summary = parsed.summary || 'Özet oluşturulamadı';\n  approach = parsed.suggested_approach || 'Standart yaklaşım önerilir';\n} catch(e) {\n  summary = 'Özet oluşturulamadı';\n  approach = 'Standart yaklaşım önerilir';\n}\n\nconst cd = prev.collectedData || {};\n\nconst noteBody = `🤖 AI Qualification Raporu\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n📋 ÖZET\\n${summary}\\n\\n👤 HASTA BİLGİLERİ\\nAd: ${cd.name || 'Belirtilmedi'}\\nHizmet: ${cd.interested_service || 'Belirtilmedi'}\\nPain Point: ${cd.pain_point || 'Belirtilmedi'}\\nTimeline: ${cd.timeline || 'Belirtilmedi'}\\nBütçe: ${cd.budget_awareness || 'Sorulmadı'}\\nDaha Önce: ${cd.previous_consultation || 'Belirtilmedi'}\\nÖn Görüşme: ${cd.preferred_consultation_type || 'Belirtilmedi'}\\nTercih: ${cd.preferred_day_time || 'Belirtilmedi'}\\nSağlık: ${cd.special_health_notes || 'Yok'}\\n${prev.imagesReceived > 0 ? '📎 Görsel: ' + prev.imagesReceived + ' adet' : ''}\\n\\n📊 LEAD SCORE: ${prev.score}/100\\n\\n💡 ÖNERİLEN YAKLAŞIM\\n${approach}\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;\n\nreturn [{ json: { ...prev, summary, approach, noteBody } }];"
+        "jsCode": "const aiResp = $input.item.json;\nconst prev = $('Build Summary Prompt').item.json;\nlet summary = '', approach = '';\n\ntry {\n  const parsed = JSON.parse(aiResp.choices[0].message.content);\n  summary = parsed.summary || 'Özet oluşturulamadı';\n  approach = parsed.suggested_approach || 'Standart yaklaşım önerilir';\n} catch(e) {\n  summary = 'Özet oluşturulamadı';\n  approach = 'Standart yaklaşım önerilir';\n}\n\nconst cd = prev.collectedData || {};\n\nconst noteBody = `🤖 AI Qualification Raporu\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n📋 ÖZET\\n${summary}\\n\\n👤 HASTA BİLGİLERİ\\nAd: ${cd.name || 'Belirtilmedi'}\\nHizmet: ${cd.interested_service || 'Belirtilmedi'}\\nPain Point: ${cd.pain_point || 'Belirtilmedi'}\\nTimeline: ${cd.timeline || 'Belirtilmedi'}\\nBütçe: ${cd.budget_awareness || 'Sorulmadı'}\\nDaha Önce: ${cd.previous_consultation || 'Belirtilmedi'}\\nÖn Görüşme: ${cd.preferred_consultation_type || 'Belirtilmedi'}\\nTercih: ${cd.preferred_day_time || 'Belirtilmedi'}\\nSağlık: ${cd.special_health_notes || 'Yok'}\\n${prev.imagesReceived > 0 ? '📎 Görsel: ' + prev.imagesReceived + ' adet' : ''}\\n\\n📊 LEAD SCORE: ${prev.score}/100\\n\\n🚀 KAYNAK: ${prev.trigger_type === 'manual' ? 'Manuel (Dashboard)' : 'AI Otomatik'}\\n${prev.triggered_by ? '👤 Tetikleyen: ' + prev.triggered_by : ''}\\n\\n💡 ÖNERİLEN YAKLAŞIM\\n${approach}\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;\n\nreturn [{ json: { ...prev, summary, approach, noteBody } }];"
       },
       "id": "36029a3b-1ee4-4548-a953-c0283ed3c29e",
       "name": "Parse Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        912,
-        -464
-      ]
+      "position": [1392, -464]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.ghl_contact_id }}/tags",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"tags\": [\"hot_lead\", \"human_handoff\", \"appointment_ready\"]}",
+        "options": {}
+      },
+      "id": "ghl-tags01-0000-4000-a000-hotleadtag01",
+      "name": "GHL Add Hot Lead Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1632, -608],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
     },
     {
       "parameters": {
@@ -160,17 +217,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"tags\": [\"hot_lead\", \"human_handoff\", \"appointment_ready\"],\n  \"customFields\": [\n    { \"id\": \"9cZwMpve2bzDM0mNQ08Q\", \"field_value\": \"{{ $('Parse Summary').item.json.score }}\" },\n    { \"id\": \"ABqnbHbNfG6aDlFVAztP\", \"field_value\": \"qualified\" },\n    { \"id\": \"a4FUZNdUU4qar1HMtNAi\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.pain_point_duration || '' }}\" },\n    { \"id\": \"KUjTWtCUUVoYpy2UgJxa\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.collectedData.interested_service || '') }} },\n    { \"id\": \"8xETKWnQ53EnCQMXdnKz\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.collectedData.pain_point || '') }} },\n    { \"id\": \"U2yNuDV5l9oMT7x6XLX3\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.timeline || '' }}\" },\n    { \"id\": \"FMS0gxGnyIv3TNObPdJU\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.budget_awareness || '' }}\" },\n    { \"id\": \"yeYqHGTcqWZNMGPob2YG\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.previous_consultation || '' }}\" },\n    { \"id\": \"LjAXj1FT3s6GnBO85pFq\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.summary) }} },\n    { \"id\": \"1NAEgwt7JS1EF1J1uXHj\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.approach) }} },\n    { \"id\": \"ESUJMTgVCvQr1IHLhwEK\", \"field_value\": \"{{ $('Parse Summary').item.json.imagesReceived > 0 }}\" }\n  ]\n}",
+        "jsonBody": "={\n  \"customFields\": [\n    { \"id\": \"9cZwMpve2bzDM0mNQ08Q\", \"field_value\": \"{{ $('Parse Summary').item.json.score }}\" },\n    { \"id\": \"ABqnbHbNfG6aDlFVAztP\", \"field_value\": \"qualified\" },\n    { \"id\": \"a4FUZNdUU4qar1HMtNAi\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.pain_point_duration || '' }}\" },\n    { \"id\": \"KUjTWtCUUVoYpy2UgJxa\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.collectedData.interested_service || '') }} },\n    { \"id\": \"8xETKWnQ53EnCQMXdnKz\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.collectedData.pain_point || '') }} },\n    { \"id\": \"U2yNuDV5l9oMT7x6XLX3\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.timeline || '' }}\" },\n    { \"id\": \"FMS0gxGnyIv3TNObPdJU\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.budget_awareness || '' }}\" },\n    { \"id\": \"yeYqHGTcqWZNMGPob2YG\", \"field_value\": \"{{ $('Parse Summary').item.json.collectedData.previous_consultation || '' }}\" },\n    { \"id\": \"LjAXj1FT3s6GnBO85pFq\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.summary) }} },\n    { \"id\": \"1NAEgwt7JS1EF1J1uXHj\", \"field_value\": {{ JSON.stringify($('Parse Summary').item.json.approach) }} },\n    { \"id\": \"ESUJMTgVCvQr1IHLhwEK\", \"field_value\": \"{{ $('Parse Summary').item.json.imagesReceived > 0 }}\" }\n  ]\n}",
         "options": {}
       },
       "id": "8e2cc83b-20a7-4ac6-ab9b-0f520823b9d9",
-      "name": "GHL Handoff Update",
+      "name": "GHL Update Custom Fields",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        1152,
-        -464
-      ],
+      "position": [1632, -320],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -210,10 +264,7 @@
       "name": "GHL Remove AI Tag",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        1392,
-        -464
-      ],
+      "position": [1872, -464],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -253,10 +304,7 @@
       "name": "GHL Add Note",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        1632,
-        -464
-      ],
+      "position": [2112, -464],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -296,10 +344,7 @@
       "name": "GHL Closing Message",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        1872,
-        -464
-      ],
+      "position": [2352, -464],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -336,10 +381,7 @@
       "name": "Update Conv Handoff",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        2112,
-        -464
-      ],
+      "position": [2592, -464],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -372,17 +414,15 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"clinic_id\": \"{{ $('Parse Summary').item.json.clinic_id }}\",\n  \"conversation_id\": \"{{ $('Parse Summary').item.json.id }}\",\n  \"ghl_contact_id\": \"{{ $('Parse Summary').item.json.ghl_contact_id }}\",\n  \"trigger_type\": \"score_threshold\",\n  \"lead_score_at_handoff\": {{ $('Parse Summary').item.json.score }}\n}",
+        "jsonBody": "={\n  \"clinic_id\": \"{{ $('Parse Summary').item.json.clinic_id }}\",\n  \"conversation_id\": \"{{ $('Parse Summary').item.json.id }}\",\n  \"ghl_contact_id\": \"{{ $('Parse Summary').item.json.ghl_contact_id }}\",\n  \"trigger_type\": \"{{ $('Parse Summary').item.json.trigger_type }}\",\n  \"triggered_by\": \"{{ $('Parse Summary').item.json.triggered_by }}\",\n  \"lead_score_at_handoff\": {{ $('Parse Summary').item.json.score }}\n}",
         "options": {}
       },
       "id": "454fa9e4-7355-45fd-95e4-1148c541aea6",
       "name": "Log Handoff",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        2352,
-        -464
-      ],
+      "position": [2832, -464],
+      "continueOnFail": true,
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -397,6 +437,28 @@
       "main": [
         [
           {
+            "node": "Prepare Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dashboard Handoff Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Input": {
+      "main": [
+        [
+          {
             "node": "Get Full Conversation",
             "type": "main",
             "index": 0
@@ -405,6 +467,17 @@
       ]
     },
     "Get Full Conversation": {
+      "main": [
+        [
+          {
+            "node": "Merge Conv Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Conv Data": {
       "main": [
         [
           {
@@ -452,14 +525,30 @@
       "main": [
         [
           {
-            "node": "GHL Handoff Update",
+            "node": "GHL Add Hot Lead Tags",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GHL Update Custom Fields",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "GHL Handoff Update": {
+    "GHL Add Hot Lead Tags": {
+      "main": [
+        [
+          {
+            "node": "GHL Remove AI Tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Update Custom Fields": {
       "main": [
         [
           {

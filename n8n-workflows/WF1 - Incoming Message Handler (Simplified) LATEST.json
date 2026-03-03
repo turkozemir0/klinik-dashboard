@@ -85,7 +85,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const contactResp = $('GHL Get Contact').item.json;\nconst contact = contactResp.contact || contactResp;\n\n// 1. DÜZELTME: Veriyi doğrudan root'tan değil, webhook'un 'body' kısmından alıyoruz.\nconst webhook = $('Webhook Incoming').item.json.body || $('Webhook Incoming').item.json;\n\nconst tags = contact.tags || [];\nif (tags.includes('human_handoff') || tags.includes('urgent_handoff')) {\n  return [{ json: { action: 'STOP_HUMAN', reason: 'human_handoff tag' } }];\n}\nif (contact.assignedTo && contact.assignedTo !== '') {\n  return [{ json: { action: 'STOP_HUMAN', reason: 'assigned to user' } }];\n}\n\n// 2. DÜZELTME: GHL'den gelen JSON string formatındaki karmaşık mesajı temiz metne çeviriyoruz.\nlet cleanMessage = webhook.mergedMessage || '';\ntry {\n    const parsed = JSON.parse(cleanMessage);\n    if (parsed.body) {\n        cleanMessage = parsed.body;\n    }\n} catch(e) {\n    // Zaten düz metinse olduğu gibi kalır\n}\n\nreturn [{ json: {\n  action: 'CONTINUE',\n  contactId: webhook.contactId,\n  contactName: contact.name || contact.firstName || 'Hasta',\n  contactPhone: contact.phone || '',\n  contactEmail: contact.email || '',\n  clinicId: webhook.clinicId || $('Config').item.json.clinicId,\n  mergedMessage: cleanMessage, \n  containsImage: webhook.containsImage || false,\n  imageCount: webhook.imageCount || 0\n} }];"
+        "jsCode": "const contactResp = $('GHL Get Contact').item.json;\nconst contact = contactResp.contact || contactResp;\n\n// 1. DÜZELTME: Veriyi doğrudan root'tan değil, webhook'un 'body' kısmından alıyoruz.\nconst webhook = $('Webhook Incoming').item.json.body || $('Webhook Incoming').item.json;\n\nconst tags = contact.tags || [];\nif (tags.includes('human_handoff') || tags.includes('urgent_handoff')) {\n  return [{ json: { action: 'STOP_HUMAN', reason: 'human_handoff tag' } }];\n}\nif (contact.assignedTo && contact.assignedTo !== '') {\n  return [{ json: { action: 'STOP_HUMAN', reason: 'assigned to user' } }];\n}\n\n// 2. DÜZELTME: GHL'den gelen JSON string formatındaki karmaşık mesajı temiz metne çeviriyoruz.\nlet cleanMessage = webhook.mergedMessage || '';\ntry {\n    const parsed = JSON.parse(cleanMessage);\n    if (parsed.body) {\n        cleanMessage = parsed.body;\n    }\n} catch(e) {\n    // Zaten düz metinse olduğu gibi kalır\n}\n\nreturn [{ json: {\n  action: 'CONTINUE',\n  contactId: webhook.contactId,\n  contactName: contact.name || contact.firstName || 'Hasta',\n  contactPhone: contact.phone || '',\n  contactEmail: contact.email || '',\n  clinicId: webhook.clinicId || $('Config').item.json.clinicId,\n  mergedMessage: cleanMessage, \n  containsImage: webhook.containsImage || false,\n  imageCount: webhook.imageCount || 0,\n  imageUrl: webhook.imageUrl || null\n} }];"
       },
       "id": "f208ef11-7b94-4c48-bc6a-9dfa2440f466",
       "name": "Human Check",
@@ -442,7 +442,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const convData = $('Get Conv Data').first().json;\nconst clinicArr = $('Get Clinic').first().json;\nconst clinic = Array.isArray(clinicArr) ? clinicArr[0] : clinicArr;\nconst servicesArr = $('Get Services').first().json;\nconst services = Array.isArray(servicesArr) ? servicesArr : [servicesArr];\nconst faqsArr = $('Get FAQs').first().json;\nconst faqs = Array.isArray(faqsArr) ? faqsArr : [faqsArr];\nconst historyArr = $('Get History').first().json;\nconst history = Array.isArray(historyArr) ? historyArr : (historyArr && historyArr.id ? [historyArr] : []);\n\n// === FULL services text for reply stage ===\nconst servicesText = services\n  .filter(s => s && s.display_name)\n  .map(s => `\\nHİZMET: ${s.display_name} (${s.category || ''})\nAçıklama: ${s.description_for_ai || ''}\nSüre: ${s.procedure_duration || 'Belirtilmemiş'}\nAnestezi: ${s.anesthesia_type || 'Belirtilmemiş'}\nİyileşme: ${s.recovery_time || 'Belirtilmemiş'}\nTam Sonuç: ${s.final_result_time || 'Belirtilmemiş'}\nHastanede Kalış: ${s.hospital_stay || 'Belirtilmemiş'}\nHasta Endişeleri: ${(s.common_patient_concerns || []).join(', ')}\nFiyat Sorusuna Yanıt: ${s.pricing_response || 'Kişiye özel belirlenir'}\nSöyleyebileceklerin: ${(s.what_ai_can_say || []).join(', ')}\nASLA Söyleme: ${(s.what_ai_must_not_say || []).join(', ')}\nİtiraz Yanıtları: ${JSON.stringify(s.objections || {})}`)\n  .join('\\n---\\n');\n\n// === SHORT services list for analysis stage ===\nconst servicesShort = services\n  .filter(s => s && s.display_name)\n  .map(s => `${s.service_key}: ${s.display_name} (${s.category || ''})`)\n  .join('\\n');\n\nconst faqsText = faqs\n  .filter(f => f && f.answer)\n  .map(f => `Tetikleyiciler: [${(f.question_patterns || []).join(', ')}] → Yanıt: ${f.answer}`)\n  .join('\\n');\n\nlet imageNote = '';\nif (convData.containsImage) {\n  imageNote = `\\n[SİSTEM NOTU: Hasta bu mesajla birlikte ${convData.imageCount} adet görsel gönderdi. Empatik karşıla, doktorun ön görüşmede değerlendireceğini belirt. Görseli analiz etme.]`;\n}\n\n// ══════════════════════════════════════\n// STAGE 1: ANALYSIS SYSTEM PROMPT\n// ══════════════════════════════════════\nconst analysisSystemPrompt = `Sen bir klinik konuşma analiz motorusun. Hasta mesajını analiz edip yapılandırılmış veri çıkar.\n\n## KLİNİK\nAd: ${clinic.name}\nTür: ${clinic.clinic_type}\n\n## HİZMETLER\n${servicesShort}\n\n## MEVCUT DURUM\nAşama: ${convData.currentStage}\nÖNCEKİ TOPLANAN VERİLER (BUNLARI ASLA SİLME!): ${JSON.stringify(convData.collectedData)}\nSinyaller: ${JSON.stringify(convData.leadSignals)}\n\n## SİNYAL SINIFLANDIRMA KURALLARI (ÇOK ÖNEMLİ)\n- Eğer hasta mesajında: \"acil\", \"hemen\", \"bugün\", \"en kısa sürede\", \"acele\", \"urgent\" gibi ifadeler varsa:\n  → lead_signals.urgency = \"high\"\n- Eğer hasta \"yakında\", \"bu hafta\", \"önümüzdeki günler\", \"kısa zamanda\" gibi ifadeler kullanıyorsa:\n  → lead_signals.urgency = \"medium\"\n- Eğer zaman belirtmiyorsa:\n  → lead_signals.urgency = \"low\" veya \"unknown\"\n\n- Eğer hasta açıkça randevu istiyorsa, gün/saat soruyorsa, \"gelmek istiyorum\", \"ön görüşme istiyorum\" diyorsa:\n  → lead_signals.buying_intent = \"ready\"\n- Eğer sadece bilgi alıyorsa:\n  → lead_signals.buying_intent = \"considering\"\n- Eğer sadece bakınıyorsa:\n  → lead_signals.buying_intent = \"just_browsing\"\n\n- Eğer hasta kısa, tek kelimelik cevaplar veriyorsa:\n  → lead_signals.engagement_level = \"low\"\n- Eğer detaylı anlatıyorsa, soru soruyorsa:\n  → lead_signals.engagement_level = \"high\"\n- Aksi halde:\n  → lead_signals.engagement_level = \"medium\"\n\n- Eğer hasta fiyat, ücret, ödeme, taksit, bütçe gibi konuları soruyorsa:\n  → collected_data.budget_awareness = \"fiyat_sordu\" veya \"butce_belirti\"\n\n## GÖREV\nSADECE aşağıdaki JSON formatında yanıt ver:\n{\n  \"metadata\": {\n    \"current_stage\": \"GREETING|DISCOVERY|TRUST_BUILDING|APPOINTMENT_OFFER|INFO_COLLECTION|CLOSING|NURTURING\",\n    \"collected_data\": {\n      \"name\": null, \"interested_service\": null, \"interested_service_key\": null,\n      \"pain_point\": null, \"pain_point_duration\": null,\n      \"timeline\": null, \"previous_consultation\": null, \"previous_procedure\": null,\n      \"budget_awareness\": \"not_asked\", \"referral_source\": null,\n      \"special_health_notes\": null, \"preferred_consultation_type\": null,\n      \"preferred_day_time\": null\n    },\n    \"lead_signals\": {\n      \"urgency\": \"unknown\", \"engagement_level\": \"unknown\",\n      \"buying_intent\": \"unknown\", \"objections_raised\": [], \"objections_resolved\": []\n    },\n    \"handoff_recommended\": false,\n    \"handoff_reason\": null\n  },\n  \"reply_guidance\": \"Yanıt asistanı için 1-2 cümlelik yönlendirme\"\n}\n\nÇOK ÖNEMLİ KURAL: JSON çıktısı üretirken 'ÖNCEKİ TOPLANAN VERİLER' içindeki dolu olan verileri ASLA null yapma! \nSadece yeni mesajda yeni bir bilgi varsa üzerine ekle. \nEğer hasta sadece \"randevu istiyorum\" diyorsa, önceki hizmeti hafızanda tut ve current_stage'i APPOINTMENT_OFFER yap.`;\n\n// ══════════════════════════════════════\n// STAGE 2: REPLY SYSTEM PROMPT (base)\n// ══════════════════════════════════════\nconst replySystemPrompt = `Sen ${clinic.name} kliniğinin WhatsApp asistanısın. Hastaları karşılıyor, bilgilendiriyor ve ön görüşme randevusuna yönlendiriyorsun.\n\n## KLİNİK PROFİLİ\nAd: ${clinic.name}\nTür: ${clinic.clinic_type}\nAdres: ${clinic.address}, ${clinic.district}, ${clinic.city}\nTelefon: ${clinic.phone}\nÇalışma Saatleri: ${JSON.stringify(clinic.working_hours)}\nOtopark: ${clinic.parking_info || 'Bilgi yok'}\nBaş Doktor: ${clinic.lead_doctor_name}, ${clinic.lead_doctor_title}\n\n## HİZMETLER\n${servicesText}\n\n## SIK SORULAN SORULAR\n${faqsText}\n\n## KONUŞMA KURALLARI\n1. Her mesajda SADECE 1 soru sor.\n2. Yanıtların 2-4 cümle olsun ancak bilgi vermekten kaçınma. Robotik konuşma.\n3. KESİNLİKLE her mesajda \"Merhaba\" veya \"Hoş geldiniz\" DEME. Sadece ilk mesajda selam ver.\n4. HAFIZANI KULLAN: Konuşma geçmişinde hastanın ilgilendiği işlem zaten belli olduysa, randevu istediğinde ASLA \"Hangi işlemle ilgileniyorsunuz?\" diye TEKRAR SORMA. Doğrudan o işlem için gün ve saat sor.\n5. Asla tıbbi teşhis koyma, garanti verme.\n6. Rakip klinik kötüleme.\n7. Fiyat sorulursa kişiye özel olduğunu belirt, ön görüşmeye yönlendir.`;\n\n// === Build conversation history for reuse ===\nconst historyMessages = [];\nfor (const msg of history) {\n  if (msg && msg.content) {\n    historyMessages.push({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: msg.content });\n  }\n}\n\n// === Stage 1 messages ===\nconst analysisMessages = [\n  { role: 'system', content: analysisSystemPrompt },\n  ...historyMessages,\n  { role: 'user', content: convData.mergedMessage + imageNote }\n];\n\nreturn [{\n  json: {\n    analysisMessages,\n    replySystemPrompt,\n    historyMessages,\n    userMessage: convData.mergedMessage,\n    imageNote,\n    conversationId: convData.conversationId,\n    contactId: convData.contactId,\n    clinicId: convData.clinicId,\n    containsImage: convData.containsImage,\n    imageCount: convData.imageCount,\n    currentScore: convData.currentScore,\n    imagesReceived: convData.imagesReceived,\n    messageCount: convData.messageCount,\n    contactName: convData.contactName\n  }\n}];"
+        "jsCode": "const convData = $('Get Conv Data').first().json;\nconst clinicArr = $('Get Clinic').first().json;\nconst clinic = Array.isArray(clinicArr) ? clinicArr[0] : clinicArr;\nconst servicesArr = $('Get Services').first().json;\nconst services = Array.isArray(servicesArr) ? servicesArr : [servicesArr];\nconst faqsArr = $('Get FAQs').first().json;\nconst faqs = Array.isArray(faqsArr) ? faqsArr : [faqsArr];\nconst historyArr = $('Get History').first().json;\nconst history = Array.isArray(historyArr) ? historyArr : (historyArr && historyArr.id ? [historyArr] : []);\n\n// === FULL services text for reply stage ===\nconst servicesText = services\n  .filter(s => s && s.display_name)\n  .map(s => `\\nHİZMET: ${s.display_name} (${s.category || ''})\nAçıklama: ${s.description_for_ai || ''}\nSüre: ${s.procedure_duration || 'Belirtilmemiş'}\nAnestezi: ${s.anesthesia_type || 'Belirtilmemiş'}\nİyileşme: ${s.recovery_time || 'Belirtilmemiş'}\nTam Sonuç: ${s.final_result_time || 'Belirtilmemiş'}\nHastanede Kalış: ${s.hospital_stay || 'Belirtilmemiş'}\nHasta Endişeleri: ${(s.common_patient_concerns || []).join(', ')}\nFiyat Sorusuna Yanıt: ${s.pricing_response || 'Kişiye özel belirlenir'}\nSöyleyebileceklerin: ${(s.what_ai_can_say || []).join(', ')}\nASLA Söyleme: ${(s.what_ai_must_not_say || []).join(', ')}\nİtiraz Yanıtları: ${JSON.stringify(s.objections || {})}`)\n  .join('\\n---\\n');\n\n// === SHORT services list for analysis stage ===\nconst servicesShort = services\n  .filter(s => s && s.display_name)\n  .map(s => `${s.service_key}: ${s.display_name} (${s.category || ''})`)\n  .join('\\n');\n\nconst faqsText = faqs\n  .filter(f => f && f.answer)\n  .map(f => `Tetikleyiciler: [${(f.question_patterns || []).join(', ')}] → Yanıt: ${f.answer}`)\n  .join('\\n');\n\nlet isMedicalImage = false;\ntry { isMedicalImage = $('Parse Vision Result').first().json.isMedicalImage || false; } catch(e) {}\nlet imageNote = '';\nif (convData.containsImage) {\n  if (isMedicalImage) {\n    imageNote = `\\n[SİSTEM NOTU: Hasta TIBBİ bir görsel gönderdi. Bu çok önemli bir hot lead! Hastaya uzmanımızın en kısa sürede kendisini arayacağını sıcak ve empatik bir şekilde belirt. Görseli analiz etme, sadece alındığını ve uzmanın inceleyeceğini söyle.]`;\n  } else {\n    imageNote = `\\n[SİSTEM NOTU: Hasta bu mesajla birlikte ${convData.imageCount} adet görsel gönderdi. Empatik karşıla, doktorun ön görüşmede değerlendireceğini belirt. Görseli analiz etme.]`;\n  }\n}\n\n// ══════════════════════════════════════\n// STAGE 1: ANALYSIS SYSTEM PROMPT\n// ══════════════════════════════════════\nconst analysisSystemPrompt = `Sen bir klinik konuşma analiz motorusun. Hasta mesajını analiz edip yapılandırılmış veri çıkar.\n\n## KLİNİK\nAd: ${clinic.name}\nTür: ${clinic.clinic_type}\n\n## HİZMETLER\n${servicesShort}\n\n## MEVCUT DURUM\nAşama: ${convData.currentStage}\nÖNCEKİ TOPLANAN VERİLER (BUNLARI ASLA SİLME!): ${JSON.stringify(convData.collectedData)}\nSinyaller: ${JSON.stringify(convData.leadSignals)}\n\n## SİNYAL SINIFLANDIRMA KURALLARI (ÇOK ÖNEMLİ)\n- Eğer hasta mesajında: \"acil\", \"hemen\", \"bugün\", \"en kısa sürede\", \"acele\", \"urgent\" gibi ifadeler varsa:\n  → lead_signals.urgency = \"high\"\n- Eğer hasta \"yakında\", \"bu hafta\", \"önümüzdeki günler\", \"kısa zamanda\" gibi ifadeler kullanıyorsa:\n  → lead_signals.urgency = \"medium\"\n- Eğer zaman belirtmiyorsa:\n  → lead_signals.urgency = \"low\" veya \"unknown\"\n\n- Eğer hasta açıkça randevu istiyorsa, gün/saat soruyorsa, \"gelmek istiyorum\", \"ön görüşme istiyorum\" diyorsa:\n  → lead_signals.buying_intent = \"ready\"\n- Eğer sadece bilgi alıyorsa:\n  → lead_signals.buying_intent = \"considering\"\n- Eğer sadece bakınıyorsa:\n  → lead_signals.buying_intent = \"just_browsing\"\n\n- Eğer hasta kısa, tek kelimelik cevaplar veriyorsa:\n  → lead_signals.engagement_level = \"low\"\n- Eğer detaylı anlatıyorsa, soru soruyorsa:\n  → lead_signals.engagement_level = \"high\"\n- Aksi halde:\n  → lead_signals.engagement_level = \"medium\"\n\n- Eğer hasta fiyat, ücret, ödeme, taksit, bütçe gibi konuları soruyorsa:\n  → collected_data.budget_awareness = \"fiyat_sordu\" veya \"butce_belirti\"\n\n## GÖREV\nSADECE aşağıdaki JSON formatında yanıt ver:\n{\n  \"metadata\": {\n    \"current_stage\": \"GREETING|DISCOVERY|TRUST_BUILDING|APPOINTMENT_OFFER|INFO_COLLECTION|CLOSING|NURTURING\",\n    \"collected_data\": {\n      \"name\": null, \"interested_service\": null, \"interested_service_key\": null,\n      \"pain_point\": null, \"pain_point_duration\": null,\n      \"timeline\": null, \"previous_consultation\": null, \"previous_procedure\": null,\n      \"budget_awareness\": \"not_asked\", \"referral_source\": null,\n      \"special_health_notes\": null, \"preferred_consultation_type\": null,\n      \"preferred_day_time\": null\n    },\n    \"lead_signals\": {\n      \"urgency\": \"unknown\", \"engagement_level\": \"unknown\",\n      \"buying_intent\": \"unknown\", \"objections_raised\": [], \"objections_resolved\": []\n    },\n    \"handoff_recommended\": false,\n    \"handoff_reason\": null\n  },\n  \"reply_guidance\": \"Yanıt asistanı için 1-2 cümlelik yönlendirme\"\n}\n\nÇOK ÖNEMLİ KURAL: JSON çıktısı üretirken 'ÖNCEKİ TOPLANAN VERİLER' içindeki dolu olan verileri ASLA null yapma! \nSadece yeni mesajda yeni bir bilgi varsa üzerine ekle. \nEğer hasta sadece \"randevu istiyorum\" diyorsa, önceki hizmeti hafızanda tut ve current_stage'i APPOINTMENT_OFFER yap.`;\n\n// ══════════════════════════════════════\n// STAGE 2: REPLY SYSTEM PROMPT (base)\n// ══════════════════════════════════════\nconst replySystemPrompt = `Sen ${clinic.name} kliniğinin WhatsApp asistanısın. Hastaları karşılıyor, bilgilendiriyor ve ön görüşme randevusuna yönlendiriyorsun.\n\n## KLİNİK PROFİLİ\nAd: ${clinic.name}\nTür: ${clinic.clinic_type}\nAdres: ${clinic.address}, ${clinic.district}, ${clinic.city}\nTelefon: ${clinic.phone}\nÇalışma Saatleri: ${JSON.stringify(clinic.working_hours)}\nOtopark: ${clinic.parking_info || 'Bilgi yok'}\nBaş Doktor: ${clinic.lead_doctor_name}, ${clinic.lead_doctor_title}\n\n## HİZMETLER\n${servicesText}\n\n## SIK SORULAN SORULAR\n${faqsText}\n\n## KONUŞMA KURALLARI\n1. Her mesajda SADECE 1 soru sor.\n2. Yanıtların 2-4 cümle olsun ancak bilgi vermekten kaçınma. Robotik konuşma.\n3. KESİNLİKLE her mesajda \"Merhaba\" veya \"Hoş geldiniz\" DEME. Sadece ilk mesajda selam ver.\n4. HAFIZANI KULLAN: Konuşma geçmişinde hastanın ilgilendiği işlem zaten belli olduysa, randevu istediğinde ASLA \"Hangi işlemle ilgileniyorsunuz?\" diye TEKRAR SORMA. Doğrudan o işlem için gün ve saat sor.\n5. Asla tıbbi teşhis koyma, garanti verme.\n6. Rakip klinik kötüleme.\n7. Fiyat sorulursa kişiye özel olduğunu belirt, ön görüşmeye yönlendir.`;\n\n// === Build conversation history for reuse ===\nconst historyMessages = [];\nfor (const msg of history) {\n  if (msg && msg.content) {\n    historyMessages.push({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: msg.content });\n  }\n}\n\n// === Stage 1 messages ===\nconst analysisMessages = [\n  { role: 'system', content: analysisSystemPrompt },\n  ...historyMessages,\n  { role: 'user', content: convData.mergedMessage + imageNote }\n];\n\nreturn [{\n  json: {\n    analysisMessages,\n    replySystemPrompt,\n    historyMessages,\n    userMessage: convData.mergedMessage,\n    imageNote,\n    conversationId: convData.conversationId,\n    contactId: convData.contactId,\n    clinicId: convData.clinicId,\n    containsImage: convData.containsImage,\n    imageCount: convData.imageCount,\n    currentScore: convData.currentScore,\n    imagesReceived: convData.imagesReceived,\n    messageCount: convData.messageCount,\n    contactName: convData.contactName\n  }\n}];"
       },
       "id": "834eb59e-85c1-498d-8cdc-93ca6a92b7c9",
       "name": "Build AI Prompt",
@@ -594,7 +594,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const replyResponse = $input.item.json;\nconst analysis = $('Parse Analysis').item.json;\nconst promptData = $('Build AI Prompt').item.json;\nlet reply = '';\n\ntry {\n  reply = replyResponse.choices[0].message.content || '';\n  reply = reply.replace(/^```[\\s\\S]*?```$/gm, '').trim();\n  if (reply.startsWith('{')) {\n    try {\n      const p = JSON.parse(reply);\n      reply = p.reply || p.message || p.text || reply;\n    } catch(e) {}\n  }\n  if (reply.startsWith('\"') && reply.endsWith('\"')) {\n    reply = reply.slice(1, -1);\n  }\n  reply = reply.trim();\n} catch (e) {\n  reply = 'Mesajınız için teşekkür ederim. Size nasıl yardımcı olabilirim?';\n}\n\nif (!reply) reply = 'Mesajınız için teşekkür ederim. Size nasıl yardımcı olabilirim?';\n\nconst metadata = analysis.metadata || {};\nconst cd = metadata.collected_data || {};\nconst ls = metadata.lead_signals || {};\nlet score = 0, breakdown = {};\n\nif (cd.interested_service) { score += 10; breakdown.service = 10; }\nif (cd.pain_point && cd.pain_point.length > 20) { score += 10; breakdown.pain_detailed = 10; }\nelse if (cd.pain_point) { score += 5; breakdown.pain_basic = 5; }\n\nconst tScores = { 'hemen': 20, '1_hafta': 15, '1_ay': 8, '3_ay': 3, 'belirsiz': 0 };\nif (cd.timeline && tScores[cd.timeline] !== undefined) { score += tScores[cd.timeline]; breakdown.timeline = tScores[cd.timeline]; }\nif (cd.previous_consultation === 'baska_klinik') { score += 10; breakdown.researched = 10; }\nif (cd.previous_consultation === 'ameliyat_olmus') { score += 12; breakdown.revision = 12; }\nif (['fiyat_sordu','taksit_sordu','butce_belirti'].includes(cd.budget_awareness)) { score += 8; breakdown.budget = 8; }\nif (cd.preferred_consultation_type) { score += 10; breakdown.consult_pref = 10; }\nif (cd.preferred_day_time) { score += 15; breakdown.appt_interest = 15; }\nif (ls.engagement_level === 'high') { score += 8; breakdown.high_eng = 8; }\nelse if (ls.engagement_level === 'medium') { score += 4; breakdown.med_eng = 4; }\nif (ls.buying_intent === 'ready') { score += 15; breakdown.ready = 15; }\nelse if (ls.buying_intent === 'considering') { score += 8; breakdown.considering = 8; }\nif (ls.urgency === 'high') { score += 7; breakdown.urgency = 7; }\nif (ls.buying_intent === 'just_browsing') { score -= 5; breakdown.browsing = -5; }\n\nconst totalImages = (promptData.imagesReceived || 0) + (promptData.imageCount || 0);\nif (totalImages > 0) { const s = Math.min(totalImages * 15, 30); score += s; breakdown.images = s; }\nscore = Math.max(0, Math.min(100, score));\n\nconst totalTokens = (analysis.analysisTokens || 0) + (replyResponse.usage?.total_tokens || 0);\n\nreturn [{ json: {\n  reply, metadata, score, breakdown,\n  handoffNeeded: metadata.handoff_recommended === true || score >= 70,\n  conversationId: promptData.conversationId,\n  contactId: promptData.contactId,\n  clinicId: promptData.clinicId,\n  containsImage: promptData.containsImage,\n  imageCount: promptData.imageCount,\n  totalImages, messageCount: promptData.messageCount + 1,\n  contactName: promptData.contactName,\n  tokensUsed: totalTokens\n} }];"
+        "jsCode": "const replyResponse = $input.item.json;\nconst analysis = $('Parse Analysis').item.json;\nconst promptData = $('Build AI Prompt').item.json;\nlet reply = '';\n\ntry {\n  reply = replyResponse.choices[0].message.content || '';\n  reply = reply.replace(/^```[\\s\\S]*?```$/gm, '').trim();\n  if (reply.startsWith('{')) {\n    try {\n      const p = JSON.parse(reply);\n      reply = p.reply || p.message || p.text || reply;\n    } catch(e) {}\n  }\n  if (reply.startsWith('\"') && reply.endsWith('\"')) {\n    reply = reply.slice(1, -1);\n  }\n  reply = reply.trim();\n} catch (e) {\n  reply = 'Mesajınız için teşekkür ederim. Size nasıl yardımcı olabilirim?';\n}\n\nif (!reply) reply = 'Mesajınız için teşekkür ederim. Size nasıl yardımcı olabilirim?';\n\nconst metadata = analysis.metadata || {};\nconst cd = metadata.collected_data || {};\nconst ls = metadata.lead_signals || {};\nlet score = 0, breakdown = {};\n\nif (cd.interested_service) { score += 10; breakdown.service = 10; }\nif (cd.pain_point && cd.pain_point.length > 20) { score += 10; breakdown.pain_detailed = 10; }\nelse if (cd.pain_point) { score += 5; breakdown.pain_basic = 5; }\n\nconst tScores = { 'hemen': 20, '1_hafta': 15, '1_ay': 8, '3_ay': 3, 'belirsiz': 0 };\nif (cd.timeline && tScores[cd.timeline] !== undefined) { score += tScores[cd.timeline]; breakdown.timeline = tScores[cd.timeline]; }\nif (cd.previous_consultation === 'baska_klinik') { score += 10; breakdown.researched = 10; }\nif (cd.previous_consultation === 'ameliyat_olmus') { score += 12; breakdown.revision = 12; }\nif (['fiyat_sordu','taksit_sordu','butce_belirti'].includes(cd.budget_awareness)) { score += 8; breakdown.budget = 8; }\nif (cd.preferred_consultation_type) { score += 10; breakdown.consult_pref = 10; }\nif (cd.preferred_day_time) { score += 15; breakdown.appt_interest = 15; }\nif (ls.engagement_level === 'high') { score += 8; breakdown.high_eng = 8; }\nelse if (ls.engagement_level === 'medium') { score += 4; breakdown.med_eng = 4; }\nif (ls.buying_intent === 'ready') { score += 15; breakdown.ready = 15; }\nelse if (ls.buying_intent === 'considering') { score += 8; breakdown.considering = 8; }\nif (ls.urgency === 'high') { score += 7; breakdown.urgency = 7; }\nif (ls.buying_intent === 'just_browsing') { score -= 5; breakdown.browsing = -5; }\n\nconst totalImages = (promptData.imagesReceived || 0) + (promptData.imageCount || 0);\nif (totalImages > 0) { const s = Math.min(totalImages * 15, 30); score += s; breakdown.images = s; }\nscore = Math.max(0, Math.min(100, score));\nlet isMedicalImage = false;\ntry { isMedicalImage = $('Parse Vision Result').first().json.isMedicalImage || false; } catch(e) {}\nif (isMedicalImage) { score = 85; breakdown = { medical_image: 85 }; }\n\nconst totalTokens = (analysis.analysisTokens || 0) + (replyResponse.usage?.total_tokens || 0);\n\nreturn [{ json: {\n  reply, metadata, score, breakdown,\n  handoffNeeded: metadata.handoff_recommended === true || score >= 70,\n  conversationId: promptData.conversationId,\n  contactId: promptData.contactId,\n  clinicId: promptData.clinicId,\n  containsImage: promptData.containsImage,\n  imageCount: promptData.imageCount,\n  totalImages, messageCount: promptData.messageCount + 1,\n  contactName: promptData.contactName,\n  tokensUsed: totalTokens\n} }];"
       },
       "id": "e3620fe5-50a7-4dde-98f7-d656b1346415",
       "name": "Parse AI + Score",
@@ -1058,7 +1058,130 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1248,
+        2368,
+        640
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Md0VYQIRwzXvJz7P",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"model\": \"gpt-4o-mini\", \"max_tokens\": 20, \"messages\": [{ \"role\": \"user\", \"content\": [{ \"type\": \"text\", \"text\": \"Bu görsel tıbbi içerik mi? (cilt sorunu, yara, ameliyat izi, öncesi-sonrası fotoğraf, röntgen, MR vb.) Sadece TIBBI veya TIBBI_DEGIL yaz.\" }, { \"type\": \"image_url\", \"image_url\": { \"url\": $('Human Check').item.json.imageUrl || '' } }] }] }) }}",
+        "options": {}
+      },
+      "id": "v1s2i3o4-v5v5-4v5v-v555-vision000001",
+      "name": "OpenAI Vision: Medical Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "continueOnFail": true,
+      "position": [
+        1536,
+        512
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cc9Z3PiEo03vJ1hN",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const visionResponse = $input.item.json;\nconst humanCheck = $('Human Check').item.json;\nlet isMedicalImage = false;\ntry {\n  const content = (visionResponse.choices && visionResponse.choices[0].message.content) || '';\n  const upper = content.trim().toUpperCase();\n  isMedicalImage = upper.includes('TIBBI') && !upper.includes('TIBBI_DEGIL');\n} catch(e) {\n  isMedicalImage = false;\n}\nreturn [{ json: { ...humanCheck, isMedicalImage } }];"
+      },
+      "id": "p1a2r3s4-p6p6-4p6p-p666-parse0000001",
+      "name": "Parse Vision Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "med-check-001",
+              "leftValue": "={{ $json.isMedicalImage }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "m1e2d3i4-m7m7-4m7m-m777-medical00001",
+      "name": "If: Is Medical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2096,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.ghlApiBase }}/contacts/{{ $('Human Check').item.json.contactId }}/tags",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "={{ $('Config').item.json.ghlApiVersion }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.ghlPitToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"tags\": [\"tibbi_gorsel\", \"hot_lead\"]}",
+        "options": {}
+      },
+      "id": "g1h2l3t4-g8g8-4g8g-g888-ghltag000001",
+      "name": "GHL Tag: tibbi_gorsel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2368,
         384
       ],
       "credentials": {
@@ -1460,11 +1583,62 @@
       "main": [
         [
           {
-            "node": "GHL Tag: Gorsel Alindi",
+            "node": "OpenAI Vision: Medical Check",
             "type": "main",
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Find Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Vision: Medical Check": {
+      "main": [
+        [
+          {
+            "node": "Parse Vision Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Vision Result": {
+      "main": [
+        [
+          {
+            "node": "If: Is Medical?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Is Medical?": {
+      "main": [
+        [
+          {
+            "node": "GHL Tag: tibbi_gorsel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GHL Tag: Gorsel Alindi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Tag: tibbi_gorsel": {
+      "main": [
         [
           {
             "node": "Find Conversation",
