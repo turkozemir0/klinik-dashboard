@@ -196,7 +196,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"add_tags\",\n  \"clinic_id\": \"$('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_hotlead_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_hotlead\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"tags\": [\"hot_lead\",\"human_handoff\",\"appointment_ready\"]\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"add_tags\",\n  \"clinic_id\": $('Merge Conv Data').first().json.clinic_id,\n  \"correlation_id\": $('Merge Conv Data').first().json.ghl_contact_id + \"_hotlead_\" + Date.now(),\n  \"idempotency_key\": $('Merge Conv Data').first().json.ghl_contact_id + \"_hotlead\",\n  \"params\": {\n    \"contact_id\": $('Merge Conv Data').first().json.ghl_contact_id,\n    \"tags\": [\"hot_lead\",\"human_handoff\",\"appointment_ready\"]\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
