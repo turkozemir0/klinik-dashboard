@@ -1000,30 +1000,28 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Human Check').item.json.contactId }}/tags",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Version",
-              "value": "2021-07-28"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "Bearer pit-3078af89-45b0-459f-8e7e-91aafc5a78ad"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"tags\": [\"gorsel_gonderdi\"]}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"add_tags\",\n  \"clinic_id\": $('Human Check').first().json.clinicId,\n  \"correlation_id\": $('Human Check').first().json.contactId + \"_gorsel_\" + Date.now(),\n  \"idempotency_key\": $('Human Check').first().json.contactId + \"_gorsel_alindi\",\n  \"params\": {\n    \"contact_id\": $('Human Check').first().json.contactId,\n    \"tags\": [\"gorsel_gonderdi\"]\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "a5b6c7d8-5555-4555-a555-555555555555",
       "name": "GHL Tag: Gorsel Alindi",
@@ -1033,12 +1031,7 @@
         2368,
         640
       ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "Md0VYQIRwzXvJz7P",
-          "name": "Header Auth account 4"
-        }
-      }
+      "credentials": {}
     },
     {
       "parameters": {
@@ -1175,7 +1168,7 @@
           "conditions": [
             {
               "id": "crm-router-001",
-              "leftValue": "={{ (.first().json.body.crmType || 'ghl') }}",
+              "leftValue": "={{ ($('Webhook Incoming').first().json.body || $('Webhook Incoming').first().json).crmType || 'ghl' }}",
               "rightValue": "ghl",
               "operator": {
                 "type": "string",
@@ -1199,7 +1192,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ .first().json.body.crmConfig?.send_message_url || '' }}",
+        "url": "https://iylabpsokydolhuhvvwi.supabase.co/functions/v1/crm-gateway",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -1208,16 +1201,12 @@
             {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + .first().json.clinics?.crm_token }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  contactId: .first().json.contactId,\n  message: .first().json.reply,\n  ...(.first().json.body.crmConfig?.field_map || {})\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"v1\",\n  \"action\": \"send_message\",\n  \"clinic_id\": $('Parse AI + Score').first().json.clinicId,\n  \"correlation_id\": $('Parse AI + Score').first().json.contactId + \"_reply_\" + Date.now(),\n  \"idempotency_key\": $('Parse AI + Score').first().json.contactId + \"_custom_reply\",\n  \"params\": {\n    \"contact_id\": $('Parse AI + Score').first().json.contactId,\n    \"message\": $('Parse AI + Score').first().json.reply,\n    \"message_type\": \"SMS\"\n  }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -1233,7 +1222,8 @@
       "position": [
         272,
         1024
-      ]
+      ],
+      "credentials": {}
     }
   ],
   "pinData": {},
