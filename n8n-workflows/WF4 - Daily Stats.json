@@ -16,7 +16,10 @@
       "name": "Daily 23:59",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-304, -320]
+      "position": [
+        -304,
+        -320
+      ]
     },
     {
       "parameters": {
@@ -29,6 +32,10 @@
             {
               "name": "apikey",
               "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             }
           ]
         },
@@ -38,7 +45,10 @@
       "name": "Get Active Clinics",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-64, -320],
+      "position": [
+        -64,
+        -320
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -54,7 +64,10 @@
       "name": "Split Clinics",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [192, -320]
+      "position": [
+        192,
+        -320
+      ]
     },
     {
       "parameters": {
@@ -67,6 +80,10 @@
             {
               "name": "apikey",
               "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             }
           ]
         },
@@ -76,7 +93,10 @@
       "name": "Get Clinic Conversations",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [432, -320],
+      "position": [
+        432,
+        -320
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -92,7 +112,10 @@
       "name": "Calculate Stats",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [672, -320]
+      "position": [
+        672,
+        -320
+      ]
     },
     {
       "parameters": {
@@ -106,6 +129,10 @@
             {
               "name": "apikey",
               "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
@@ -126,7 +153,10 @@
       "name": "Upsert Stats",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [912, -320],
+      "position": [
+        912,
+        -320
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "Md0VYQIRwzXvJz7P",
@@ -142,7 +172,10 @@
       "name": "Format Email Body",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1152, -320]
+      "position": [
+        1152,
+        -320
+      ]
     },
     {
       "parameters": {
@@ -156,7 +189,10 @@
       "name": "Send Daily Report",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [1392, -320],
+      "position": [
+        1392,
+        -320
+      ],
       "credentials": {
         "smtp": {
           "id": "SMTP_CREDENTIAL_ID",

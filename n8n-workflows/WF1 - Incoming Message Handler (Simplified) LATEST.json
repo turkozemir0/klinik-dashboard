@@ -138,6 +138,10 @@
             {
               "name": "apikey",
               "value": "={{ $('Config').item.json.supabaseKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             }
           ]
         },
@@ -215,6 +219,10 @@
             {
               "name": "apikey",
               "value": "={{ $('Config').item.json.supabaseKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
@@ -319,6 +327,10 @@
             {
               "name": "apikey",
               "value": "={{ $('Config').item.json.supabaseKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             }
           ]
         },
@@ -351,6 +363,10 @@
             {
               "name": "apikey",
               "value": "={{ $('Config').item.json.supabaseKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             }
           ]
         },
@@ -382,6 +398,10 @@
             {
               "name": "apikey",
               "value": "={{ $('Config').item.json.supabaseKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             }
           ]
         },
@@ -413,6 +433,10 @@
             {
               "name": "apikey",
               "value": "={{ $('Config').item.json.supabaseKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             }
           ]
         },
@@ -458,6 +482,10 @@
             {
               "name": "apikey",
               "value": "={{ $('Config').first().json.supabaseKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
@@ -612,6 +640,10 @@
               "value": "={{ $('Config').first().json.supabaseKey }}"
             },
             {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
+            },
+            {
               "name": "Content-Type",
               "value": "application/json"
             },
@@ -653,6 +685,10 @@
             {
               "name": "apikey",
               "value": "={{ $('Config').first().json.supabaseKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
@@ -928,6 +964,10 @@
             {
               "name": "apikey",
               "value": "={{ $('Config').first().json.supabaseKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             },
             {
               "name": "Content-Type",

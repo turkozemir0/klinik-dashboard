@@ -32,6 +32,10 @@
             {
               "name": "apikey",
               "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             }
           ]
         },
@@ -119,6 +123,10 @@
             {
               "name": "apikey",
               "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGFicHNva3lkb2xodWh2dndpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTA4OTY4MiwiZXhwIjoyMDg2NjY1NjgyfQ.O01ol7bGXIw25yQj5cWiQd5kdke2yb0BYy_-8Pq2ZoM"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').item.json.supabaseKey }}"
             },
             {
               "name": "Content-Type",
