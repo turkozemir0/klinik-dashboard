@@ -191,10 +191,6 @@
             {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "x-gateway-secret",
-              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
@@ -231,10 +227,6 @@
             {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "x-gateway-secret",
-              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
@@ -271,10 +263,6 @@
             {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "x-gateway-secret",
-              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
@@ -311,10 +299,6 @@
             {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "x-gateway-secret",
-              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
@@ -351,10 +335,6 @@
             {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "x-gateway-secret",
-              "value": "={{ $env.GATEWAY_SECRET }}"
             }
           ]
         },
