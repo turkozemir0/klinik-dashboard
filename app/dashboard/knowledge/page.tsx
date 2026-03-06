@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { EditableField } from '@/components/dashboard/EditableField';
 import KnowledgeActions from '@/components/dashboard/KnowledgeActions';
+import { getLang, getT } from '@/lib/i18n-server';
 import { BookOpen, Building2, Stethoscope, HelpCircle, Clock } from 'lucide-react';
 import type { KbChangeRequest } from '@/types';
 
@@ -28,6 +29,9 @@ export default async function KnowledgePage() {
   const clinicId = await getClinicId(supabase, user.id);
   if (!clinicId) redirect('/login');
 
+  const lang = getLang();
+  const t = getT(lang);
+
   const [
     { data: clinic },
     { data: services },
@@ -49,22 +53,22 @@ export default async function KnowledgePage() {
   const pendingCount = allRequests.filter((r) => r.status === 'pending').length;
 
   const clinicFields = [
-    { key: 'phone',               label: 'Telefon' },
-    { key: 'email',               label: 'E-posta' },
-    { key: 'address',             label: 'Adres' },
-    { key: 'parking_info',        label: 'Otopark Bilgisi' },
-    { key: 'consultation_fee',    label: 'Ön Görüşme Ücreti' },
-    { key: 'cancellation_policy', label: 'İptal Politikası' },
-    { key: 'pricing_policy',      label: 'Fiyatlandırma Politikası' },
-    { key: 'greeting_message',    label: 'Karşılama Mesajı' },
+    { key: 'phone',               label: lang === 'en' ? 'Phone'              : 'Telefon' },
+    { key: 'email',               label: lang === 'en' ? 'Email'              : 'E-posta' },
+    { key: 'address',             label: lang === 'en' ? 'Address'            : 'Adres' },
+    { key: 'parking_info',        label: lang === 'en' ? 'Parking Info'       : 'Otopark Bilgisi' },
+    { key: 'consultation_fee',    label: lang === 'en' ? 'Consultation Fee'   : 'Ön Görüşme Ücreti' },
+    { key: 'cancellation_policy', label: lang === 'en' ? 'Cancellation Policy': 'İptal Politikası' },
+    { key: 'pricing_policy',      label: lang === 'en' ? 'Pricing Policy'     : 'Fiyatlandırma Politikası' },
+    { key: 'greeting_message',    label: lang === 'en' ? 'Greeting Message'   : 'Karşılama Mesajı' },
   ];
 
   const serviceFields = [
-    { key: 'description_for_ai', label: 'AI Açıklaması' },
-    { key: 'procedure_duration', label: 'İşlem Süresi' },
-    { key: 'recovery_time',      label: 'İyileşme Süreci' },
-    { key: 'final_result_time',  label: 'Sonuç Görülme Süresi' },
-    { key: 'pricing_response',   label: 'Fiyat Yanıtı' },
+    { key: 'description_for_ai', label: lang === 'en' ? 'AI Description'    : 'AI Açıklaması' },
+    { key: 'procedure_duration', label: lang === 'en' ? 'Procedure Duration' : 'İşlem Süresi' },
+    { key: 'recovery_time',      label: lang === 'en' ? 'Recovery Time'      : 'İyileşme Süreci' },
+    { key: 'final_result_time',  label: lang === 'en' ? 'Result Timeline'    : 'Sonuç Görülme Süresi' },
+    { key: 'pricing_response',   label: lang === 'en' ? 'Pricing Response'   : 'Fiyat Yanıtı' },
   ];
 
   return (
@@ -74,31 +78,29 @@ export default async function KnowledgePage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <BookOpen className="w-6 h-6 text-brand-600" />
-            Knowledge Base
+            {t.knowledge.title}
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Bilgileri görüntüle ve değişiklik öner — onaylandıktan sonra sisteme yansır
-          </p>
+          <p className="text-slate-500 text-sm mt-1">{t.knowledge.subtitle}</p>
         </div>
         {pendingCount > 0 && (
           <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
             <Clock className="w-4 h-4 text-amber-600" />
             <span className="text-sm font-medium text-amber-700">
-              {pendingCount} onay bekliyor
+              {t.knowledge.awaitingApproval(pendingCount)}
             </span>
           </div>
         )}
       </div>
 
-      {/* Nasıl çalışır */}
+      {/* How it works */}
       <div className="bg-brand-50 border border-brand-100 rounded-2xl p-5">
-        <h3 className="text-sm font-semibold text-brand-800 mb-2">Nasıl Çalışır?</h3>
+        <h3 className="text-sm font-semibold text-brand-800 mb-2">{t.knowledge.howItWorks}</h3>
         <div className="flex flex-wrap items-center gap-4 text-xs text-brand-700">
-          <span>1️⃣ Alanın üzerine gel → <strong>Öner</strong> butonuna tıkla</span>
+          <span>1️⃣ {t.knowledge.step1}</span>
           <span>→</span>
-          <span>2️⃣ Yeni değeri yaz → Gönder</span>
+          <span>2️⃣ {t.knowledge.step2}</span>
           <span>→</span>
-          <span>3️⃣ Yönetici onaylayınca sisteme yansır</span>
+          <span>3️⃣ {t.knowledge.step3}</span>
         </div>
       </div>
 
@@ -106,7 +108,7 @@ export default async function KnowledgePage() {
       <div className="card overflow-hidden">
         <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50">
           <Building2 className="w-4 h-4 text-slate-600" />
-          <h2 className="text-sm font-semibold text-slate-700">Klinik Profili</h2>
+          <h2 className="text-sm font-semibold text-slate-700">{t.knowledge.clinicProfile}</h2>
         </div>
         <div className="px-6 py-2">
           {clinic && clinicFields.map((field) => (
@@ -129,8 +131,8 @@ export default async function KnowledgePage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Stethoscope className="w-4 h-4 text-slate-600" />
-            <h2 className="text-sm font-semibold text-slate-700">Hizmetler</h2>
-            <span className="text-xs text-slate-400">({services?.length ?? 0} aktif)</span>
+            <h2 className="text-sm font-semibold text-slate-700">{t.knowledge.services}</h2>
+            <span className="text-xs text-slate-400">{t.knowledge.activeCount(services?.length ?? 0)}</span>
           </div>
           <KnowledgeActions type="service" clinicId={clinicId} clinicName={clinic?.name ?? ''} />
         </div>
@@ -171,8 +173,8 @@ export default async function KnowledgePage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <HelpCircle className="w-4 h-4 text-slate-600" />
-            <h2 className="text-sm font-semibold text-slate-700">Sık Sorulan Sorular</h2>
-            <span className="text-xs text-slate-400">({faqs?.length ?? 0} kayıt)</span>
+            <h2 className="text-sm font-semibold text-slate-700">{t.knowledge.faqs}</h2>
+            <span className="text-xs text-slate-400">{t.knowledge.recordCount(faqs?.length ?? 0)}</span>
           </div>
           <KnowledgeActions type="faq" clinicId={clinicId} clinicName={clinic?.name ?? ''} />
         </div>
@@ -183,9 +185,9 @@ export default async function KnowledgePage() {
               <EditableField
                 tableName="faqs"
                 recordId={faq.id}
-                recordLabel={faq.question_patterns?.[0] ?? 'SSS'}
+                recordLabel={faq.question_patterns?.[0] ?? t.knowledge.faqs}
                 fieldName="answer"
-                fieldLabel={`Soru: ${faq.question_patterns?.[0] ?? ''}${(faq.question_patterns?.length ?? 0) > 1 ? ` (+${(faq.question_patterns?.length ?? 1) - 1})` : ''}`}
+                fieldLabel={`${t.knowledge.newQuestion} ${faq.question_patterns?.[0] ?? ''}${(faq.question_patterns?.length ?? 0) > 1 ? ` (+${(faq.question_patterns?.length ?? 1) - 1})` : ''}`}
                 value={faq.answer ?? ''}
                 pendingRequest={findPending(allRequests, faq.id, 'answer')}
               />
@@ -198,19 +200,18 @@ export default async function KnowledgePage() {
       {allRequests.length > 0 && (
         <div className="card overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100">
-            <h2 className="text-sm font-semibold text-slate-800">Son Değişiklik İsteklerim</h2>
+            <h2 className="text-sm font-semibold text-slate-800">{t.knowledge.recentRequests}</h2>
           </div>
           <div className="divide-y divide-slate-50">
             {allRequests.slice(0, 10).map((req) => {
-              // JSON new_value'yu okunabilir hale getir
               let displayValue = req.new_value ?? '';
               if (req.field_name === '__new_service__' || req.field_name === '__new_faq__') {
                 try {
                   const parsed = JSON.parse(req.new_value ?? '');
                   displayValue = req.field_name === '__new_faq__'
-                    ? `Soru: "${parsed.question_patterns?.[0] ?? ''}" → ${parsed.answer?.substring(0, 40) ?? ''}`
-                    : `Yeni hizmet: ${parsed.display_name ?? ''}`;
-                } catch { /* ham göster */ }
+                    ? `${t.knowledge.newQuestion} "${parsed.question_patterns?.[0] ?? ''}" → ${parsed.answer?.substring(0, 40) ?? ''}`
+                    : `${t.knowledge.newService} ${parsed.display_name ?? ''}`;
+                } catch { /* show raw */ }
               }
               return (
                 <div key={req.id} className="flex items-center gap-4 px-6 py-3">
@@ -230,7 +231,7 @@ export default async function KnowledgePage() {
                     </p>
                     {req.status === 'rejected' && req.rejection_note && (
                       <p className="text-xs text-red-500 mt-0.5 truncate">
-                        Red sebebi: {req.rejection_note}
+                        {t.knowledge.rejectionReason} {req.rejection_note}
                       </p>
                     )}
                   </div>
@@ -239,8 +240,8 @@ export default async function KnowledgePage() {
                     req.status === 'approved' ? 'text-emerald-600' :
                     'text-red-600'
                   }`}>
-                    {req.status === 'pending'  ? 'Bekliyor' :
-                     req.status === 'approved' ? 'Onaylandı' : 'Reddedildi'}
+                    {req.status === 'pending'  ? t.knowledge.statusPending  :
+                     req.status === 'approved' ? t.knowledge.statusApproved : t.knowledge.statusRejected}
                   </span>
                 </div>
               );

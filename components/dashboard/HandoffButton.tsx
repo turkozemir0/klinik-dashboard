@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { triggerHandoff } from '@/lib/actions/handoff-actions';
+import { useTranslation } from '@/lib/i18n/LanguageProvider';
 
 interface HandoffButtonProps {
   conversationId: string;
@@ -12,13 +13,14 @@ export default function HandoffButton({ conversationId, alreadyHandedOff }: Hand
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(alreadyHandedOff);
   const [error, setError] = useState('');
+  const { t } = useTranslation();
 
   if (done) {
-    return <span className="text-purple-600 font-medium text-xs">✓ Devredildi</span>;
+    return <span className="text-purple-600 font-medium text-xs">{t.handoffButton.done}</span>;
   }
 
   async function handleClick() {
-    if (!confirm('Bu leadı satış ekibine devretmek istiyor musunuz?')) return;
+    if (!confirm(t.handoffButton.confirm)) return;
     setLoading(true);
     setError('');
     const result = await triggerHandoff(conversationId);
@@ -37,7 +39,7 @@ export default function HandoffButton({ conversationId, alreadyHandedOff }: Hand
         disabled={loading}
         className="px-3 py-1.5 text-xs font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors whitespace-nowrap"
       >
-        {loading ? 'Gönderiliyor…' : "Handoff'a Gönder"}
+        {loading ? t.handoffButton.sending : t.handoffButton.send}
       </button>
       {error && <p className="text-red-500 text-xs max-w-32">{error}</p>}
     </div>

@@ -3,34 +3,11 @@
 import { useState, useTransition } from 'react';
 import { submitSupportTicket } from '@/lib/actions/ticket-actions';
 import { X, Send, Loader2, LifeBuoy, AlertTriangle, Lightbulb, Wrench } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n/LanguageProvider';
 
 interface SupportTicketModalProps {
   onClose: () => void;
 }
-
-const categories = [
-  {
-    key: 'general',
-    label: 'Genel Soru / Öneri',
-    icon: Lightbulb,
-    color: 'text-blue-600 bg-blue-50 border-blue-200',
-    activeColor: 'bg-blue-600 text-white border-blue-600',
-  },
-  {
-    key: 'technical',
-    label: 'Teknik Sorun',
-    icon: Wrench,
-    color: 'text-orange-600 bg-orange-50 border-orange-200',
-    activeColor: 'bg-orange-600 text-white border-orange-600',
-  },
-  {
-    key: 'kb_urgent',
-    label: 'KB Güncelleme (Acil)',
-    icon: AlertTriangle,
-    color: 'text-red-600 bg-red-50 border-red-200',
-    activeColor: 'bg-red-600 text-white border-red-600',
-  },
-] as const;
 
 export default function SupportTicketModal({ onClose }: SupportTicketModalProps) {
   const [category, setCategory] = useState<'general' | 'technical' | 'kb_urgent'>('general');
@@ -38,10 +15,35 @@ export default function SupportTicketModal({ onClose }: SupportTicketModalProps)
   const [description, setDescription] = useState('');
   const [result, setResult] = useState<{ success?: boolean; error?: string } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const { t } = useTranslation();
+
+  const categories = [
+    {
+      key: 'general' as const,
+      label: t.support.general,
+      icon: Lightbulb,
+      color: 'text-blue-600 bg-blue-50 border-blue-200',
+      activeColor: 'bg-blue-600 text-white border-blue-600',
+    },
+    {
+      key: 'technical' as const,
+      label: t.support.technical,
+      icon: Wrench,
+      color: 'text-orange-600 bg-orange-50 border-orange-200',
+      activeColor: 'bg-orange-600 text-white border-orange-600',
+    },
+    {
+      key: 'kb_urgent' as const,
+      label: t.support.kbUrgent,
+      icon: AlertTriangle,
+      color: 'text-red-600 bg-red-50 border-red-200',
+      activeColor: 'bg-red-600 text-white border-red-600',
+    },
+  ];
 
   function handleSubmit() {
     if (!subject.trim() || !description.trim()) {
-      setResult({ error: 'Konu ve açıklama zorunludur' });
+      setResult({ error: t.supportTicketModal.requiredError });
       return;
     }
     const fd = new FormData();
@@ -56,6 +58,11 @@ export default function SupportTicketModal({ onClose }: SupportTicketModalProps)
     });
   }
 
+  const subjectPlaceholder =
+    category === 'technical' ? t.supportTicketModal.subjectPlaceholderTechnical :
+    category === 'kb_urgent' ? t.supportTicketModal.subjectPlaceholderKbUrgent :
+    t.supportTicketModal.subjectPlaceholderGeneral;
+
   const inputCls = "w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm text-slate-900";
 
   return (
@@ -68,8 +75,8 @@ export default function SupportTicketModal({ onClose }: SupportTicketModalProps)
               <LifeBuoy className="w-4 h-4 text-brand-600" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Destek Talebi</h3>
-              <p className="text-xs text-slate-400">Size en kısa sürede dönüş yapacağız</p>
+              <h3 className="text-base font-semibold text-slate-900">{t.supportTicketModal.title}</h3>
+              <p className="text-xs text-slate-400">{t.supportTicketModal.subtitle}</p>
             </div>
           </div>
           <button onClick={onClose} className="btn-ghost p-1.5">
@@ -79,10 +86,10 @@ export default function SupportTicketModal({ onClose }: SupportTicketModalProps)
 
         {/* Body */}
         <div className="overflow-y-auto flex-1 p-6 space-y-5">
-          {/* Kategori seçimi */}
+          {/* Kategori */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-              Kategori <span className="text-red-500">*</span>
+              {t.supportTicketModal.categoryLabel} <span className="text-red-500">*</span>
             </label>
             <div className="grid grid-cols-3 gap-2">
               {categories.map((cat) => {
@@ -107,17 +114,13 @@ export default function SupportTicketModal({ onClose }: SupportTicketModalProps)
           {/* Konu */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Konu <span className="text-red-500">*</span>
+              {t.supportTicketModal.subject} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              placeholder={
-                category === 'technical' ? 'ör: Dashboard açılmıyor' :
-                category === 'kb_urgent' ? 'ör: Fiyat bilgisi acil güncellenmeli' :
-                'ör: Yeni özellik önerisi'
-              }
+              placeholder={subjectPlaceholder}
               className={inputCls}
             />
           </div>
@@ -125,22 +128,20 @@ export default function SupportTicketModal({ onClose }: SupportTicketModalProps)
           {/* Açıklama */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Açıklama <span className="text-red-500">*</span>
+              {t.supportTicketModal.descriptionLabel} <span className="text-red-500">*</span>
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={5}
-              placeholder="Sorununuzu veya önerinizi detaylı açıklayın…"
+              placeholder={t.supportTicketModal.descriptionPlaceholder}
               className={`${inputCls} resize-none`}
             />
           </div>
 
           {category === 'kb_urgent' && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-              <p className="text-xs text-red-700 font-medium">
-                🚨 Acil KB güncelleme talepleri öncelikli işleme alınır.
-              </p>
+              <p className="text-xs text-red-700 font-medium">{t.supportTicketModal.urgentNote}</p>
             </div>
           )}
 
@@ -150,21 +151,21 @@ export default function SupportTicketModal({ onClose }: SupportTicketModalProps)
                 ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
                 : 'bg-red-50 border border-red-200 text-red-700'
             }`}>
-              {result.success ? '✓ Talebiniz alındı! En kısa sürede dönüş yapılacak.' : result.error}
+              {result.success ? t.supportTicketModal.success : result.error}
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 flex-shrink-0">
-          <button onClick={onClose} className="btn-ghost text-sm">İptal</button>
+          <button onClick={onClose} className="btn-ghost text-sm">{t.common.cancel}</button>
           <button
             onClick={handleSubmit}
             disabled={isPending || !subject.trim() || !description.trim()}
             className="btn-primary flex items-center gap-2 text-sm"
           >
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            Gönder
+            {t.supportTicketModal.submit}
           </button>
         </div>
       </div>

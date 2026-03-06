@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import LeadScoreBadge from '@/components/dashboard/LeadScoreBadge';
+import { getLang, getT, getDateLocale } from '@/lib/i18n-server';
 import { format, parseISO } from 'date-fns';
-import { tr } from 'date-fns/locale';
 import { CheckCircle, Clock, XCircle, AlertCircle } from 'lucide-react';
 
 type OutcomeFilter = 'all' | 'pending' | 'converted' | 'lost' | 'no_answer';
@@ -16,13 +16,6 @@ async function getClinicId(supabase: ReturnType<typeof createClient>, userId: st
   return data?.clinic_id as string | undefined;
 }
 
-const outcomeConfig = {
-  pending:    { label: 'Beklemede', icon: Clock, class: 'text-amber-600 bg-amber-50', badge: 'badge-warm' },
-  converted:  { label: 'Dönüştü', icon: CheckCircle, class: 'text-emerald-600 bg-emerald-50', badge: 'badge-active' },
-  lost:       { label: 'Kaybedildi', icon: XCircle, class: 'text-red-600 bg-red-50', badge: 'badge-hot' },
-  no_answer:  { label: 'Cevap Yok', icon: AlertCircle, class: 'text-slate-500 bg-slate-50', badge: 'badge-closed' },
-};
-
 export default async function HandoffLogsPage({ searchParams }: PageProps) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -30,6 +23,17 @@ export default async function HandoffLogsPage({ searchParams }: PageProps) {
 
   const clinicId = await getClinicId(supabase, user.id);
   if (!clinicId) redirect('/login');
+
+  const lang = getLang();
+  const t = getT(lang);
+  const dateLocale = getDateLocale(lang);
+
+  const outcomeConfig = {
+    pending:   { label: t.handoffs.pending,   icon: Clock,         class: 'text-amber-600 bg-amber-50',   badge: 'badge-warm' },
+    converted: { label: t.handoffs.converted, icon: CheckCircle,   class: 'text-emerald-600 bg-emerald-50', badge: 'badge-active' },
+    lost:      { label: t.handoffs.lost,      icon: XCircle,       class: 'text-red-600 bg-red-50',       badge: 'badge-hot' },
+    no_answer: { label: t.handoffs.noAnswer,  icon: AlertCircle,   class: 'text-slate-500 bg-slate-50',   badge: 'badge-closed' },
+  };
 
   const outcomeFilter = searchParams.outcome ?? 'all';
 
@@ -70,8 +74,8 @@ export default async function HandoffLogsPage({ searchParams }: PageProps) {
     <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Handoff Logları</h1>
-        <p className="text-slate-500 text-sm mt-1">Satış ekibine iletilen leadlerin takibi</p>
+        <h1 className="text-2xl font-bold text-slate-900">{t.handoffs.title}</h1>
+        <p className="text-slate-500 text-sm mt-1">{t.handoffs.subtitle}</p>
       </div>
 
       {/* Summary cards */}
@@ -98,12 +102,12 @@ export default async function HandoffLogsPage({ searchParams }: PageProps) {
       <div className="card p-5 bg-gradient-to-r from-brand-50 to-white border-brand-100">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-slate-600">Toplam Dönüşüm Oranı</p>
+            <p className="text-sm font-medium text-slate-600">{t.handoffs.totalConversionRate}</p>
             <p className="text-3xl font-bold text-brand-700 mt-1 tabular-nums">{conversionRate}%</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-slate-400">{counts.converted ?? 0} dönüştü</p>
-            <p className="text-xs text-slate-400">{allLogs.data?.length ?? 0} toplam handoff</p>
+            <p className="text-xs text-slate-400">{t.handoffs.convertedCount(counts.converted ?? 0)}</p>
+            <p className="text-xs text-slate-400">{t.handoffs.totalHandoffs(allLogs.data?.length ?? 0)}</p>
           </div>
         </div>
       </div>
@@ -120,7 +124,7 @@ export default async function HandoffLogsPage({ searchParams }: PageProps) {
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            {o === 'all' ? 'Tümü' : outcomeConfig[o as keyof typeof outcomeConfig].label}
+            {o === 'all' ? t.common.all : outcomeConfig[o as keyof typeof outcomeConfig].label}
             {o !== 'all' && counts[o] !== undefined && (
               <span className="ml-1 text-slate-400">({counts[o]})</span>
             )}
@@ -134,20 +138,20 @@ export default async function HandoffLogsPage({ searchParams }: PageProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Tarih</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Hasta</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Hizmet</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Skor</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Tetikleyici</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Sonuç</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Not</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.handoffs.date}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.handoffs.patient}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.handoffs.service}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.handoffs.score}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.handoffs.trigger}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.handoffs.result}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.handoffs.note}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {(logs ?? []).length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-16 text-center text-slate-400">
-                    Henüz handoff logu yok
+                    {t.handoffs.noLogs}
                   </td>
                 </tr>
               ) : (
@@ -166,7 +170,7 @@ export default async function HandoffLogsPage({ searchParams }: PageProps) {
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="px-5 py-3.5 text-xs text-slate-500 tabular-nums whitespace-nowrap">
-                        {format(parseISO(log.created_at), "d MMM yyyy HH:mm", { locale: tr })}
+                        {format(parseISO(log.created_at), "d MMM yyyy HH:mm", { locale: dateLocale })}
                       </td>
                       <td className="px-5 py-3.5">
                         <p className="font-medium text-slate-900">{name}</p>

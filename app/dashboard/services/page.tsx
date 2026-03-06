@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getLang, getT } from '@/lib/i18n-server';
 import { BarChart3, TrendingUp, ArrowRightLeft } from 'lucide-react';
 
 async function getClinicId(supabase: ReturnType<typeof createClient>, userId: string) {
@@ -15,26 +16,25 @@ export default async function ServicesPage() {
   const clinicId = await getClinicId(supabase, user.id);
   if (!clinicId) redirect('/login');
 
-  // Use the service_performance view — filtered by clinic_id
+  const lang = getLang();
+  const t = getT(lang);
+
   const { data: perfRows } = await supabase
     .from('service_performance')
     .select('*')
     .eq('clinic_id', clinicId)
     .order('total_leads', { ascending: false });
 
-  // Get active services list for reference
   const { data: services } = await supabase
     .from('services')
     .select('service_key, display_name, category')
     .eq('clinic_id', clinicId)
     .eq('is_active', true);
 
-  // Map service_key → display_name
   const serviceMap = Object.fromEntries(
     (services ?? []).map((s) => [s.service_key, s])
   );
 
-  // Summary
   const totalLeads = (perfRows ?? []).reduce((a, r) => a + (r.total_leads ?? 0), 0);
   const totalHandoffs = (perfRows ?? []).reduce((a, r) => a + (r.handoffs ?? 0), 0);
   const avgConvRate = (perfRows ?? []).length > 0
@@ -49,8 +49,8 @@ export default async function ServicesPage() {
     <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Hizmet Analitikleri</h1>
-        <p className="text-slate-500 text-sm mt-1">Her hizmet için lead kalitesi ve dönüşüm takibi</p>
+        <h1 className="text-2xl font-bold text-slate-900">{t.services.title}</h1>
+        <p className="text-slate-500 text-sm mt-1">{t.services.subtitle}</p>
       </div>
 
       {/* Summary cards */}
@@ -61,7 +61,7 @@ export default async function ServicesPage() {
               <BarChart3 className="w-5 h-5 text-brand-600" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Hizmet Kategorisi</p>
+              <p className="text-xs text-slate-500">{t.services.serviceCategories}</p>
               <p className="text-2xl font-bold text-slate-900 tabular-nums">{perfRows?.length ?? 0}</p>
             </div>
           </div>
@@ -72,7 +72,7 @@ export default async function ServicesPage() {
               <TrendingUp className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Toplam Lead</p>
+              <p className="text-xs text-slate-500">{t.services.totalLeads}</p>
               <p className="text-2xl font-bold text-slate-900 tabular-nums">{totalLeads}</p>
             </div>
           </div>
@@ -83,7 +83,7 @@ export default async function ServicesPage() {
               <ArrowRightLeft className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Ort. Dönüşüm</p>
+              <p className="text-xs text-slate-500">{t.services.avgConversion}</p>
               <p className="text-2xl font-bold text-slate-900 tabular-nums">{avgConvRate}%</p>
             </div>
           </div>
@@ -92,9 +92,9 @@ export default async function ServicesPage() {
 
       {/* Visual bar chart */}
       <div className="card p-6">
-        <h2 className="text-base font-semibold text-slate-800 mb-5">Lead Dağılımı (Hizmet Bazlı)</h2>
+        <h2 className="text-base font-semibold text-slate-800 mb-5">{t.services.leadDistributionByService}</h2>
         {(perfRows ?? []).length === 0 ? (
-          <p className="text-sm text-slate-400 py-8 text-center">Henüz veri yok</p>
+          <p className="text-sm text-slate-400 py-8 text-center">{t.services.noData}</p>
         ) : (
           <div className="space-y-4">
             {(perfRows ?? []).map((row) => {
@@ -113,7 +113,9 @@ export default async function ServicesPage() {
                         </span>
                       )}
                     </div>
-                    <span className="text-sm font-bold text-slate-900 tabular-nums">{row.total_leads} lead</span>
+                    <span className="text-sm font-bold text-slate-900 tabular-nums">
+                      {row.total_leads} {t.services.leads}
+                    </span>
                   </div>
                   <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                     <div
@@ -131,26 +133,26 @@ export default async function ServicesPage() {
       {/* Detailed table */}
       <div className="card overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100">
-          <h2 className="text-base font-semibold text-slate-800">Detaylı Performans</h2>
+          <h2 className="text-base font-semibold text-slate-800">{t.services.detailedPerformance}</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Hizmet</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Kategori</th>
-                <th className="text-right px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Lead</th>
-                <th className="text-right px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Ort. Skor</th>
-                <th className="text-right px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Handoff</th>
-                <th className="text-right px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Dönüşüm %</th>
-                <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Kalite</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.services.service}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.services.category}</th>
+                <th className="text-right px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.services.leadsCol}</th>
+                <th className="text-right px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.services.avgScore}</th>
+                <th className="text-right px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.services.handoffs}</th>
+                <th className="text-right px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.services.conversionPct}</th>
+                <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.services.quality}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {(perfRows ?? []).length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-16 text-center text-slate-400">
-                    Hizmet verisi henüz bulunmuyor
+                    {t.services.noTableData}
                   </td>
                 </tr>
               ) : (
@@ -191,7 +193,6 @@ export default async function ServicesPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
-                        {/* Mini score bar */}
                         <div className="flex items-center gap-1.5">
                           <div className="h-1.5 w-16 bg-slate-100 rounded-full overflow-hidden">
                             <div
@@ -204,7 +205,7 @@ export default async function ServicesPage() {
                             />
                           </div>
                           <span className="text-xs text-slate-400">
-                            {avgScore >= 70 ? 'Yüksek' : avgScore >= 40 ? 'Orta' : 'Düşük'}
+                            {avgScore >= 70 ? t.services.high : avgScore >= 40 ? t.services.medium : t.services.low}
                           </span>
                         </div>
                       </td>
