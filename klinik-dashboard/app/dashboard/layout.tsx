@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import Sidebar from '@/components/dashboard/Sidebar';
 import RealtimeProvider from '@/components/dashboard/RealtimeProvider';
 import { LanguageProvider } from '@/lib/i18n/LanguageProvider';
-import { getT } from '@/lib/i18n/server';
+import { getT } from '@/lib/i18n-server';
 import type { Lang } from '@/lib/i18n/messages';
 import type { Clinic } from '@/types';
 

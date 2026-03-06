@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
-import { getLang, getT } from '@/lib/i18n/server';
+import { getLang, getT } from '@/lib/i18n-server';
 import type { Lang } from '@/lib/i18n/messages';
 import SettingsForm from './SettingsForm';
 

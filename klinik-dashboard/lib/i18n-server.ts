@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { tr as trLocale, enGB } from 'date-fns/locale';
-import { type Lang, type Messages, getT } from './messages';
+import { type Lang, type Messages, getT } from './i18n/messages';
 
 export type { Lang, Messages };
 export { getT };

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { EditableField } from '@/components/dashboard/EditableField';
 import KnowledgeActions from '@/components/dashboard/KnowledgeActions';
-import { getLang, getT } from '@/lib/i18n/server';
+import { getLang, getT } from '@/lib/i18n-server';
 import { BookOpen, Building2, Stethoscope, HelpCircle, Clock } from 'lucide-react';
 import type { KbChangeRequest } from '@/types';
 
