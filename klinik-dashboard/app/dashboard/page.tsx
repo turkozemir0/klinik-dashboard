@@ -5,7 +5,7 @@ import TrendChart from '@/components/dashboard/TrendChart';
 import LeadScoreBadge from '@/components/dashboard/LeadScoreBadge';
 import OnboardingBanner from '@/components/dashboard/OnboardingBanner';
 import SupportButton from '@/components/dashboard/SupportButton';
-import { getLang, getT, getDateLocale } from '@/lib/i18n';
+import { getLang, getT, getDateLocale } from '@/lib/i18n/server';
 import {
   Users,
   Flame,

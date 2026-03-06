@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getLang, getT, getDateLocale } from '@/lib/i18n';
+import { getLang, getT, getDateLocale } from '@/lib/i18n/server';
 import { format, parseISO } from 'date-fns';
 import {
   LifeBuoy, Wrench, Lightbulb, AlertTriangle,

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import LeadScoreBadge from '@/components/dashboard/LeadScoreBadge';
-import { getLang, getT, getDateLocale } from '@/lib/i18n';
+import { getLang, getT, getDateLocale } from '@/lib/i18n/server';
 import { format, parseISO } from 'date-fns';
 import { CheckCircle, Clock, XCircle, AlertCircle } from 'lucide-react';
 

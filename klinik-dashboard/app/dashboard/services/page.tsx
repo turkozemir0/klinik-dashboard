@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getLang, getT } from '@/lib/i18n';
+import { getLang, getT } from '@/lib/i18n/server';
 import { BarChart3, TrendingUp, ArrowRightLeft } from 'lucide-react';
 
 async function getClinicId(supabase: ReturnType<typeof createClient>, userId: string) {
