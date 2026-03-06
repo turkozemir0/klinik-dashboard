@@ -2,6 +2,9 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import Sidebar from '@/components/dashboard/Sidebar';
 import RealtimeProvider from '@/components/dashboard/RealtimeProvider';
+import { LanguageProvider } from '@/lib/i18n/LanguageProvider';
+import { getT } from '@/lib/i18n';
+import type { Lang } from '@/lib/i18n/messages';
 import type { Clinic } from '@/types';
 
 export default async function DashboardLayout({
@@ -17,7 +20,7 @@ export default async function DashboardLayout({
   const { data: clinicUser, error: clinicError } = await supabase
     .from('clinic_users')
     .select(`
-      id, role,
+      id, role, language,
       clinic:clinic_id (
         id, name, slug, clinic_type, status,
         phone, email, address, district, city,
@@ -29,6 +32,9 @@ export default async function DashboardLayout({
     .eq('user_id', user.id)
     .single();
 
+  const language = ((clinicUser as any)?.language ?? 'tr') as Lang;
+  const t = getT(language);
+
   if (clinicError || !clinicUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
@@ -36,10 +42,8 @@ export default async function DashboardLayout({
           <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <span className="text-2xl">⚠️</span>
           </div>
-          <h2 className="text-lg font-semibold text-slate-900 mb-2">Klinik Erişimi Yok</h2>
-          <p className="text-slate-500 text-sm">
-            Bu hesaba henüz bir klinik bağlanmamış. Lütfen sistem yöneticinizle iletişime geçin.
-          </p>
+          <h2 className="text-lg font-semibold text-slate-900 mb-2">{t.clinicAccess.noAccess}</h2>
+          <p className="text-slate-500 text-sm">{t.clinicAccess.noAccessDesc}</p>
         </div>
       </div>
     );
@@ -48,13 +52,15 @@ export default async function DashboardLayout({
   const clinic = clinicUser.clinic as unknown as Clinic;
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <Sidebar clinic={clinic} />
-      {/* pt-14: mobil top bar yüksekliği kadar boşluk; lg'de sıfırlanır */}
-      <main className="flex-1 min-w-0 overflow-auto pt-14 lg:pt-0">
-        <RealtimeProvider clinicId={clinic.id} />
-        {children}
-      </main>
-    </div>
+    <LanguageProvider language={language}>
+      <div className="flex min-h-screen bg-slate-50">
+        <Sidebar clinic={clinic} />
+        {/* pt-14: mobil top bar yüksekliği kadar boşluk; lg'de sıfırlanır */}
+        <main className="flex-1 min-w-0 overflow-auto pt-14 lg:pt-0">
+          <RealtimeProvider clinicId={clinic.id} />
+          {children}
+        </main>
+      </div>
+    </LanguageProvider>
   );
 }

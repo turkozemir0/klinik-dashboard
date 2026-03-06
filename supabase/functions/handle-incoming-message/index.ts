@@ -46,7 +46,11 @@ function normalizePayload(
     const contactId = (rawPayload.contact_id || rawPayload.contactId) as string | null
     const message   = (rawPayload.message || rawPayload.body || '') as string
     const phone     = (rawPayload.phone || rawPayload.contact_phone || null) as string | null
-    const attachments = (rawPayload.attachments || []) as unknown[]
+    let attachments = (rawPayload.attachments || []) as unknown[]
+    // GHL type 20 = WhatsApp image (webhook'ta attachment URL gelmez, sadece type gelir)
+    if (rawPayload.type === 20 && attachments.length === 0) {
+      attachments = [{ url: null }]
+    }
     return { contactId, message, phone, attachments }
   }
 

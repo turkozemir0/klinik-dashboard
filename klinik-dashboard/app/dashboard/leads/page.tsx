@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import LeadScoreBadge from '@/components/dashboard/LeadScoreBadge';
+import { getLang, getT, getDateLocale } from '@/lib/i18n';
 import { format, parseISO } from 'date-fns';
-import { tr } from 'date-fns/locale';
 import { Search } from 'lucide-react';
 import HandoffButton from '@/components/dashboard/HandoffButton';
 
@@ -29,6 +29,10 @@ export default async function LeadsPage({ searchParams }: PageProps) {
 
   const clinicId = await getClinicId(supabase, user.id);
   if (!clinicId) redirect('/login');
+
+  const lang = getLang();
+  const t = getT(lang);
+  const dateLocale = getDateLocale(lang);
 
   const statusFilter = searchParams.status ?? 'all';
   const tierFilter = searchParams.tier ?? 'all';
@@ -68,9 +72,16 @@ export default async function LeadsPage({ searchParams }: PageProps) {
   });
 
   const statusLabels: Record<string, string> = {
-    active: 'Aktif',
-    handed_off: 'Handoff',
-    closed: 'Kapalı',
+    active: t.leads.statusActive,
+    handed_off: t.leads.statusHandedOff,
+    closed: t.leads.statusClosed,
+  };
+
+  const statusFilterLabels: Record<StatusFilter, string> = {
+    all: t.common.all,
+    active: t.leads.statusActive,
+    handed_off: t.leads.statusHandedOff,
+    closed: t.leads.statusClosed,
   };
 
   return (
@@ -78,8 +89,8 @@ export default async function LeadsPage({ searchParams }: PageProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Lead Pipeline</h1>
-          <p className="text-slate-500 text-sm mt-1">{filtered.length} lead gösteriliyor</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t.leads.title}</h1>
+          <p className="text-slate-500 text-sm mt-1">{t.leads.leadsShown(filtered.length)}</p>
         </div>
       </div>
 
@@ -93,7 +104,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
               type="text"
               name="q"
               defaultValue={query}
-              placeholder="İsim, telefon veya hizmet ara…"
+              placeholder={t.leads.searchPlaceholder}
               className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             />
           </div>
@@ -110,24 +121,24 @@ export default async function LeadsPage({ searchParams }: PageProps) {
                     : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
-                {s === 'all' ? 'Tümü' : statusLabels[s] ?? s}
+                {statusFilterLabels[s]}
               </a>
             ))}
           </div>
 
           {/* Tier filter */}
           <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
-            {(['all', 'hot', 'warm', 'cold'] as TierFilter[]).map((t) => (
+            {(['all', 'hot', 'warm', 'cold'] as TierFilter[]).map((tier) => (
               <a
-                key={t}
-                href={`/dashboard/leads?status=${statusFilter}&tier=${t}&q=${query}`}
+                key={tier}
+                href={`/dashboard/leads?status=${statusFilter}&tier=${tier}&q=${query}`}
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                  tierFilter === t
+                  tierFilter === tier
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
-                {t === 'all' ? 'Tümü' : t.toUpperCase()}
+                {tier === 'all' ? t.common.all : tier.toUpperCase()}
               </a>
             ))}
           </div>
@@ -140,20 +151,20 @@ export default async function LeadsPage({ searchParams }: PageProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Hasta</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Hizmet</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Skor</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Durum</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Handoff</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Aşama</th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Son Mesaj</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.leads.patient}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.leads.service}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.leads.score}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.leads.status}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.common.handoff}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.leads.stage}</th>
+                <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">{t.leads.lastMessage}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-16 text-center text-slate-400">
-                    Filtrelerle eşleşen lead bulunamadı
+                    {t.leads.noLeads}
                   </td>
                 </tr>
               ) : (
@@ -161,7 +172,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
                   const service = (conv.collected_data as { interested_service?: string })?.interested_service;
                   const name = conv.contact_name ?? conv.contact_phone;
                   const lastMsg = conv.last_message_at
-                    ? format(parseISO(conv.last_message_at), "d MMM HH:mm", { locale: tr })
+                    ? format(parseISO(conv.last_message_at), "d MMM HH:mm", { locale: dateLocale })
                     : '—';
 
                   return (

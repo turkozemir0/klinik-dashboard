@@ -1,24 +1,12 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getLang, getT, getDateLocale } from '@/lib/i18n';
 import { format, parseISO } from 'date-fns';
-import { tr } from 'date-fns/locale';
 import {
   LifeBuoy, Wrench, Lightbulb, AlertTriangle,
   Clock, Loader, CheckCircle, MessageSquare,
 } from 'lucide-react';
 import SupportButton from '@/components/dashboard/SupportButton';
-
-const categoryConfig = {
-  technical: { label: 'Teknik Sorun',        icon: Wrench,         color: 'text-orange-600 bg-orange-50 border-orange-200' },
-  kb_urgent: { label: 'KB Güncelleme (Acil)', icon: AlertTriangle,  color: 'text-red-600 bg-red-50 border-red-200' },
-  general:   { label: 'Genel / Öneri',         icon: Lightbulb,     color: 'text-blue-600 bg-blue-50 border-blue-200' },
-};
-
-const statusConfig = {
-  open:        { label: 'Açık',    bg: 'bg-amber-100 text-amber-700',    icon: Clock },
-  in_progress: { label: 'İşlemde', bg: 'bg-blue-100 text-blue-700',      icon: Loader },
-  resolved:    { label: 'Çözüldü', bg: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
-};
 
 export default async function SupportPage() {
   const supabase = createClient();
@@ -32,13 +20,27 @@ export default async function SupportPage() {
     .single();
   if (!cu) redirect('/login');
 
+  const lang = getLang();
+  const t = getT(lang);
+  const dateLocale = getDateLocale(lang);
+
+  const categoryConfig = {
+    technical: { label: t.support.technical,  icon: Wrench,        color: 'text-orange-600 bg-orange-50 border-orange-200' },
+    kb_urgent: { label: t.support.kbUrgent,   icon: AlertTriangle, color: 'text-red-600 bg-red-50 border-red-200' },
+    general:   { label: t.support.general,    icon: Lightbulb,     color: 'text-blue-600 bg-blue-50 border-blue-200' },
+  };
+
+  const statusConfig = {
+    open:        { label: t.support.open,       bg: 'bg-amber-100 text-amber-700',    icon: Clock },
+    in_progress: { label: t.support.inProgress, bg: 'bg-blue-100 text-blue-700',      icon: Loader },
+    resolved:    { label: t.support.resolved,   bg: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
+  };
+
   const { data: tickets } = await supabase
     .from('support_tickets')
     .select('*')
     .eq('clinic_id', cu.clinic_id)
     .order('created_at', { ascending: false });
-
-  const openCount = (tickets ?? []).filter(t => t.status !== 'resolved').length;
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -47,11 +49,9 @@ export default async function SupportPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <LifeBuoy className="w-6 h-6 text-brand-600" />
-            Destek Taleplerim
+            {t.support.title}
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Gönderdiğiniz talepler ve yönetici yanıtları
-          </p>
+          <p className="text-slate-500 text-sm mt-1">{t.support.subtitle}</p>
         </div>
         <SupportButton openTicketCount={0} />
       </div>
@@ -82,8 +82,8 @@ export default async function SupportPage() {
       {(tickets ?? []).length === 0 ? (
         <div className="card p-16 text-center">
           <LifeBuoy className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-500 text-sm font-medium mb-1">Henüz destek talebi yok</p>
-          <p className="text-slate-400 text-xs">Sorun veya öneriniz için yukarıdan yeni talep oluşturabilirsiniz</p>
+          <p className="text-slate-500 text-sm font-medium mb-1">{t.support.noTickets}</p>
+          <p className="text-slate-400 text-xs">{t.support.noTicketsHint}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -107,7 +107,7 @@ export default async function SupportPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-900 truncate">{ticket.subject}</p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {format(parseISO(ticket.created_at), "d MMMM yyyy, HH:mm", { locale: tr })}
+                      {format(parseISO(ticket.created_at), "d MMMM yyyy, HH:mm", { locale: dateLocale })}
                     </p>
                   </div>
                   <div className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${statusCfg.bg}`}>
@@ -119,7 +119,7 @@ export default async function SupportPage() {
                 {/* Ticket açıklama */}
                 <div className="px-6 py-4 space-y-4">
                   <div>
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Talebiniz</p>
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{t.support.yourRequest}</p>
                     <p className="text-sm text-slate-700 whitespace-pre-wrap">{ticket.description}</p>
                   </div>
 
@@ -128,10 +128,10 @@ export default async function SupportPage() {
                     <div className="bg-brand-50 border border-brand-100 rounded-xl px-5 py-4">
                       <div className="flex items-center gap-2 mb-2">
                         <MessageSquare className="w-3.5 h-3.5 text-brand-600" />
-                        <p className="text-xs font-semibold text-brand-700">Destek Ekibi Yanıtı</p>
+                        <p className="text-xs font-semibold text-brand-700">{t.support.supportReply}</p>
                         {ticket.replied_at && (
                           <span className="text-xs text-brand-400 ml-auto">
-                            {format(parseISO(ticket.replied_at), "d MMM HH:mm", { locale: tr })}
+                            {format(parseISO(ticket.replied_at), "d MMM HH:mm", { locale: dateLocale })}
                           </span>
                         )}
                       </div>
@@ -140,7 +140,7 @@ export default async function SupportPage() {
                   ) : (
                     <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-50 rounded-xl px-4 py-3">
                       <Clock className="w-3.5 h-3.5" />
-                      Talebiniz alındı, en kısa sürede yanıt verilecek
+                      {t.support.awaitingReply}
                     </div>
                   )}
                 </div>

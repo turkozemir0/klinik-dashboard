@@ -12,20 +12,14 @@ import {
   Activity,
   ChevronRight,
   BookOpen,
+  Settings,
   Menu,
   X,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useState } from 'react';
+import { useTranslation } from '@/lib/i18n/LanguageProvider';
 import type { Clinic } from '@/types';
-
-const navItems = [
-  { href: '/dashboard',           label: 'Genel Bakış',     icon: LayoutDashboard, exact: true },
-  { href: '/dashboard/leads',     label: 'Lead Pipeline',   icon: Users },
-  { href: '/dashboard/handoffs',  label: 'Handoff Logları', icon: ArrowRightLeft },
-  { href: '/dashboard/services',  label: 'Hizmet Analitik', icon: BarChart3 },
-  { href: '/dashboard/knowledge', label: 'Knowledge Base',  icon: BookOpen },
-];
 
 interface SidebarProps {
   clinic: Clinic;
@@ -36,6 +30,16 @@ export default function Sidebar({ clinic }: SidebarProps) {
   const router = useRouter();
   const supabase = createClient();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { t } = useTranslation();
+
+  const navItems = [
+    { href: '/dashboard',           label: t.sidebar.overview,        icon: LayoutDashboard, exact: true },
+    { href: '/dashboard/leads',     label: t.sidebar.leadPipeline,    icon: Users },
+    { href: '/dashboard/handoffs',  label: t.sidebar.handoffLogs,     icon: ArrowRightLeft },
+    { href: '/dashboard/services',  label: t.sidebar.serviceAnalytics, icon: BarChart3 },
+    { href: '/dashboard/knowledge', label: t.sidebar.knowledgeBase,   icon: BookOpen },
+    { href: '/dashboard/settings',  label: t.sidebar.settings,        icon: Settings },
+  ];
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -85,7 +89,7 @@ export default function Sidebar({ clinic }: SidebarProps) {
         </div>
         <div className="min-w-0">
           <p className="text-sm font-bold text-slate-900 truncate">{clinic.name}</p>
-          <p className="text-xs text-slate-500 truncate">AI Panel</p>
+          <p className="text-xs text-slate-500 truncate">{t.sidebar.aiPanel}</p>
         </div>
       </div>
     </div>
@@ -102,7 +106,7 @@ export default function Sidebar({ clinic }: SidebarProps) {
         )}
         <div className="flex items-center gap-1.5 pt-0.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          <span className="text-xs text-emerald-700 font-medium">Sistem Aktif</span>
+          <span className="text-xs text-emerald-700 font-medium">{t.sidebar.systemActive}</span>
         </div>
       </div>
       <button
@@ -110,7 +114,7 @@ export default function Sidebar({ clinic }: SidebarProps) {
         className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
       >
         <LogOut className="w-4 h-4" />
-        Çıkış Yap
+        {t.common.signOut}
       </button>
     </div>
   );

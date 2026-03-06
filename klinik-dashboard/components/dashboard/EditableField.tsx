@@ -4,6 +4,7 @@ import { useState } from 'react';
 import ChangeRequestModal from './ChangeRequestModal';
 import { Edit2, Clock, CheckCircle, XCircle } from 'lucide-react';
 import type { KbChangeRequest } from '@/types';
+import { useTranslation } from '@/lib/i18n/LanguageProvider';
 
 interface EditableFieldProps {
   tableName: 'clinics' | 'services' | 'faqs';
@@ -25,6 +26,7 @@ export function EditableField({
   pendingRequest,
 }: EditableFieldProps) {
   const [showModal, setShowModal] = useState(false);
+  const { t } = useTranslation();
 
   const hasPending = pendingRequest?.status === 'pending';
   const isApproved = pendingRequest?.status === 'approved';
@@ -38,10 +40,9 @@ export function EditableField({
             {fieldLabel}
           </p>
           <p className="text-sm text-slate-800 whitespace-pre-wrap">
-            {value || <span className="text-slate-300 italic">Boş</span>}
+            {value || <span className="text-slate-300 italic">{t.editableField.empty}</span>}
           </p>
 
-          {/* Bekleyen istek varsa göster */}
           {pendingRequest && (
             <div className={`mt-2 inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg ${
               hasPending  ? 'bg-amber-50 text-amber-700' :
@@ -51,21 +52,22 @@ export function EditableField({
               {hasPending  && <Clock className="w-3 h-3" />}
               {isApproved  && <CheckCircle className="w-3 h-3" />}
               {isRejected  && <XCircle className="w-3 h-3" />}
-              {hasPending  && `Onay bekliyor → "${pendingRequest.new_value?.substring(0, 40)}${(pendingRequest.new_value?.length ?? 0) > 40 ? '…' : ''}"`}
-              {isApproved  && 'Değişiklik onaylandı'}
-              {isRejected  && `Reddedildi${pendingRequest.rejection_note ? `: ${pendingRequest.rejection_note}` : ''}`}
+              {hasPending  && t.editableField.pendingApproval(
+                `${pendingRequest.new_value?.substring(0, 40) ?? ''}${(pendingRequest.new_value?.length ?? 0) > 40 ? '…' : ''}`
+              )}
+              {isApproved  && t.editableField.changeApproved}
+              {isRejected  && t.editableField.rejected(pendingRequest.rejection_note ?? '')}
             </div>
           )}
         </div>
 
-        {/* Düzenleme butonu */}
         {!hasPending && (
           <button
             onClick={() => setShowModal(true)}
             className="opacity-0 group-hover:opacity-100 flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg transition-all flex-shrink-0"
           >
             <Edit2 className="w-3 h-3" />
-            Öner
+            {t.editableField.suggest}
           </button>
         )}
       </div>

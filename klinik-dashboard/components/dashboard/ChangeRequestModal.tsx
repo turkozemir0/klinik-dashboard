@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { submitChangeRequest } from '@/lib/actions/kb-actions';
 import { X, Send, Loader2 } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n/LanguageProvider';
 
 interface ChangeRequestModalProps {
   tableName: 'clinics' | 'services' | 'faqs';
@@ -27,12 +28,13 @@ export default function ChangeRequestModal({
   const [changeNote, setChangeNote] = useState('');
   const [result, setResult] = useState<{ success?: boolean; error?: string } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const { t } = useTranslation();
 
   const isTextarea = oldValue.length > 80 || fieldName.includes('description') || fieldName.includes('answer');
 
   function handleSubmit() {
     if (newValue === oldValue) {
-      setResult({ error: 'Değer değiştirilmedi' });
+      setResult({ error: t.changeRequestModal.noChange });
       return;
     }
 
@@ -61,7 +63,7 @@ export default function ChangeRequestModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">Değişiklik Öner</h3>
+            <h3 className="text-base font-semibold text-slate-900">{t.changeRequestModal.title}</h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {recordLabel} → {fieldLabel}
             </p>
@@ -73,20 +75,18 @@ export default function ChangeRequestModal({
 
         {/* Body */}
         <div className="p-6 space-y-5">
-          {/* Mevcut değer */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-              Mevcut Değer
+              {t.changeRequestModal.currentValue}
             </label>
             <div className="bg-slate-50 rounded-xl px-4 py-3 text-sm text-slate-600 border border-slate-200">
-              {oldValue || <span className="text-slate-400 italic">Boş</span>}
+              {oldValue || <span className="text-slate-400 italic">{t.changeRequestModal.empty}</span>}
             </div>
           </div>
 
-          {/* Yeni değer */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-              Yeni Değer <span className="text-red-500">*</span>
+              {t.changeRequestModal.newValue} <span className="text-red-500">*</span>
             </label>
             {isTextarea ? (
               <textarea
@@ -105,35 +105,30 @@ export default function ChangeRequestModal({
             )}
           </div>
 
-          {/* Açıklama notu */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-              Değişiklik Nedeni (isteğe bağlı)
+              {t.changeRequestModal.changeReason}
             </label>
             <input
               type="text"
               value={changeNote}
               onChange={(e) => setChangeNote(e.target.value)}
-              placeholder="ör: Fiyatlarımız güncellendi, yeni sezon tarifesi…"
+              placeholder={t.changeRequestModal.changeReasonPlaceholder}
               className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
             />
           </div>
 
-          {/* Uyarı */}
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-            <p className="text-xs text-amber-700">
-              ⚠️ Bu değişiklik onay sürecine gönderilecek. Yönetici onayladıktan sonra sisteme yansır.
-            </p>
+            <p className="text-xs text-amber-700">{t.changeRequestModal.warning}</p>
           </div>
 
-          {/* Result */}
           {result && (
             <div className={`rounded-xl px-4 py-3 text-sm ${
               result.success
                 ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
                 : 'bg-red-50 border border-red-200 text-red-700'
             }`}>
-              {result.success ? '✓ İstek başarıyla gönderildi!' : result.error}
+              {result.success ? t.changeRequestModal.success : result.error}
             </div>
           )}
         </div>
@@ -141,7 +136,7 @@ export default function ChangeRequestModal({
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100">
           <button onClick={onClose} className="btn-ghost text-sm">
-            İptal
+            {t.common.cancel}
           </button>
           <button
             onClick={handleSubmit}
@@ -153,7 +148,7 @@ export default function ChangeRequestModal({
             ) : (
               <Send className="w-4 h-4" />
             )}
-            Değişiklik Öner
+            {t.changeRequestModal.submit}
           </button>
         </div>
       </div>

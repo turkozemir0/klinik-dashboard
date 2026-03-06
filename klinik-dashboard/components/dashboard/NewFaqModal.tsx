@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { submitChangeRequest } from '@/lib/actions/kb-actions';
 import { X, Send, Loader2, Plus, Trash2 } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n/LanguageProvider';
 
 interface NewFaqModalProps {
   clinicId: string;
@@ -15,6 +16,7 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
   const [patterns, setPatterns] = useState(['', '']);
   const [answer, setAnswer] = useState('');
   const [category, setCategory] = useState('');
+  const { t } = useTranslation();
 
   function addPattern() {
     setPatterns((p) => [...p, '']);
@@ -31,7 +33,7 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
   function handleSubmit() {
     const validPatterns = patterns.filter((p) => p.trim());
     if (validPatterns.length === 0 || !answer.trim()) {
-      setResult({ error: 'En az bir soru kalıbı ve cevap zorunludur' });
+      setResult({ error: t.newFaqModal.requiredError });
       return;
     }
 
@@ -43,13 +45,13 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
 
     const fd = new FormData();
     fd.set('table_name', 'faqs');
-    fd.set('record_id', clinicId);           // Yeni kayıt → clinic_id
+    fd.set('record_id', clinicId);
     fd.set('record_label', 'Yeni SSS');
-    fd.set('field_name', '__new_faq__');     // Özel işaret
+    fd.set('field_name', '__new_faq__');
     fd.set('field_label', `Yeni SSS: ${validPatterns[0]}`);
     fd.set('old_value', '');
     fd.set('new_value', newValueJson);
-    fd.set('change_note', `Yeni SSS ekleme talebi`);
+    fd.set('change_note', 'Yeni SSS ekleme talebi');
 
     startTransition(async () => {
       const res = await submitChangeRequest(fd);
@@ -70,8 +72,8 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
               <Plus className="w-4 h-4 text-brand-600" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Yeni SSS Talebi</h3>
-              <p className="text-xs text-slate-400">Onaylandıktan sonra sisteme eklenecek</p>
+              <h3 className="text-base font-semibold text-slate-900">{t.newFaqModal.title}</h3>
+              <p className="text-xs text-slate-400">{t.newFaqModal.subtitle}</p>
             </div>
           </div>
           <button onClick={onClose} className="btn-ghost p-1.5">
@@ -85,18 +87,16 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                Soru Kalıpları <span className="text-red-500">*</span>
+                {t.newFaqModal.questionPatterns} <span className="text-red-500">*</span>
               </label>
               <button
                 onClick={addPattern}
                 className="text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1"
               >
-                <Plus className="w-3 h-3" /> Ekle
+                <Plus className="w-3 h-3" /> {t.newFaqModal.addPattern}
               </button>
             </div>
-            <p className="text-xs text-slate-400 mb-3">
-              Hastanın bu soruyu nasıl sorabileceğine dair farklı ifadeler yazın.
-            </p>
+            <p className="text-xs text-slate-400 mb-3">{t.newFaqModal.patternsHint}</p>
             <div className="space-y-2">
               {patterns.map((p, i) => (
                 <div key={i} className="flex gap-2">
@@ -123,13 +123,13 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
           {/* Cevap */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Cevap <span className="text-red-500">*</span>
+              {t.newFaqModal.answerLabel} <span className="text-red-500">*</span>
             </label>
             <textarea
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
               rows={5}
-              placeholder="AI asistanın bu soruya vereceği cevap…"
+              placeholder={t.newFaqModal.answerPlaceholder}
               className={`${inputCls} resize-none`}
             />
           </div>
@@ -137,21 +137,19 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
           {/* Kategori */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Kategori
+              {t.newFaqModal.categoryLabel}
             </label>
             <input
               type="text"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              placeholder="ör: fiyat, medikal, genel"
+              placeholder={t.newFaqModal.categoryPlaceholder}
               className={inputCls}
             />
           </div>
 
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-            <p className="text-xs text-amber-700">
-              ⚠️ Bu talep onay sürecine gönderilecek. Yönetici onayladıktan sonra sisteme eklenecek.
-            </p>
+            <p className="text-xs text-amber-700">{t.newFaqModal.warning}</p>
           </div>
 
           {result && (
@@ -160,21 +158,21 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
                 ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
                 : 'bg-red-50 border border-red-200 text-red-700'
             }`}>
-              {result.success ? '✓ Talebiniz gönderildi! Onay sonrası eklenecek.' : result.error}
+              {result.success ? t.newFaqModal.success : result.error}
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 flex-shrink-0">
-          <button onClick={onClose} className="btn-ghost text-sm">İptal</button>
+          <button onClick={onClose} className="btn-ghost text-sm">{t.common.cancel}</button>
           <button
             onClick={handleSubmit}
             disabled={isPending || patterns.filter(p => p.trim()).length === 0 || !answer.trim()}
             className="btn-primary flex items-center gap-2 text-sm"
           >
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            Talep Gönder
+            {t.newFaqModal.submit}
           </button>
         </div>
       </div>

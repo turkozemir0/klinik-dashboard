@@ -5,6 +5,7 @@ import TrendChart from '@/components/dashboard/TrendChart';
 import LeadScoreBadge from '@/components/dashboard/LeadScoreBadge';
 import OnboardingBanner from '@/components/dashboard/OnboardingBanner';
 import SupportButton from '@/components/dashboard/SupportButton';
+import { getLang, getT, getDateLocale } from '@/lib/i18n';
 import {
   Users,
   Flame,
@@ -15,7 +16,6 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { tr } from 'date-fns/locale';
 
 async function getClinicId(supabase: ReturnType<typeof createClient>, userId: string) {
   const { data } = await supabase
@@ -33,6 +33,10 @@ export default async function DashboardPage() {
 
   const clinicId = await getClinicId(supabase, user.id);
   if (!clinicId) redirect('/login');
+
+  const lang = getLang();
+  const t = getT(lang);
+  const dateLocale = getDateLocale(lang);
 
   // ── Fetch all data in parallel ──────────────────────────────────────────────
   const [
@@ -85,14 +89,20 @@ export default async function DashboardPage() {
   const todayNew = today?.new_conversations ?? 0;
   const todayHandoffs = today?.handed_off_leads ?? 0;
 
+  const missingItems = onboardingProg ? [
+    ...(!onboardingProg.profile_done   ? [t.onboarding.profile.title] : []),
+    ...(!onboardingProg.services_done  ? [t.onboarding.steps.services] : []),
+    ...(!onboardingProg.faqs_done      ? [t.onboarding.steps.faqs] : []),
+  ] : [];
+
   return (
     <div className="p-6 lg:p-8 space-y-8">
       {/* Page header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Genel Bakış</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{t.overview.title}</h1>
           <p className="text-slate-500 text-sm mt-1">
-            {format(new Date(), "d MMMM yyyy, EEEE", { locale: tr })} · Canlı Veriler
+            {format(new Date(), "d MMMM yyyy, EEEE", { locale: dateLocale })} · {t.overview.liveData}
           </p>
         </div>
         <SupportButton openTicketCount={openTickets ?? 0} />
@@ -102,56 +112,52 @@ export default async function DashboardPage() {
       {onboardingProg && !onboardingProg.is_completed && (
         <OnboardingBanner
           completionPct={onboardingProg.completion_pct ?? 0}
-          missingItems={[
-            ...(!onboardingProg.profile_done   ? ['Klinik profili'] : []),
-            ...(!onboardingProg.services_done  ? ['En az 1 hizmet'] : []),
-            ...(!onboardingProg.faqs_done      ? ['SSS'] : []),
-          ]}
+          missingItems={missingItems}
         />
       )}
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard
-          title="Toplam Konuşma"
+          title={t.overview.totalConversations}
           value={total}
-          subtitle={`${active} aktif`}
+          subtitle={t.overview.activeCount(active)}
           icon={MessageSquare}
           iconColor="text-brand-600"
           iconBg="bg-brand-50"
         />
         <StatCard
-          title="Hot Lead (≥70)"
+          title={t.overview.hotLead}
           value={hot}
           icon={Flame}
           iconColor="text-red-600"
           iconBg="bg-red-50"
         />
         <StatCard
-          title="Warm Lead (40-69)"
+          title={t.overview.warmLead}
           value={warm}
           icon={TrendingUp}
           iconColor="text-amber-600"
           iconBg="bg-amber-50"
         />
         <StatCard
-          title="Handoff Yapılan"
+          title={t.overview.handoffsDone}
           value={handoffs}
           icon={ArrowRightLeft}
           iconColor="text-purple-600"
           iconBg="bg-purple-50"
         />
         <StatCard
-          title="Ort. Lead Skoru"
+          title={t.overview.avgLeadScore}
           value={avgScore}
           icon={TrendingUp}
           iconColor="text-emerald-600"
           iconBg="bg-emerald-50"
         />
         <StatCard
-          title="Bugün Yeni"
+          title={t.overview.newToday}
           value={todayNew}
-          subtitle={`${todayHandoffs} handoff`}
+          subtitle={t.overview.handoffCount(todayHandoffs)}
           icon={Users}
           iconColor="text-indigo-600"
           iconBg="bg-indigo-50"
@@ -162,14 +168,14 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Trend Chart */}
         <div className="card p-6 xl:col-span-2">
-          <h2 className="text-base font-semibold text-slate-800 mb-1">Günlük Trend</h2>
-          <p className="text-xs text-slate-400 mb-5">Son 14 gün</p>
+          <h2 className="text-base font-semibold text-slate-800 mb-1">{t.overview.dailyTrend}</h2>
+          <p className="text-xs text-slate-400 mb-5">{t.overview.last14Days}</p>
           <TrendChart stats={dailyStats ?? []} />
         </div>
 
         {/* Lead dağılımı */}
         <div className="card p-6">
-          <h2 className="text-base font-semibold text-slate-800 mb-5">Lead Dağılımı</h2>
+          <h2 className="text-base font-semibold text-slate-800 mb-5">{t.overview.leadDistribution}</h2>
           <div className="space-y-4">
             {[
               { label: 'HOT (≥70)', value: hot, total, color: 'bg-red-500', badge: 'badge-hot' },
@@ -198,7 +204,7 @@ export default async function DashboardPage() {
 
           <div className="mt-6 pt-5 border-t border-slate-100">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">Handoff Oranı</span>
+              <span className="text-sm text-slate-500">{t.overview.handoffRate}</span>
               <span className="text-sm font-bold text-slate-900">
                 {total > 0 ? Math.round((handoffs / total) * 100) : 0}%
               </span>
@@ -210,22 +216,22 @@ export default async function DashboardPage() {
       {/* Recent Conversations */}
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-base font-semibold text-slate-800">Son Konuşmalar</h2>
+          <h2 className="text-base font-semibold text-slate-800">{t.overview.recentConversations}</h2>
           <a href="/dashboard/leads" className="text-sm text-brand-600 hover:text-brand-700 font-medium">
-            Tümünü gör →
+            {t.common.seeAll}
           </a>
         </div>
         <div className="divide-y divide-slate-50">
           {(recentConvs ?? []).length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-sm">
-              Henüz konuşma yok
+              {t.overview.noConversations}
             </div>
           ) : (
             recentConvs!.map((conv) => {
               const name = conv.contact_name || conv.contact_phone;
               const service = (conv.collected_data as { interested_service?: string })?.interested_service;
               const lastMsg = conv.last_message_at
-                ? format(parseISO(conv.last_message_at), "d MMM HH:mm", { locale: tr })
+                ? format(parseISO(conv.last_message_at), "d MMM HH:mm", { locale: dateLocale })
                 : '—';
 
               return (
@@ -240,7 +246,7 @@ export default async function DashboardPage() {
                   {/* Name + service */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-900 truncate">{name}</p>
-                    <p className="text-xs text-slate-400 truncate">{service ?? 'Hizmet belirtilmedi'}</p>
+                    <p className="text-xs text-slate-400 truncate">{service ?? t.overview.noService}</p>
                   </div>
 
                   {/* Score */}
@@ -252,8 +258,8 @@ export default async function DashboardPage() {
                     conv.status === 'handed_off' ? 'badge-warm' :
                     'badge-closed'
                   }>
-                    {conv.status === 'active' ? 'Aktif' :
-                     conv.status === 'handed_off' ? 'Handoff' : 'Kapalı'}
+                    {conv.status === 'active' ? t.overview.statusActive :
+                     conv.status === 'handed_off' ? t.overview.statusHandedOff : t.overview.statusClosed}
                   </span>
 
                   {/* Time */}
@@ -275,7 +281,7 @@ export default async function DashboardPage() {
           className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors group"
         >
           <BookOpen className="w-3.5 h-3.5 group-hover:text-brand-500 transition-colors" />
-          <span>Knowledge Base</span>
+          <span>{t.sidebar.knowledgeBase}</span>
         </a>
       </div>
     </div>

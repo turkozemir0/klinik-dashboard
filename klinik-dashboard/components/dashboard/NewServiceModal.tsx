@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { submitChangeRequest } from '@/lib/actions/kb-actions';
 import { X, Send, Loader2, Plus } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n/LanguageProvider';
 
 interface NewServiceModalProps {
   clinicId: string;
@@ -13,6 +14,7 @@ interface NewServiceModalProps {
 export default function NewServiceModal({ clinicId, clinicName, onClose }: NewServiceModalProps) {
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<{ success?: boolean; error?: string } | null>(null);
+  const { t } = useTranslation();
 
   const [form, setForm] = useState({
     service_key: '',
@@ -32,18 +34,17 @@ export default function NewServiceModal({ clinicId, clinicName, onClose }: NewSe
 
   function handleSubmit() {
     if (!form.display_name || !form.description_for_ai) {
-      setResult({ error: 'Hizmet adı ve açıklama zorunludur' });
+      setResult({ error: t.newServiceModal.requiredError });
       return;
     }
 
-    // Tüm form verisini JSON olarak new_value'ya yaz
     const newValueJson = JSON.stringify(form);
 
     const fd = new FormData();
     fd.set('table_name', 'services');
-    fd.set('record_id', clinicId);          // Yeni kayıt → clinic_id kullan
+    fd.set('record_id', clinicId);
     fd.set('record_label', 'Yeni Hizmet');
-    fd.set('field_name', '__new_service__'); // Özel işaret
+    fd.set('field_name', '__new_service__');
     fd.set('field_label', `Yeni Hizmet: ${form.display_name}`);
     fd.set('old_value', '');
     fd.set('new_value', newValueJson);
@@ -68,8 +69,8 @@ export default function NewServiceModal({ clinicId, clinicName, onClose }: NewSe
               <Plus className="w-4 h-4 text-brand-600" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Yeni Hizmet Talebi</h3>
-              <p className="text-xs text-slate-400">Onaylandıktan sonra sisteme eklenecek</p>
+              <h3 className="text-base font-semibold text-slate-900">{t.newServiceModal.title}</h3>
+              <p className="text-xs text-slate-400">{t.newServiceModal.subtitle}</p>
             </div>
           </div>
           <button onClick={onClose} className="btn-ghost p-1.5">
@@ -77,24 +78,24 @@ export default function NewServiceModal({ clinicId, clinicName, onClose }: NewSe
           </button>
         </div>
 
-        {/* Body - scrollable */}
+        {/* Body */}
         <div className="overflow-y-auto flex-1 p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Hizmet Adı <span className="text-red-500">*</span>
+                {t.newServiceModal.serviceName} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={form.display_name}
                 onChange={(e) => set('display_name', e.target.value)}
-                placeholder="ör: Saç Ekimi"
+                placeholder={t.newServiceModal.serviceNamePlaceholder}
                 className={inputCls}
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Hizmet Anahtarı
+                {t.newServiceModal.serviceKey}
               </label>
               <input
                 type="text"
@@ -108,7 +109,7 @@ export default function NewServiceModal({ clinicId, clinicName, onClose }: NewSe
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Kategori
+              {t.newServiceModal.category}
             </label>
             <input
               type="text"
@@ -121,13 +122,13 @@ export default function NewServiceModal({ clinicId, clinicName, onClose }: NewSe
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              AI Açıklaması <span className="text-red-500">*</span>
+              {t.newServiceModal.aiDescription} <span className="text-red-500">*</span>
             </label>
             <textarea
               value={form.description_for_ai}
               onChange={(e) => set('description_for_ai', e.target.value)}
               rows={4}
-              placeholder="AI asistanın hastaya bu hizmet hakkında anlatabileceği detaylı açıklama…"
+              placeholder={t.newServiceModal.aiDescriptionPlaceholder}
               className={`${inputCls} resize-none`}
             />
           </div>
@@ -135,49 +136,49 @@ export default function NewServiceModal({ clinicId, clinicName, onClose }: NewSe
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                İşlem Süresi
+                {t.newServiceModal.procedureDuration}
               </label>
               <input
                 type="text"
                 value={form.procedure_duration}
                 onChange={(e) => set('procedure_duration', e.target.value)}
-                placeholder="ör: 3-5 saat"
+                placeholder={t.newServiceModal.procedureDurationPlaceholder}
                 className={inputCls}
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Anestezi Tipi
+                {t.newServiceModal.anesthesiaType}
               </label>
               <input
                 type="text"
                 value={form.anesthesia_type}
                 onChange={(e) => set('anesthesia_type', e.target.value)}
-                placeholder="ör: Lokal anestezi"
+                placeholder={t.newServiceModal.anesthesiaTypePlaceholder}
                 className={inputCls}
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                İyileşme Süreci
+                {t.newServiceModal.recoveryTime}
               </label>
               <input
                 type="text"
                 value={form.recovery_time}
                 onChange={(e) => set('recovery_time', e.target.value)}
-                placeholder="ör: 1 hafta dinlenme"
+                placeholder={t.newServiceModal.recoveryTimePlaceholder}
                 className={inputCls}
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Sonuç Görülme Süresi
+                {t.newServiceModal.resultTimeline}
               </label>
               <input
                 type="text"
                 value={form.final_result_time}
                 onChange={(e) => set('final_result_time', e.target.value)}
-                placeholder="ör: 6-12 ay"
+                placeholder={t.newServiceModal.resultTimelinePlaceholder}
                 className={inputCls}
               />
             </div>
@@ -185,21 +186,19 @@ export default function NewServiceModal({ clinicId, clinicName, onClose }: NewSe
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Fiyat Yanıtı
+              {t.newServiceModal.pricingResponse}
             </label>
             <textarea
               value={form.pricing_response}
               onChange={(e) => set('pricing_response', e.target.value)}
               rows={3}
-              placeholder="AI'ın fiyat sorulduğunda vereceği yanıt…"
+              placeholder={t.newServiceModal.pricingResponsePlaceholder}
               className={`${inputCls} resize-none`}
             />
           </div>
 
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-            <p className="text-xs text-amber-700">
-              ⚠️ Bu talep onay sürecine gönderilecek. Yönetici onayladıktan sonra sisteme eklenecek.
-            </p>
+            <p className="text-xs text-amber-700">{t.newServiceModal.warning}</p>
           </div>
 
           {result && (
@@ -208,21 +207,21 @@ export default function NewServiceModal({ clinicId, clinicName, onClose }: NewSe
                 ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
                 : 'bg-red-50 border border-red-200 text-red-700'
             }`}>
-              {result.success ? '✓ Talebiniz gönderildi! Onay sonrası eklenecek.' : result.error}
+              {result.success ? t.newServiceModal.success : result.error}
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 flex-shrink-0">
-          <button onClick={onClose} className="btn-ghost text-sm">İptal</button>
+          <button onClick={onClose} className="btn-ghost text-sm">{t.common.cancel}</button>
           <button
             onClick={handleSubmit}
             disabled={isPending || !form.display_name || !form.description_for_ai}
             className="btn-primary flex items-center gap-2 text-sm"
           >
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            Talep Gönder
+            {t.newServiceModal.submit}
           </button>
         </div>
       </div>
