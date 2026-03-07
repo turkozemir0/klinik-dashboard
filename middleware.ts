@@ -2,6 +2,39 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const hostname = request.headers.get('host') || '';
+
+  // ── demo.stoaix.com hostname routing ──────────────────────────────────────
+  if (hostname === 'demo.stoaix.com') {
+    const isLoginPage = pathname === '/login';
+
+    if (!isLoginPage) {
+      const demoAuth = request.cookies.get('demo_auth')?.value;
+      if (demoAuth !== process.env.DEMO_AUTH_SECRET) {
+        return NextResponse.redirect(new URL('/login', request.url));
+      }
+    }
+
+    // Rewrite to /demo/* paths so Next.js serves app/demo/
+    if (!pathname.startsWith('/demo')) {
+      const rewritePath = pathname === '/' ? '/demo' : '/demo' + pathname;
+      return NextResponse.rewrite(new URL(rewritePath, request.url));
+    }
+
+    return NextResponse.next({ request });
+  }
+
+  // ── panel.stoaix.com: /demo auth check ────────────────────────────────────
+  if (pathname === '/demo' || (pathname.startsWith('/demo/') && pathname !== '/demo/login')) {
+    const demoAuth = request.cookies.get('demo_auth')?.value;
+    if (demoAuth !== process.env.DEMO_AUTH_SECRET) {
+      return NextResponse.redirect(new URL('/demo/login', request.url));
+    }
+    return NextResponse.next({ request });
+  }
+
+  // ── panel.stoaix.com: Supabase auth ───────────────────────────────────────
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -22,7 +55,6 @@ export async function middleware(request: NextRequest) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
-  const { pathname } = request.nextUrl;
 
   // Giriş yapmamış → login
   if (!user && (
@@ -36,7 +68,6 @@ export async function middleware(request: NextRequest) {
 
   // Giriş yapmış + login → nereye?
   if (user && pathname === '/login') {
-    // Önce super admin kontrolü — admin onboarding'i atlar
     const { data: adminRow } = await supabase
       .from('super_admin_users').select('id').eq('user_id', user.id).single();
     if (adminRow) {
@@ -50,7 +81,6 @@ export async function middleware(request: NextRequest) {
       .single();
 
     if (!cu) {
-      // Klinik yok = onay bekleniyor
       return NextResponse.redirect(new URL('/waiting', request.url));
     }
 
@@ -76,9 +106,11 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/',
     '/dashboard', '/dashboard/:path*',
     '/admin',     '/admin/:path*',
     '/onboarding','/onboarding/:path*',
     '/waiting',   '/login',
+    '/demo',      '/demo/:path*',
   ],
 };
