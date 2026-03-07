@@ -23,16 +23,11 @@ export default function DemoPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Brain state
   const [stage, setStage] = useState<Stage>('GREETING');
   const [score, setScore] = useState(0);
   const [scoreBreakdown, setScoreBreakdown] = useState<Record<string, number>>({});
-  const [collectedData, setCollectedData] = useState<CollectedData>(
-    initialSessionState().collectedData,
-  );
-  const [leadSignals, setLeadSignals] = useState<LeadSignals>(
-    initialSessionState().leadSignals,
-  );
+  const [collectedData, setCollectedData] = useState<CollectedData>(initialSessionState().collectedData);
+  const [leadSignals, setLeadSignals] = useState<LeadSignals>(initialSessionState().leadSignals);
   const [handoffRecommended, setHandoffRecommended] = useState(false);
   const [replyGuidance, setReplyGuidance] = useState('');
 
@@ -54,17 +49,11 @@ export default function DemoPage() {
           message: text,
           history: messages,
           lang,
-          sessionState: {
-            currentStage: stage,
-            collectedData,
-            leadSignals,
-            currentScore: score,
-          },
+          sessionState: { currentStage: stage, collectedData, leadSignals, currentScore: score },
         }),
       });
 
       if (!res.ok) throw new Error('API error');
-
       const data = await res.json();
 
       setMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
@@ -80,10 +69,7 @@ export default function DemoPage() {
         ...updatedMessages,
         {
           role: 'assistant',
-          content:
-            lang === 'tr'
-              ? 'Bir hata oluştu, lütfen tekrar deneyin.'
-              : 'An error occurred, please try again.',
+          content: lang === 'tr' ? 'Bir hata oluştu, tekrar deneyin.' : 'An error occurred, please try again.',
         },
       ]);
     } finally {
@@ -105,45 +91,91 @@ export default function DemoPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-brand-50 flex flex-col">
+    <div
+      className="min-h-screen bg-demo-bg text-demo-text flex flex-col"
+      style={{
+        backgroundImage: 'radial-gradient(circle, #1a2878 1px, transparent 1px)',
+        backgroundSize: '28px 28px',
+      }}
+    >
+      {/* Ambient glow orbs */}
+      <div className="fixed top-0 left-1/4 w-96 h-96 rounded-full bg-demo-blue opacity-[0.04] blur-3xl pointer-events-none" />
+      <div className="fixed bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-demo-cyan opacity-[0.04] blur-3xl pointer-events-none" />
+
       {/* Header */}
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b border-demo-border bg-demo-bg/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-brand-700">stoaix</span>
-            <span className="text-xs bg-brand-100 text-brand-700 rounded-full px-2 py-0.5 font-medium">
-              Demo
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-demo-blue flex items-center justify-center shadow-[0_0_14px_rgba(35,61,255,0.5)]">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <span className="text-base font-bold text-demo-text tracking-tight">stoaix</span>
+            <span className="hidden sm:flex items-center gap-1 text-[10px] border border-demo-border text-demo-muted rounded-full px-2.5 py-1 uppercase tracking-widest">
+              <span className="w-1 h-1 rounded-full bg-demo-cyan animate-pulse_dot" />
+              {lang === 'tr' ? 'Canlı Demo' : 'Live Demo'}
             </span>
           </div>
-          <button
-            onClick={() => setLang((l) => (l === 'tr' ? 'en' : 'tr'))}
-            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 hover:bg-slate-50 transition font-medium"
-          >
-            {lang === 'tr' ? 'EN' : 'TR'}
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setLang(l => l === 'tr' ? 'en' : 'tr')}
+              className="text-xs border border-demo-border rounded-lg px-2.5 py-1.5 text-demo-muted hover:text-demo-text hover:border-demo-cyan transition font-medium"
+            >
+              {lang === 'tr' ? 'EN' : 'TR'}
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Main */}
-      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6 flex flex-col gap-4">
-        {/* Intro */}
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-slate-800">
-            {lang === 'tr' ? 'AI Asistan Demo' : 'AI Assistant Demo'}
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            {lang === 'tr'
-              ? 'Gerçek klinik AI asistanıyla konuşun — sağ panelde canlı analiz görün.'
-              : 'Chat with a real clinic AI — watch live analysis on the right.'}
-          </p>
+      {/* Hero */}
+      <div className="max-w-6xl mx-auto w-full px-4 pt-10 pb-6 text-center">
+        <div className="inline-flex items-center gap-2 border border-demo-border rounded-full px-3 py-1.5 mb-5 bg-demo-card">
+          <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse_dot" />
+          <span className="text-[10px] text-demo-muted uppercase tracking-widest">
+            {lang === 'tr' ? 'Gerçek klinik verisiyle çalışıyor' : 'Powered by real clinic data'}
+          </span>
         </div>
+        <h1 className="text-3xl sm:text-4xl font-bold text-demo-text mb-3 leading-tight">
+          {lang === 'tr' ? (
+            <>AI Asistan <span className="text-demo-cyan">canlı</span> görüyor.</>
+          ) : (
+            <>AI Assistant sees you <span className="text-demo-cyan">live.</span></>
+          )}
+        </h1>
+        <p className="text-sm text-demo-muted max-w-lg mx-auto">
+          {lang === 'tr'
+            ? 'Hasta mesaj gönderirken yapay zeka aynı anda niyeti, aciliyeti ve lead skorunu hesaplıyor.'
+            : 'As the patient types, the AI simultaneously calculates intent, urgency, and lead score.'}
+        </p>
 
-        {/* Two-column layout */}
+        {/* Stats row */}
+        <div className="flex justify-center gap-8 mt-8">
+          {[
+            { value: '7',    label: lang === 'tr' ? 'Konuşma Aşaması'   : 'Conv. Stages'    },
+            { value: '100',  label: lang === 'tr' ? 'Puan Skalası'       : 'Score Scale'     },
+            { value: '< 2s', label: lang === 'tr' ? 'Analiz Süresi'      : 'Analysis Time'   },
+          ].map(({ value, label }) => (
+            <div key={label} className="text-center">
+              <p className="text-xl font-bold text-demo-cyan">{value}</p>
+              <p className="text-[10px] text-demo-muted uppercase tracking-wide mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main content */}
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 pb-6 flex flex-col gap-4">
+        {/* Two columns */}
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Chat */}
           <div
-            className="flex-1 lg:max-w-[60%] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
-            style={{ minHeight: '480px' }}
+            className="flex-1 lg:max-w-[60%] rounded-2xl border border-demo-border overflow-hidden"
+            style={{
+              minHeight: '500px',
+              boxShadow: '0 0 40px rgba(35,61,255,0.08)',
+            }}
           >
             <DemoChatWidget
               messages={messages}
@@ -157,8 +189,11 @@ export default function DemoPage() {
 
           {/* Brain panel */}
           <div
-            className="lg:w-[38%] bg-slate-50 rounded-2xl border border-slate-100 p-4 overflow-y-auto"
-            style={{ maxHeight: '600px' }}
+            className="lg:w-[38%] rounded-2xl border border-demo-border bg-demo-card/50 p-4 overflow-y-auto"
+            style={{
+              maxHeight: '620px',
+              boxShadow: '0 0 40px rgba(35,61,255,0.08)',
+            }}
           >
             <DemoAiBrainPanel
               stage={stage}
@@ -174,7 +209,10 @@ export default function DemoPage() {
         </div>
 
         {/* Scenarios */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+        <div
+          className="rounded-2xl border border-demo-border bg-demo-card/50 p-5"
+          style={{ boxShadow: '0 0 40px rgba(35,61,255,0.08)' }}
+        >
           <DemoVoiceScenarios
             lang={lang}
             onInject={(msg) => setInput(msg)}
@@ -184,11 +222,11 @@ export default function DemoPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-100 py-4 text-center">
-        <p className="text-xs text-slate-400">
+      <footer className="border-t border-demo-border py-5 text-center">
+        <p className="text-[11px] text-demo-muted">
           {lang === 'tr'
-            ? 'Bu demo, stoaix AI asistanının gerçek bir kliniğe nasıl entegre edildiğini göstermektedir.'
-            : 'This demo shows how stoaix AI assistant integrates into a real clinic workflow.'}
+            ? 'stoaix — AI destekli klinik satış asistanı · panel.stoaix.com'
+            : 'stoaix — AI-powered clinic sales assistant · panel.stoaix.com'}
         </p>
       </footer>
     </div>

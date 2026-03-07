@@ -11,52 +11,52 @@ interface Props {
 const scenarios = {
   tr: [
     {
-      title: 'Saç Ekimi',
       icon: '💇',
+      title: 'Saç Ekimi',
       desc: 'Fiyat ve süreç merak ediyor',
       message: 'Merhaba, saç ekimi hakkında bilgi almak istiyorum. Fiyatlar nasıl?',
     },
     {
-      title: 'Burun Estetiği',
       icon: '✨',
+      title: 'Burun Estetiği',
       desc: 'Ön görüşme almak istiyor',
       message: 'Burun estetiği yaptırmayı düşünüyorum. Doktorunuzla nasıl görüşebilirim?',
     },
     {
-      title: 'Acil Randevu',
       icon: '⚡',
+      title: 'Acil Randevu',
       desc: 'Hemen randevu, yüksek niyet',
       message: 'Merhaba, en kısa sürede randevu almam gerekiyor. Yarın müsait misiniz?',
     },
     {
-      title: 'Fiyat Karşılaştırma',
       icon: '🔍',
+      title: 'Fiyat Karşılaştırma',
       desc: 'Birkaç kliniği karşılaştırıyor',
       message: 'Diğer kliniklerle karşılaştırma yapıyorum. Fiyatlarınız ne kadar?',
     },
   ],
   en: [
     {
-      title: 'Hair Transplant',
       icon: '💇',
-      desc: 'Asking about pricing & process',
-      message: "Hello, I'd like to know more about hair transplants. What are the prices like?",
+      title: 'Hair Transplant',
+      desc: 'Asking about price & process',
+      message: "Hello, I'd like to know more about hair transplants. What are the prices?",
     },
     {
-      title: 'Rhinoplasty',
       icon: '✨',
+      title: 'Rhinoplasty',
       desc: 'Wants a consultation',
-      message: "I'm thinking about rhinoplasty. How can I arrange to speak with your doctor?",
+      message: "I'm thinking about rhinoplasty. How can I speak with your doctor?",
     },
     {
-      title: 'Urgent Appointment',
       icon: '⚡',
+      title: 'Urgent Appointment',
       desc: 'High-intent, needs it now',
-      message: "Hi, I need an appointment as soon as possible. Are you available tomorrow?",
+      message: "Hi, I need an appointment as soon as possible. Are you free tomorrow?",
     },
     {
-      title: 'Price Research',
       icon: '🔍',
+      title: 'Price Research',
       desc: 'Comparing multiple clinics',
       message: "I'm comparing a few clinics. How much do your procedures cost?",
     },
@@ -69,15 +69,20 @@ export default function DemoVoiceScenarios({ lang, onInject, onReset }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-slate-700">
-          {isEN ? 'Try a Scenario' : 'Senaryo Dene'}
-        </h3>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-[10px] text-demo-muted uppercase tracking-widest mb-0.5">
+            {isEN ? 'Simulate a patient' : 'Hasta simüle et'}
+          </p>
+          <h3 className="text-sm font-bold text-demo-text">
+            {isEN ? 'Try a Scenario' : 'Senaryo Dene'}
+          </h3>
+        </div>
         <button
           onClick={onReset}
-          className="text-xs text-slate-400 hover:text-slate-600 transition"
+          className="text-xs text-demo-muted hover:text-demo-text border border-demo-border rounded-lg px-3 py-1.5 transition"
         >
-          {isEN ? 'Reset chat' : 'Sohbeti sıfırla'}
+          {isEN ? 'Reset' : 'Sıfırla'}
         </button>
       </div>
 
@@ -86,11 +91,16 @@ export default function DemoVoiceScenarios({ lang, onInject, onReset }: Props) {
           <button
             key={s.title}
             onClick={() => onInject(s.message)}
-            className="text-left rounded-xl border border-slate-200 bg-white hover:border-brand-400 hover:shadow-sm p-3 transition group"
+            className="group text-left rounded-xl border border-demo-border bg-demo-card hover:border-demo-cyan p-3.5 transition-all duration-200"
+            style={{ transition: 'border-color 0.2s, box-shadow 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 16px rgba(66,194,213,0.15)')}
+            onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
           >
-            <span className="text-xl block mb-1.5">{s.icon}</span>
-            <p className="text-xs font-semibold text-slate-700 group-hover:text-brand-700">{s.title}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{s.desc}</p>
+            <span className="text-2xl block mb-2">{s.icon}</span>
+            <p className="text-xs font-bold text-demo-text group-hover:text-demo-cyan transition-colors">
+              {s.title}
+            </p>
+            <p className="text-[10px] text-demo-muted mt-1 leading-snug">{s.desc}</p>
           </button>
         ))}
       </div>
