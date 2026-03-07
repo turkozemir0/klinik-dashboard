@@ -103,10 +103,11 @@ export function buildAnalysisMessages(
   userMessage: string,
   sessionState: SessionState,
   lang: Lang,
-): { role: 'user' | 'assistant'; content: string }[] {
+): { system: string; userContent: string } {
   const servicesShort = services.map(s => `- ${s.name}`).join('\n') || '(no services listed)';
+  const historyText = history.map(m => `${m.role === 'user' ? 'Hasta' : 'Asistan'}: ${m.content}`).join('\n') || '(yok)';
 
-  const systemTR = `Sen bir klinik konuşma analiz motorusun. Hasta mesajını analiz edip yapılandırılmış veri çıkar.
+  const systemTR = `Sen bir klinik konuşma analiz motorusun. Hasta mesajını analiz edip yapılandırılmış JSON verisi çıkar.
 
 ## KLİNİK
 Ad: ${clinic.name}
@@ -120,36 +121,43 @@ Aşama: ${sessionState.currentStage}
 ÖNCEKİ TOPLANAN VERİLER (BUNLARI ASLA SİLME!): ${JSON.stringify(sessionState.collectedData)}
 Sinyaller: ${JSON.stringify(sessionState.leadSignals)}
 
+## AŞAMA GEÇİŞ KURALLARI (ZORUNLU — ASLA GERİ GİTME)
+Aşamalar sırasıyla ilerler: GREETING → DISCOVERY → TRUST_BUILDING → INFO_COLLECTION → CLOSING
+Mevcut aşama: ${sessionState.currentStage} — current_stage bu aşamadan GERİYE dönemez.
+
+- GREETING: Sadece konuşmanın ilk mesajı. Hasta herhangi bir hizmetten bahsettiyse → hemen DISCOVERY.
+- DISCOVERY: Hasta ilgilendiği hizmeti/tedaviyi belirtti.
+- TRUST_BUILDING: Hasta fiyat, detay, karşılaştırma soruyor; henüz randevu bilgisi vermediyse.
+- INFO_COLLECTION: Hasta randevu için gün, saat, ad veya iletişim bilgisi verdi.
+- CLOSING: Hasta hem spesifik GÜN hem spesifik SAAT verdi.
+- NURTURING: Hasta açıkça hazır değil.
+
 ## SİNYAL SINIFLANDIRMA KURALLARI (ÇOK ÖNEMLİ)
-- Eğer hasta mesajında: "acil", "hemen", "bugün", "en kısa sürede", "acele", "urgent" gibi ifadeler varsa → lead_signals.urgency = "high"
-- Eğer hasta "yakında", "bu hafta", "önümüzdeki günler", "kısa zamanda" gibi ifadeler kullanıyorsa → lead_signals.urgency = "medium"
-- Eğer zaman belirtmiyorsa → lead_signals.urgency = "low" veya "unknown"
+- urgency = "high": "acil", "hemen", "bugün", "en kısa sürede" gibi ifadeler
+- urgency = "medium": "yakında", "bu hafta", "önümüzdeki günler"
+- urgency = "low"/"unknown": zaman belirtmedi
 
-- Eğer hasta açıkça randevu istiyorsa, gün/saat soruyorsa, "gelmek istiyorum", "ön görüşme istiyorum" diyorsa → lead_signals.buying_intent = "ready"
-- Eğer sadece bilgi alıyorsa → lead_signals.buying_intent = "considering"
-- Eğer sadece bakınıyorsa → lead_signals.buying_intent = "just_browsing"
+- buying_intent = "ready": Hasta spesifik GÜN verdi ("yarın", "çarşamba", "haftaya") VEYA spesifik SAAT verdi ("15:00", "sabah 10", "öğleden sonra") VEYA "gelmek istiyorum" / "randevu almak istiyorum" dedi
+- buying_intent = "considering": Fiyat soruyor, bilgi topluyor, karşılaştırıyor
+- buying_intent = "just_browsing": Sadece bakınıyor, şu an ilgilenmiyor
 
-- Eğer hasta kısa, tek kelimelik cevaplar veriyorsa → lead_signals.engagement_level = "low"
-- Eğer detaylı anlatıyorsa, soru soruyorsa → lead_signals.engagement_level = "high"
-- Aksi halde → lead_signals.engagement_level = "medium"
+- engagement_level = "high": Detaylı anlatıyor, soru soruyor
+- engagement_level = "low": Kısa tek kelimelik cevaplar
+- engagement_level = "medium": Diğer durumlar
 
-- Eğer hasta fiyat, ücret, ödeme, taksit, bütçe gibi konuları soruyorsa → collected_data.budget_awareness = "fiyat_sordu" veya "butce_belirti"
+- budget_awareness = "fiyat_sordu": Fiyat, ücret, ödeme, taksit soruyor
 
-- collected_data.timeline için MUTLAKA şu enum değerlerden birini seç:
-  * "hemen" → hasta acil, bugün, en kısa sürede istiyor
-  * "1_hafta" → bu hafta, haftaya, önümüzdeki hafta gibi ifadeler
+- timeline enum (SADECE bu 5 değerden biri):
+  * "hemen" → bugün, acil, en kısa sürede
+  * "1_hafta" → bu hafta, haftaya, önümüzdeki hafta
   * "1_ay" → bu ay, yakında, 1-2 ay içinde
-  * "3_ay" → 3 ay sonra, ileride, düşünüyorum
-  * "belirsiz" → zaman belirtmedi veya belirsiz
-  ASLA serbest metin yazma, SADECE bu 5 enum değerden birini kullan!
+  * "3_ay" → 3 ay sonra, ileride
+  * "belirsiz" → belirsiz veya belirtmedi
 
-- handoff_recommended: Şu durumlarda MUTLAKA true yap:
-  * Hasta açıkça randevu veya ön görüşme talep etti
-  * Hasta spesifik gün/saat verdi
-  * buying_intent = "ready" ise
+- handoff_recommended = true: buying_intent = "ready" ise VEYA hasta spesifik gün/saat verdiyse
 
 ## GÖREV
-SADECE aşağıdaki JSON formatında yanıt ver (başka hiçbir şey yazma):
+Yanıtın SADECE geçerli bir JSON nesnesi olmalı (markdown, açıklama, başka hiçbir şey ekleme):
 {
   "metadata": {
     "current_stage": "GREETING|DISCOVERY|TRUST_BUILDING|APPOINTMENT_OFFER|INFO_COLLECTION|CLOSING|NURTURING",
@@ -171,9 +179,9 @@ SADECE aşağıdaki JSON formatında yanıt ver (başka hiçbir şey yazma):
   "reply_guidance": "Yanıt asistanı için 1-2 cümlelik yönlendirme"
 }
 
-ÇOK ÖNEMLİ: ÖNCEKİ TOPLANAN VERİLER içindeki dolu olan verileri ASLA null yapma! Sadece yeni bilgi varsa ekle.`;
+KURAL: ÖNCEKİ TOPLANAN VERİLER içindeki dolu alanları ASLA null yapma!`;
 
-  const systemEN = `You are a clinic conversation analysis engine. Analyse the patient message and extract structured data.
+  const systemEN = `You are a clinic conversation analysis engine. Output structured JSON data only.
 
 ## CLINIC
 Name: ${clinic.name}
@@ -187,35 +195,43 @@ Stage: ${sessionState.currentStage}
 PREVIOUSLY COLLECTED DATA (NEVER DELETE THESE!): ${JSON.stringify(sessionState.collectedData)}
 Signals: ${JSON.stringify(sessionState.leadSignals)}
 
+## STAGE TRANSITION RULES (MANDATORY — NEVER GO BACKWARDS)
+Stages progress in order: GREETING → DISCOVERY → TRUST_BUILDING → INFO_COLLECTION → CLOSING
+Current stage: ${sessionState.currentStage} — current_stage CANNOT go back to a previous stage.
+
+- GREETING: First message only. If patient mentioned any service → immediately DISCOVERY.
+- DISCOVERY: Patient identified the service/treatment they're interested in.
+- TRUST_BUILDING: Patient asking about price, details, comparisons; no appointment info yet.
+- INFO_COLLECTION: Patient provided a day, time, name, or contact info for appointment.
+- CLOSING: Patient provided both a specific DAY and a specific TIME.
+- NURTURING: Patient explicitly not ready.
+
 ## SIGNAL CLASSIFICATION RULES (VERY IMPORTANT)
-- If patient message contains: "urgent", "immediately", "today", "asap", "straight away" → lead_signals.urgency = "high"
-- If patient uses: "soon", "this week", "in the coming days", "shortly" → lead_signals.urgency = "medium"
-- If no time reference → lead_signals.urgency = "low" or "unknown"
+- urgency = "high": "urgent", "immediately", "today", "asap"
+- urgency = "medium": "soon", "this week", "in the coming days"
+- urgency = "low"/"unknown": no time reference
 
-- If patient explicitly requests appointment, asks for times, says "I'd like to come in", "I'm ready to book" → lead_signals.buying_intent = "ready"
-- If just gathering information → lead_signals.buying_intent = "considering"
-- If just browsing → lead_signals.buying_intent = "just_browsing"
+- buying_intent = "ready": Patient gave a specific DAY ("tomorrow", "Wednesday", "next week") OR a specific TIME ("3pm", "15:00", "morning") OR said "I'd like to come in" / "I want to book"
+- buying_intent = "considering": Asking questions, gathering info, comparing
+- buying_intent = "just_browsing": Just looking, not ready
 
-- If patient gives short one-word answers → lead_signals.engagement_level = "low"
-- If patient provides detailed descriptions and asks questions → lead_signals.engagement_level = "high"
-- Otherwise → lead_signals.engagement_level = "medium"
+- engagement_level = "high": Detailed descriptions, asking questions
+- engagement_level = "low": Short one-word answers
+- engagement_level = "medium": Everything else
 
-- If patient asks about price, cost, payment plan, budget → collected_data.budget_awareness = "fiyat_sordu" or "butce_belirti"
+- budget_awareness = "fiyat_sordu": Asking about price, cost, payment
 
-- For collected_data.timeline ALWAYS choose one of these enum values (DB keys, never free text):
-  * "hemen" → patient wants immediately, today, ASAP
-  * "1_hafta" → this week, next week, within a week
-  * "1_ay" → this month, soon, within 1-2 months
-  * "3_ay" → in 3 months, later, still considering
-  * "belirsiz" → no time specified or unclear
+- timeline enum (ONLY these 5 values):
+  * "hemen" → today, ASAP, immediately
+  * "1_hafta" → this week, next week
+  * "1_ay" → this month, within 1-2 months
+  * "3_ay" → in 3 months, later
+  * "belirsiz" → unspecified or unclear
 
-- handoff_recommended: MUST be true when:
-  * Patient explicitly requested an appointment or consultation
-  * Patient provided a specific day/time
-  * buying_intent = "ready"
+- handoff_recommended = true: if buying_intent = "ready" OR patient gave specific day/time
 
 ## TASK
-Respond ONLY in the following JSON format (nothing else):
+Your response MUST be a valid JSON object only (no markdown, no explanation, nothing else):
 {
   "metadata": {
     "current_stage": "GREETING|DISCOVERY|TRUST_BUILDING|APPOINTMENT_OFFER|INFO_COLLECTION|CLOSING|NURTURING",
@@ -237,20 +253,12 @@ Respond ONLY in the following JSON format (nothing else):
   "reply_guidance": "1-2 sentence guidance for the reply assistant"
 }
 
-CRITICAL: NEVER set previously non-null collected data to null. Only update with new information from the latest message.`;
+RULE: NEVER set previously non-null collected data to null.`;
 
-  const systemPrompt = lang === 'en' ? systemEN : systemTR;
+  const system = lang === 'en' ? systemEN : systemTR;
+  const userContent = `Hasta mesajı: "${userMessage}"\n\nKonuşma geçmişi:\n${historyText}`;
 
-  // Build conversation + final user message
-  const messages: { role: 'user' | 'assistant'; content: string }[] = [
-    ...history,
-    { role: 'user', content: userMessage },
-  ];
-
-  // For analysis we prepend the system as a user turn (API route will use system param)
-  return [
-    { role: 'user', content: `${systemPrompt}\n\n---\n\nHasta mesajı: "${userMessage}"\n\nKonuşma geçmişi:\n${history.map(m => `${m.role === 'user' ? 'Hasta' : 'Asistan'}: ${m.content}`).join('\n') || '(yok)'}` },
-  ];
+  return { system, userContent };
 }
 
 // ─── REPLY PROMPTS ────────────────────────────────────────────────────────────

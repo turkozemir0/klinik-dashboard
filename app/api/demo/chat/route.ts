@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Step 1: Analysis ───────────────────────────────────────────────────────
-    const analysisMessages = buildAnalysisMessages(
+    const { system: analysisSystem, userContent } = buildAnalysisMessages(
       { name: clinic.name, clinic_type: clinic.clinic_type },
       services || [],
       faqs || [],
@@ -70,7 +70,11 @@ export async function POST(req: NextRequest) {
     const analysisResponse = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       max_tokens: 1024,
-      messages: analysisMessages,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: analysisSystem },
+        { role: 'user', content: userContent },
+      ],
     });
 
     let analysisResult: any = null;
