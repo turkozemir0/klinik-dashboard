@@ -24,11 +24,24 @@ export interface Messages {
     overview: string;
     leadPipeline: string;
     handoffLogs: string;
+    callLogs: string;
     serviceAnalytics: string;
     knowledgeBase: string;
     settings: string;
     systemActive: string;
     aiPanel: string;
+  };
+  calls: {
+    title: string;
+    callsShown: (n: number) => string;
+    noCallLogs: string;
+    caller: string;
+    duration: string;
+    date: string;
+    transcript: string;
+    viewTranscript: string;
+    inbound: string;
+    outbound: string;
   };
   overview: {
     title: string;
@@ -221,6 +234,68 @@ export interface Messages {
       back: string;
       skip: string;
       submitContinue: string;
+      phonePlaceholder: string;
+      emailPlaceholder: string;
+      addressPlaceholder: string;
+      parkingPlaceholder: string;
+      consultationFeePlaceholder: string;
+      cancellationPolicyPlaceholder: string;
+      pricingPolicyPlaceholder: string;
+      greetingPlaceholder: string;
+      doctorNamePlaceholder: string;
+      doctorTitlePlaceholder: string;
+      doctorExpPlaceholder: string;
+      doctorCredentialsPlaceholder: string;
+    };
+    services: {
+      title: string;
+      subtitle: string;
+      templateSection: string;
+      templateHint: string;
+      templateCount: (n: number) => string;
+      addedSection: (n: number) => string;
+      unnamed: string;
+      addEmpty: string;
+      serviceName: string;
+      category: string;
+      aiDesc: string;
+      duration: string;
+      anesthesia: string;
+      recovery: string;
+      result: string;
+      pricing: string;
+      submit: string;
+      back: string;
+      skip: string;
+      awaitingApproval: string;
+      awaitingHint: string;
+      approved: string;
+      rejected: string;
+      rejectionNote: string;
+      minOneError: string;
+    };
+    faqs: {
+      title: string;
+      subtitle: string;
+      templateSection: string;
+      templateHint: string;
+      addedSection: (n: number) => string;
+      noQuestion: string;
+      addEmpty: string;
+      patternsLabel: string;
+      addPattern: string;
+      answerLabel: string;
+      answerPlaceholder: string;
+      categoryLabel: string;
+      categoryPlaceholder: string;
+      generalGroup: string;
+      submit: string;
+      back: string;
+      skip: string;
+      awaitingApproval: string;
+      approved: string;
+      rejected: string;
+      rejectionNote: string;
     };
   };
   auth: {
@@ -242,6 +317,67 @@ export interface Messages {
       timeframeDesc: string;
       signOut: string;
     };
+    register: {
+      title: string;
+      subtitle: string;
+      inviteSubtitle: string;
+      clinicName: string;
+      clinicNamePlaceholder: string;
+      fullName: string;
+      fullNamePlaceholder: string;
+      phone: string;
+      phonePlaceholder: string;
+      email: string;
+      emailPlaceholder: string;
+      password: string;
+      passwordPlaceholder: string;
+      city: string;
+      cityPlaceholder: string;
+      heardAbout: string;
+      heardAboutPlaceholder: string;
+      gdprText: string;
+      gdprPrivacy: string;
+      gdprTerms: string;
+      submit: string;
+      submitting: string;
+      register: string;
+      hasAccount: string;
+      goToLogin: string;
+      successTitle: string;
+      successDesc: (clinicName: string, email: string) => string;
+      successNote: string;
+      goToLoginBtn: string;
+      requiredError: string;
+      passwordLengthError: string;
+      emailExistsError: string;
+      gdprError: string;
+      invalidInviteTitle: string;
+      invalidInviteDesc: string;
+    };
+  };
+  clinicTypes: {
+    estetik: string;
+    dis: string;
+    sac: string;
+    lazer: string;
+    goz: string;
+    ortopedi: string;
+    dermato: string;
+    diyetisyen: string;
+    psikoloji: string;
+    diger: string;
+    genel: string;
+  };
+  gdpr: {
+    cookieBanner: string;
+    accept: string;
+    decline: string;
+    learnMore: string;
+  };
+  legal: {
+    privacyTitle: string;
+    termsTitle: string;
+    cookiesTitle: string;
   };
   clinicAccess: {
     noAccess: string;
@@ -360,11 +496,24 @@ const tr: Messages = {
     overview: 'Genel Bakış',
     leadPipeline: 'Lead Pipeline',
     handoffLogs: 'Handoff Logları',
+    callLogs: 'Çağrı Logları',
     serviceAnalytics: 'Hizmet Analitik',
     knowledgeBase: 'Knowledge Base',
     settings: 'Ayarlar',
     systemActive: 'Sistem Aktif',
     aiPanel: 'AI Panel',
+  },
+  calls: {
+    title: 'Çağrı Logları',
+    callsShown: (n) => `${n} çağrı`,
+    noCallLogs: 'Henüz çağrı kaydı yok.',
+    caller: 'Arayan',
+    duration: 'Süre',
+    date: 'Tarih',
+    transcript: 'Transkript',
+    viewTranscript: 'Transkripti Gör',
+    inbound: 'Gelen',
+    outbound: 'Giden',
   },
   overview: {
     title: 'Genel Bakış',
@@ -557,6 +706,68 @@ const tr: Messages = {
       back: '← Geri',
       skip: 'Atla →',
       submitContinue: 'Gönder & Devam Et',
+      phonePlaceholder: '+90 212 555 00 00',
+      emailPlaceholder: 'info@kliniginiz.com',
+      addressPlaceholder: 'Bağdat Caddesi No: 42 Kat: 3, Kadıköy, İstanbul',
+      parkingPlaceholder: 'Binamızın karşısında ücretsiz otopark mevcuttur.',
+      consultationFeePlaceholder: 'İlk görüşmemiz ücretsizdir.',
+      cancellationPolicyPlaceholder: 'Randevunuzu en az 24 saat öncesinden iptal edebilirsiniz.',
+      pricingPolicyPlaceholder: 'Fiyatlarımız kişisel muayene sonrası belirlenmektedir.',
+      greetingPlaceholder: 'Merhaba! 👋 Kliniğimize hoş geldiniz. Size nasıl yardımcı olabilirim?',
+      doctorNamePlaceholder: 'Op. Dr. Adı Soyadı',
+      doctorTitlePlaceholder: 'Plastik ve Rekonstrüktif Cerrahi Uzmanı',
+      doctorExpPlaceholder: '10',
+      doctorCredentialsPlaceholder: 'İstanbul Üniversitesi Tıp Fakültesi mezunu.',
+    },
+    services: {
+      title: 'Hizmetlerinizi Ekleyin',
+      subtitle: 'Şablondan ekle veya sıfırdan oluştur. Admin onayından sonra sisteme işlenir.',
+      templateSection: 'Klinik Tipinize Göre Önerilen Şablonlar',
+      templateHint: '— tıklayarak ekle',
+      templateCount: (n) => `${n} şablon`,
+      addedSection: (n) => `Eklenen Hizmetler (${n})`,
+      unnamed: 'İsimsiz',
+      addEmpty: 'Boş Hizmet Ekle',
+      serviceName: 'Hizmet Adı *',
+      category: 'Kategori',
+      aiDesc: 'AI Açıklaması',
+      duration: 'İşlem Süresi',
+      anesthesia: 'Anestezi',
+      recovery: 'İyileşme',
+      result: 'Sonuç',
+      pricing: 'Fiyat Yanıtı',
+      submit: 'Gönder & Devam',
+      back: '← Geri',
+      skip: 'Atla →',
+      awaitingApproval: 'Onay Bekleniyor — Admin inceliyor.',
+      awaitingHint: 'Değiştirmek için formu güncelleyip tekrar gönderin.',
+      approved: 'Onaylandı ✓',
+      rejected: 'Reddedildi — Düzenleyip tekrar gönderin.',
+      rejectionNote: 'Not:',
+      minOneError: 'En az 1 hizmet ekleyin',
+    },
+    faqs: {
+      title: 'Sık Sorulan Sorular',
+      subtitle: 'Şablondan ekle veya kendi SSS\'lerinizi oluşturun. Admin onayından sonra işlenir.',
+      templateSection: 'Önerilen SSS Şablonları',
+      templateHint: '— tıklayarak ekle',
+      addedSection: (n) => `Eklenen SSS'ler (${n})`,
+      noQuestion: 'Soru girilmedi',
+      addEmpty: 'Boş SSS Ekle',
+      patternsLabel: 'Soru Kalıpları',
+      addPattern: '+ Ekle',
+      answerLabel: 'Cevap *',
+      answerPlaceholder: 'AI asistanının vereceği yanıt…',
+      categoryLabel: 'Kategori',
+      categoryPlaceholder: 'fiyat / medikal / genel',
+      generalGroup: 'Genel',
+      submit: 'Gönder & Tamamla',
+      back: '← Geri',
+      skip: 'Atla →',
+      awaitingApproval: 'Onay Bekleniyor',
+      approved: 'Onaylandı ✓',
+      rejected: 'Reddedildi — Düzenleyip tekrar gönderin.',
+      rejectionNote: 'Not:',
     },
   },
   auth: {
@@ -578,6 +789,68 @@ const tr: Messages = {
       timeframeDesc: 'içinde dönüş yapılır.',
       signOut: 'Çıkış Yap',
     },
+    register: {
+      title: 'Kliniğinizi Kaydedin',
+      subtitle: 'Başvurunuz onaylandıktan sonra panele erişim sağlayabilirsiniz',
+      inviteSubtitle: 'Davetiye ile özel erişim',
+      clinicName: 'Klinik Adı',
+      clinicNamePlaceholder: 'ör: İstanbul Estetik Klinik',
+      fullName: 'Ad Soyad',
+      fullNamePlaceholder: 'Dr. Adı Soyadı',
+      phone: 'Telefon',
+      phonePlaceholder: '+90 5xx xxx xx xx',
+      email: 'Email',
+      emailPlaceholder: 'doktor@klinik.com',
+      password: 'Şifre',
+      passwordPlaceholder: 'Min. 8 karakter',
+      city: 'Şehir',
+      cityPlaceholder: 'İstanbul',
+      heardAbout: 'Bizi Nasıl Duydunuz? (isteğe bağlı)',
+      heardAboutPlaceholder: 'ör: Referans, sosyal medya, arama…',
+      gdprText: 'adresini okudum ve kabul ediyorum.',
+      gdprPrivacy: 'Gizlilik Politikası',
+      gdprTerms: 'Kullanım Şartları',
+      submit: 'Başvuru Gönder',
+      submitting: 'Gönderiliyor…',
+      register: 'Kayıt Ol',
+      hasAccount: 'Zaten hesabınız var mı?',
+      goToLogin: 'Giriş yapın',
+      successTitle: 'Başvurunuz Alındı!',
+      successDesc: (clinicName, email) =>
+        `${clinicName} için başvurunuz incelemeye alındı. Onaylandığında ${email} adresinize bildirim gönderilecek. Genellikle 1 iş günü içinde dönüş yapılır.`,
+      successNote: 'Email\'inizi onaylamanız gerekebilir, lütfen gelen kutunuzu kontrol edin.',
+      goToLoginBtn: 'Giriş Sayfasına Git',
+      requiredError: 'Zorunlu alanları doldurunuz',
+      passwordLengthError: 'Şifre en az 8 karakter olmalı',
+      emailExistsError: 'Bu email ile zaten kayıt var. Giriş yapmayı deneyin.',
+      gdprError: 'Devam etmek için gizlilik politikasını ve kullanım şartlarını kabul etmeniz gerekiyor.',
+      invalidInviteTitle: 'Geçersiz Davetiye',
+      invalidInviteDesc: 'Bu davetiye linki kullanılmış veya süresi dolmuş. Lütfen yetkili kişiyle iletişime geçin.',
+    },
+  },
+  clinicTypes: {
+    estetik: 'Estetik Cerrahi',
+    dis: 'Diş Kliniği',
+    sac: 'Saç Kliniği',
+    lazer: 'Lazer & Güzellik',
+    goz: 'Göz Kliniği',
+    ortopedi: 'Ortopedi',
+    dermato: 'Dermatoloji',
+    diyetisyen: 'Diyet & Beslenme',
+    psikoloji: 'Psikoloji',
+    diger: 'Diğer',
+    genel: 'Genel',
+  },
+  gdpr: {
+    cookieBanner: 'Deneyiminizi iyileştirmek için çerezler kullanıyoruz.',
+    accept: 'Kabul Et',
+    decline: 'Reddet',
+    learnMore: 'Daha Fazla',
+  },
+  legal: {
+    privacyTitle: 'Gizlilik Politikası',
+    termsTitle: 'Kullanım Şartları',
+    cookiesTitle: 'Çerez Politikası',
   },
   clinicAccess: {
     noAccess: 'Klinik Erişimi Yok',
@@ -696,11 +969,24 @@ const en: Messages = {
     overview: 'Overview',
     leadPipeline: 'Lead Pipeline',
     handoffLogs: 'Handoff Logs',
+    callLogs: 'Call Logs',
     serviceAnalytics: 'Service Analytics',
     knowledgeBase: 'Knowledge Base',
     settings: 'Settings',
     systemActive: 'System Active',
     aiPanel: 'AI Panel',
+  },
+  calls: {
+    title: 'Call Logs',
+    callsShown: (n) => `${n} calls`,
+    noCallLogs: 'No call records yet.',
+    caller: 'Caller',
+    duration: 'Duration',
+    date: 'Date',
+    transcript: 'Transcript',
+    viewTranscript: 'View Transcript',
+    inbound: 'Inbound',
+    outbound: 'Outbound',
   },
   overview: {
     title: 'Overview',
@@ -893,6 +1179,68 @@ const en: Messages = {
       back: '← Back',
       skip: 'Skip →',
       submitContinue: 'Submit & Continue',
+      phonePlaceholder: '+44 7700 900000',
+      emailPlaceholder: 'info@yourclinic.co.uk',
+      addressPlaceholder: '123 Harley Street, London, W1G 7JD',
+      parkingPlaceholder: 'Pay & Display parking available nearby on Devonshire Street.',
+      consultationFeePlaceholder: 'Initial consultation is complimentary.',
+      cancellationPolicyPlaceholder: 'Please give at least 24 hours notice to cancel or rearrange your appointment.',
+      pricingPolicyPlaceholder: 'Prices are personalised following a thorough consultation.',
+      greetingPlaceholder: 'Hello! 👋 Welcome to our clinic. How can I help you today?',
+      doctorNamePlaceholder: 'Mr / Dr First Last',
+      doctorTitlePlaceholder: 'Consultant Plastic Surgeon',
+      doctorExpPlaceholder: '10',
+      doctorCredentialsPlaceholder: 'FRCS (Plast), Member of BAAPS. Trained at Imperial College London.',
+    },
+    services: {
+      title: 'Add Your Services',
+      subtitle: 'Add from templates or create from scratch. Processed after admin approval.',
+      templateSection: 'Recommended Templates for Your Clinic Type',
+      templateHint: '— click to add',
+      templateCount: (n) => `${n} templates`,
+      addedSection: (n) => `Added Services (${n})`,
+      unnamed: 'Unnamed',
+      addEmpty: 'Add Empty Service',
+      serviceName: 'Service Name *',
+      category: 'Category',
+      aiDesc: 'AI Description',
+      duration: 'Procedure Duration',
+      anesthesia: 'Anaesthesia',
+      recovery: 'Recovery',
+      result: 'Results Timeline',
+      pricing: 'Pricing Response',
+      submit: 'Submit & Continue',
+      back: '← Back',
+      skip: 'Skip →',
+      awaitingApproval: 'Awaiting Approval — Admin is reviewing.',
+      awaitingHint: 'To make changes, update the form and resubmit.',
+      approved: 'Approved ✓',
+      rejected: 'Rejected — Please edit and resubmit.',
+      rejectionNote: 'Note:',
+      minOneError: 'Please add at least 1 service',
+    },
+    faqs: {
+      title: 'Frequently Asked Questions',
+      subtitle: 'Add from templates or create your own FAQs. Processed after admin approval.',
+      templateSection: 'Suggested FAQ Templates',
+      templateHint: '— click to add',
+      addedSection: (n) => `Added FAQs (${n})`,
+      noQuestion: 'No question entered',
+      addEmpty: 'Add Empty FAQ',
+      patternsLabel: 'Question Patterns',
+      addPattern: '+ Add',
+      answerLabel: 'Answer *',
+      answerPlaceholder: 'The answer the AI assistant will give…',
+      categoryLabel: 'Category',
+      categoryPlaceholder: 'pricing / medical / general',
+      generalGroup: 'General',
+      submit: 'Submit & Complete',
+      back: '← Back',
+      skip: 'Skip →',
+      awaitingApproval: 'Awaiting Approval',
+      approved: 'Approved ✓',
+      rejected: 'Rejected — Please edit and resubmit.',
+      rejectionNote: 'Note:',
     },
   },
   auth: {
@@ -914,6 +1262,68 @@ const en: Messages = {
       timeframeDesc: 'for a response.',
       signOut: 'Sign Out',
     },
+    register: {
+      title: 'Register Your Clinic',
+      subtitle: 'You can access the panel once your application is approved',
+      inviteSubtitle: 'Invite-only access',
+      clinicName: 'Clinic Name',
+      clinicNamePlaceholder: 'e.g. London Aesthetic Clinic',
+      fullName: 'Full Name',
+      fullNamePlaceholder: 'Mr / Dr First Last',
+      phone: 'Phone',
+      phonePlaceholder: '+44 7700 900000',
+      email: 'Email',
+      emailPlaceholder: 'doctor@clinic.co.uk',
+      password: 'Password',
+      passwordPlaceholder: 'Min. 8 characters',
+      city: 'City',
+      cityPlaceholder: 'London',
+      heardAbout: 'How did you hear about us? (optional)',
+      heardAboutPlaceholder: 'e.g. Referral, social media, search…',
+      gdprText: 'I have read and agree to the',
+      gdprPrivacy: 'Privacy Policy',
+      gdprTerms: 'Terms of Service',
+      submit: 'Submit Application',
+      submitting: 'Submitting…',
+      register: 'Register',
+      hasAccount: 'Already have an account?',
+      goToLogin: 'Sign in',
+      successTitle: 'Application Received!',
+      successDesc: (clinicName, email) =>
+        `Your application for ${clinicName} has been received. You will be notified at ${email} once approved. We typically respond within 1 business day.`,
+      successNote: 'You may need to verify your email — please check your inbox.',
+      goToLoginBtn: 'Go to Login',
+      requiredError: 'Please fill in all required fields',
+      passwordLengthError: 'Password must be at least 8 characters',
+      emailExistsError: 'An account with this email already exists. Try signing in.',
+      gdprError: 'You must accept the Privacy Policy and Terms of Service to continue.',
+      invalidInviteTitle: 'Invalid Invite',
+      invalidInviteDesc: 'This invite link has been used or has expired. Please contact the authorised person.',
+    },
+  },
+  clinicTypes: {
+    estetik: 'Aesthetic Surgery',
+    dis: 'Dental Clinic',
+    sac: 'Hair Clinic',
+    lazer: 'Laser & Beauty',
+    goz: 'Eye Clinic',
+    ortopedi: 'Orthopaedics',
+    dermato: 'Dermatology',
+    diyetisyen: 'Dietetics & Nutrition',
+    psikoloji: 'Psychology',
+    diger: 'Other',
+    genel: 'General',
+  },
+  gdpr: {
+    cookieBanner: 'We use cookies to improve your experience on this site.',
+    accept: 'Accept',
+    decline: 'Decline',
+    learnMore: 'Learn more',
+  },
+  legal: {
+    privacyTitle: 'Privacy Policy',
+    termsTitle: 'Terms of Service',
+    cookiesTitle: 'Cookie Policy',
   },
   clinicAccess: {
     noAccess: 'No Clinic Access',
@@ -972,7 +1382,7 @@ const en: Messages = {
     aiDescriptionPlaceholder: 'Detailed description the AI assistant can share with patients about this service…',
     procedureDuration: 'Procedure Duration',
     procedureDurationPlaceholder: 'e.g. 3-5 hours',
-    anesthesiaType: 'Anesthesia Type',
+    anesthesiaType: 'Anaesthesia Type',
     anesthesiaTypePlaceholder: 'e.g. Local anaesthesia',
     recoveryTime: 'Recovery Process',
     recoveryTimePlaceholder: 'e.g. 1 week rest',

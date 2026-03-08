@@ -15,6 +15,7 @@ import {
   Settings,
   Menu,
   X,
+  Phone,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useState } from 'react';
@@ -36,6 +37,7 @@ export default function Sidebar({ clinic }: SidebarProps) {
     { href: '/dashboard',           label: t.sidebar.overview,        icon: LayoutDashboard, exact: true },
     { href: '/dashboard/leads',     label: t.sidebar.leadPipeline,    icon: Users },
     { href: '/dashboard/handoffs',  label: t.sidebar.handoffLogs,     icon: ArrowRightLeft },
+    { href: '/dashboard/calls',     label: t.sidebar.callLogs,        icon: Phone },
     { href: '/dashboard/services',  label: t.sidebar.serviceAnalytics, icon: BarChart3 },
     { href: '/dashboard/knowledge', label: t.sidebar.knowledgeBase,   icon: BookOpen },
     { href: '/dashboard/settings',  label: t.sidebar.settings,        icon: Settings },
