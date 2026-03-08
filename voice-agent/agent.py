@@ -149,18 +149,19 @@ async def entrypoint(ctx: JobContext):
     call_start = datetime.utcnow()
     transcript = []
 
-    # Konuşma geçmişini topla
-    @session.on("user_speech_committed")
-    def on_user_speech(ev):
-        transcript.append({"role": "user", "content": ev.user_transcript})
-
-    @session.on("agent_speech_committed")
-    def on_agent_speech(ev):
-        transcript.append({"role": "agent", "content": ev.agent_transcript})
+    # Konuşma geçmişini topla (v1.x event adı)
+    @session.on("conversation_item_added")
+    def on_item_added(ev):
+        item = ev.item
+        role = getattr(item, "role", None)
+        content = getattr(item, "content", None)
+        if role and content:
+            text = content if isinstance(content, str) else str(content)
+            transcript.append({"role": role, "content": text})
 
     await session.start(
-        room=ctx.room,
         agent=Agent(instructions=system_prompt),
+        room=ctx.room,
         room_input_options=RoomInputOptions(noise_cancellation=True),
     )
 
