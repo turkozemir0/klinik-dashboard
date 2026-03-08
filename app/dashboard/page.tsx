@@ -14,6 +14,8 @@ import {
   MessageSquare,
   Clock,
   BookOpen,
+  PhoneIncoming,
+  Phone,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
@@ -45,6 +47,7 @@ export default async function DashboardPage() {
     { data: recentConvs },
     { count: openTickets },
     { data: onboardingProg },
+    { data: recentCalls },
   ] = await Promise.all([
     supabase
       .from('conversations')
@@ -72,6 +75,12 @@ export default async function DashboardPage() {
       .select('completion_pct, profile_done, services_done, faqs_done, is_completed')
       .eq('clinic_id', clinicId)
       .single(),
+    supabase
+      .from('voice_calls')
+      .select('id, phone_from, duration_seconds, started_at, direction')
+      .eq('clinic_id', clinicId)
+      .order('started_at', { ascending: false })
+      .limit(5),
   ]);
 
   // ── Compute summary stats ───────────────────────────────────────────────────
@@ -266,6 +275,52 @@ export default async function DashboardPage() {
                   <div className="flex items-center gap-1 text-xs text-slate-400 flex-shrink-0">
                     <Clock className="w-3 h-3" />
                     {lastMsg}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Recent Calls */}
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="text-base font-semibold text-slate-800">{t.calls.title}</h2>
+          <a href="/dashboard/calls" className="text-sm text-brand-600 hover:text-brand-700 font-medium">
+            {t.common.seeAll}
+          </a>
+        </div>
+        <div className="divide-y divide-slate-50">
+          {(recentCalls ?? []).length === 0 ? (
+            <div className="py-10 text-center text-slate-400 text-sm">
+              {t.calls.noCallLogs}
+            </div>
+          ) : (
+            recentCalls!.map((call) => {
+              const date = call.started_at
+                ? format(parseISO(call.started_at), "d MMM HH:mm", { locale: dateLocale })
+                : '—';
+              const dur = call.duration_seconds
+                ? `${Math.floor(call.duration_seconds / 60)}d ${call.duration_seconds % 60}s`
+                : '—';
+
+              return (
+                <div key={call.id} className="flex items-center gap-4 px-6 py-3.5 hover:bg-slate-50 transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                    <PhoneIncoming className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-900">{call.phone_from || '—'}</p>
+                    <p className="text-xs text-slate-400">{call.direction === 'outbound' ? t.calls.outbound : t.calls.inbound}</p>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-slate-500 flex-shrink-0">
+                    <Phone className="w-3 h-3" />
+                    {dur}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-slate-400 flex-shrink-0">
+                    <Clock className="w-3 h-3" />
+                    {date}
                   </div>
                 </div>
               );
