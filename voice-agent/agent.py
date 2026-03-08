@@ -7,7 +7,7 @@ import asyncio
 import logging
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from livekit.agents import (
@@ -19,7 +19,7 @@ from livekit.agents import (
     AutoSubscribe,
     cli,
 )
-from livekit.plugins import cartesia, deepgram, openai, silero, turn_detector
+from livekit.plugins import cartesia, deepgram, openai, silero
 
 load_dotenv()
 
@@ -27,34 +27,33 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("stoaix-voice")
 
 
-# ── Supabase'den klinik KB çek ────────────────────────────────────────────────
+# ── Supabase client (paylaşımlı) ──────────────────────────────────────────────
 
-async def get_system_prompt(clinic_id: str) -> str:
+def get_supabase():
     from supabase import create_client
-
-    sb = create_client(
+    return create_client(
         os.environ["SUPABASE_URL"],
         os.environ["SUPABASE_SERVICE_ROLE_KEY"],
     )
 
-    clinic_res  = sb.table("clinics").select("*").eq("id", clinic_id).single().execute()
-    services_res = sb.table("clinic_services").select("name,description,price_range").eq("clinic_id", clinic_id).eq("is_active", True).execute()
-    faqs_res    = sb.table("clinic_faqs").select("question,answer").eq("clinic_id", clinic_id).eq("is_active", True).execute()
+
+# ── Klinik KB çek ─────────────────────────────────────────────────────────────
+
+async def get_system_prompt(clinic_id: str) -> str:
+    sb = get_supabase()
+
+    clinic_res = sb.table("clinics").select("*").eq("id", clinic_id).single().execute()
+    kb_res     = sb.table("kb_documents").select("source_type,content").eq("clinic_id", clinic_id).execute()
 
     c = clinic_res.data
     if not c:
         raise ValueError(f"Clinic not found: {clinic_id}")
 
-    services_text = "\n".join(
-        f"- {s['name']}" + (f": {s['description']}" if s.get("description") else "")
-        + (f" ({s['price_range']})" if s.get("price_range") else "")
-        for s in (services_res.data or [])
-    ) or "(Hizmet bilgisi girilmemiş)"
+    services_docs = [d["content"] for d in (kb_res.data or []) if d.get("source_type") == "service"]
+    faq_docs      = [d["content"] for d in (kb_res.data or []) if d.get("source_type") == "faq"]
 
-    faqs_text = "\n\n".join(
-        f"S: {f['question']}\nC: {f['answer']}"
-        for f in (faqs_res.data or [])
-    ) or "(SSS girilmemiş)"
+    services_text = "\n\n".join(services_docs) or "(Hizmet bilgisi girilmemiş)"
+    faqs_text     = "\n\n".join(faq_docs)      or "(SSS girilmemiş)"
 
     address = ", ".join(filter(None, [
         c.get("address"), c.get("district"), c.get("city")
@@ -88,33 +87,40 @@ Baş Doktor: {c.get('lead_doctor_name', '')} {c.get('lead_doctor_title', '')}
 """
 
 
-# ── Çağrı sonu n8n'e log at ──────────────────────────────────────────────────
+# ── Çağrı sonu Supabase'e kaydet ──────────────────────────────────────────────
 
-async def log_call_to_n8n(clinic_id: str, transcript: list, duration_seconds: int):
-    webhook_url = os.environ.get("N8N_CALL_LOG_WEBHOOK")
-    if not webhook_url:
-        return
-
-    import urllib.request
-
-    payload = json.dumps({
-        "clinic_id": clinic_id,
-        "timestamp": datetime.utcnow().isoformat(),
-        "duration_seconds": duration_seconds,
-        "transcript": transcript,
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        webhook_url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+async def save_call_log(
+    clinic_id: str,
+    call_start: datetime,
+    duration_seconds: int,
+    transcript: list,
+    phone_from: str = "",
+    phone_to: str = "",
+):
     try:
-        urllib.request.urlopen(req, timeout=5)
-        logger.info("Call log sent to n8n")
+        sb = get_supabase()
+
+        # Transcript'i düz metin olarak birleştir
+        transcript_text = "\n".join(
+            f"[{m.get('role', 'unknown')}] {m.get('content', '')}"
+            for m in transcript
+        ) if transcript else ""
+
+        sb.table("voice_calls").insert({
+            "clinic_id": clinic_id,
+            "direction": "inbound",
+            "status": "completed",
+            "phone_from": phone_from,
+            "phone_to": phone_to,
+            "duration_seconds": duration_seconds,
+            "transcript": transcript_text,
+            "started_at": call_start.replace(tzinfo=timezone.utc).isoformat(),
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+
+        logger.info(f"Call log saved — duration: {duration_seconds}s")
     except Exception as e:
-        logger.warning(f"n8n log failed: {e}")
+        logger.warning(f"Call log failed: {e}")
 
 
 # ── Agent entrypoint ──────────────────────────────────────────────────────────
@@ -128,20 +134,29 @@ async def entrypoint(ctx: JobContext):
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    # Klinik KB'sini çek
     system_prompt = await get_system_prompt(clinic_id)
 
     session = AgentSession(
-        stt=deepgram.STT(model="nova-2"),
+        stt=deepgram.STT(model="nova-2", language="tr"),
         llm=openai.LLM(model="gpt-4o-mini"),
         tts=cartesia.TTS(
-            voice_id=os.environ.get("CARTESIA_VOICE_ID", "79a125e8-cd45-4c13-8a67-188112f4dd22"),
+            voice=os.environ.get("CARTESIA_VOICE_ID", "79a125e8-cd45-4c13-8a67-188112f4dd22"),
+            language="tr",
         ),
         vad=silero.VAD.load(),
-        turn_detection=turn_detector.MultilingualModel(),
     )
 
     call_start = datetime.utcnow()
+    transcript = []
+
+    # Konuşma geçmişini topla
+    @session.on("user_speech_committed")
+    def on_user_speech(ev):
+        transcript.append({"role": "user", "content": ev.user_transcript})
+
+    @session.on("agent_speech_committed")
+    def on_agent_speech(ev):
+        transcript.append({"role": "agent", "content": ev.agent_transcript})
 
     await session.start(
         room=ctx.room,
@@ -149,18 +164,16 @@ async def entrypoint(ctx: JobContext):
         room_input_options=RoomInputOptions(noise_cancellation=True),
     )
 
-    # İlk selamlama
     await session.generate_reply(
         instructions="Aramayı sıcak bir şekilde karşıla, kliniği tanıt ve nasıl yardımcı olabileceğini sor. Kısa tut."
     )
 
-    # Çağrı bitince log at
+    # Çağrı bitince kaydet
     @ctx.room.on("disconnected")
     def on_disconnected():
         duration = int((datetime.utcnow() - call_start).total_seconds())
-        logger.info(f"Call ended — duration: {duration}s")
         asyncio.create_task(
-            log_call_to_n8n(clinic_id, [], duration)
+            save_call_log(clinic_id, call_start, duration, transcript)
         )
 
 
