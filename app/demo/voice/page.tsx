@@ -3,11 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Room, RoomEvent, Track } from 'livekit-client';
 
-type Scenario = 'follow_up' | 'appointment_reminder';
+type Scenario = 'inbound' | 'follow_up' | 'appointment_reminder';
 type Lang = 'tr' | 'en';
 type CallState = 'idle' | 'connecting' | 'ringing' | 'connected' | 'ended' | 'error';
 
 const SCENARIO_LABELS: Record<Scenario, Record<Lang, string>> = {
+  inbound: {
+    tr: 'Resepsiyon',
+    en: 'Receptionist',
+  },
   follow_up: {
     tr: 'Takip Araması',
     en: 'Follow-up Call',
@@ -15,6 +19,21 @@ const SCENARIO_LABELS: Record<Scenario, Record<Lang, string>> = {
   appointment_reminder: {
     tr: 'Randevu Hatırlatma',
     en: 'Appointment Reminder',
+  },
+};
+
+const SCENARIO_DESC: Record<Scenario, Record<Lang, string>> = {
+  inbound: {
+    tr: 'Klinigi aradığında karşılayan resepsiyonist',
+    en: 'Receptionist answering your call',
+  },
+  follow_up: {
+    tr: 'İlgilendiğin hizmet için seni arayan asistan',
+    en: 'Agent following up on your interest',
+  },
+  appointment_reminder: {
+    tr: 'Randevundan önce seni arayan hatırlatma asistanı',
+    en: 'Agent reminding you of your appointment',
   },
 };
 
@@ -29,7 +48,7 @@ const STATUS_LABELS: Record<CallState, Record<Lang, string>> = {
 
 export default function VoiceDemoPage() {
   const [lang, setLang]         = useState<Lang>('tr');
-  const [scenario, setScenario] = useState<Scenario>('follow_up');
+  const [scenario, setScenario] = useState<Scenario>('inbound');
   const [callState, setCallState] = useState<CallState>('idle');
   const [error, setError]       = useState('');
   const [duration, setDuration] = useState(0);
@@ -208,21 +227,26 @@ export default function VoiceDemoPage() {
             {/* Senaryo seçici */}
             {!isActive && callState !== 'ended' && (
               <div className="mb-6">
-                <label className="block text-xs font-medium text-demo-muted uppercase tracking-wide mb-2">
+                <label className="block text-xs font-medium text-demo-muted uppercase tracking-wide mb-3">
                   {lang === 'tr' ? 'Senaryo' : 'Scenario'}
                 </label>
-                <div className="flex gap-2">
-                  {(['follow_up', 'appointment_reminder'] as Scenario[]).map(s => (
+                <div className="flex flex-col gap-2">
+                  {(['inbound', 'follow_up', 'appointment_reminder'] as Scenario[]).map(s => (
                     <button
                       key={s}
                       onClick={() => setScenario(s)}
-                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-medium border transition ${
+                      className={`w-full py-2.5 px-4 rounded-xl text-left border transition ${
                         scenario === s
-                          ? 'border-demo-cyan text-demo-cyan bg-demo-cyan/10'
-                          : 'border-demo-border text-demo-muted hover:border-demo-cyan/50'
+                          ? 'border-demo-cyan bg-demo-cyan/10'
+                          : 'border-demo-border hover:border-demo-cyan/50'
                       }`}
                     >
-                      {SCENARIO_LABELS[s][lang]}
+                      <span className={`block text-xs font-semibold mb-0.5 ${scenario === s ? 'text-demo-cyan' : 'text-demo-text'}`}>
+                        {SCENARIO_LABELS[s][lang]}
+                      </span>
+                      <span className="block text-[11px] text-demo-muted">
+                        {SCENARIO_DESC[s][lang]}
+                      </span>
                     </button>
                   ))}
                 </div>

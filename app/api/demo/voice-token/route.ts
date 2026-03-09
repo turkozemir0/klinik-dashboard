@@ -8,7 +8,7 @@ const LK_SECRET = process.env.LIVEKIT_API_SECRET!;
 
 export async function POST(req: Request) {
   try {
-    const { scenario = 'follow_up', lang = 'tr', patient_name = 'Demo Kullanıcı' } = await req.json();
+    const { scenario = 'inbound', lang = 'tr', patient_name = 'Demo Kullanıcı' } = await req.json();
 
     const clinic_id = process.env.DEMO_CLINIC_ID;
     if (!clinic_id) {
@@ -17,15 +17,13 @@ export async function POST(req: Request) {
 
     const roomName = `demo-voice-${uuidv4().slice(0, 8)}`;
     const identity = `browser-${uuidv4().slice(0, 6)}`;
-    const metadata = JSON.stringify({
-      clinic_id,
-      scenario,
-      patient_name,
-      service_name: 'Demo Hizmet',
-      appointment_time: '',
-      phone_number: '',
-      lang,
-    });
+
+    // Inbound için scenario metadata'ya eklenmez → agent.py inbound moduna girer
+    const isInbound = scenario === 'inbound';
+    const metaObj = isInbound
+      ? { clinic_id, lang }
+      : { clinic_id, scenario, patient_name, service_name: 'Demo Hizmet', appointment_time: 'Demo Randevu', phone_number: '', lang };
+    const metadata = JSON.stringify(metaObj);
 
     // 1. Room oluştur
     const roomService = new RoomServiceClient(LK_URL, LK_KEY, LK_SECRET);
