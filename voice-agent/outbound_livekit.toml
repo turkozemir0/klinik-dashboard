@@ -1,0 +1,6 @@
+# Outbound calls are handled by the same combined agent (CA_ZgZRbeLw9DDM)
+# LiveKit Cloud allows only 1 agent per project on current plan.
+# Use livekit.toml for deploys.
+#
+# To trigger an outbound call:
+#   python make_call.py --phone +905xxxxxxxxx --scenario follow_up --clinic-id <uuid> ...
