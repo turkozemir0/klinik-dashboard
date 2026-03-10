@@ -70,9 +70,10 @@ export default function VoiceDemoPage() {
   const [summary, setSummary]     = useState<CallSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
-  const roomRef    = useRef<Room | null>(null);
-  const audioElRef = useRef<HTMLAudioElement | null>(null);
-  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const roomRef       = useRef<Room | null>(null);
+  const audioElRef    = useRef<HTMLAudioElement | null>(null);
+  const timerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const transcriptRef = useRef<{ role: string; content: string }[]>([]);
 
   useEffect(() => {
     if (callState === 'connected') {
@@ -116,7 +117,18 @@ export default function VoiceDemoPage() {
       });
       roomRef.current = room;
 
+      transcriptRef.current = [];
+
       room.on(RoomEvent.ParticipantConnected, () => setCallState('connected'));
+
+      room.on(RoomEvent.DataReceived, (payload) => {
+        try {
+          const msg = JSON.parse(new TextDecoder().decode(payload));
+          if (msg.type === 'transcript_item' && msg.role && msg.content) {
+            transcriptRef.current.push({ role: msg.role, content: msg.content });
+          }
+        } catch { /* ignore malformed messages */ }
+      });
 
       room.on(RoomEvent.TrackSubscribed, (track) => {
         if (track.kind === Track.Kind.Audio) {
@@ -153,23 +165,18 @@ export default function VoiceDemoPage() {
     }
   }
 
-  async function fetchSummary() {
+  async function fetchSummary(transcript: { role: string; content: string }[], callLang: Lang) {
+    if (transcript.length < 2) return;
     setSummaryLoading(true);
     setSummary(null);
-    // Agent transcript'i kaydetsin diye 4 saniye bekle
-    await new Promise(r => setTimeout(r, 4000));
     try {
-      const res = await fetch('/api/demo/call-summary');
+      const res = await fetch('/api/demo/call-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript, lang: callLang }),
+      });
       const data: CallSummary = await res.json();
-      if (!data.ready) {
-        // Bir kez daha dene
-        await new Promise(r => setTimeout(r, 3000));
-        const res2 = await fetch('/api/demo/call-summary');
-        const data2: CallSummary = await res2.json();
-        setSummary(data2.ready ? data2 : null);
-      } else {
-        setSummary(data);
-      }
+      setSummary(data.ready ? data : null);
     } catch {
       setSummary(null);
     }
@@ -183,7 +190,7 @@ export default function VoiceDemoPage() {
     }
     cleanup();
     setCallState('ended');
-    fetchSummary();
+    fetchSummary(transcriptRef.current, lang);
   }
 
   function reset() {

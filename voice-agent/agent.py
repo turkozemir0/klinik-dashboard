@@ -285,6 +285,7 @@ async def entrypoint(ctx: JobContext):
         meta = {}
 
     scenario = meta.get("scenario")   # set only for outbound
+    is_demo  = meta.get("is_demo", False)
 
     # ── Outbound ──────────────────────────────────────────────────────────────
     if scenario:
@@ -384,6 +385,12 @@ async def entrypoint(ctx: JobContext):
         if role and content:
             text = content if isinstance(content, str) else str(content)
             transcript.append({"role": role, "content": text})
+            # Demo modunda transcript'i browser'a data channel üzerinden gönder
+            if is_demo:
+                msg = json.dumps({"type": "transcript_item", "role": role, "content": text})
+                asyncio.create_task(
+                    ctx.room.local_participant.publish_data(msg.encode(), reliable=True)
+                )
 
     await session.start(
         agent=Agent(instructions=system_prompt),
@@ -395,10 +402,11 @@ async def entrypoint(ctx: JobContext):
 
     @ctx.room.on("disconnected")
     def on_disconnected():
-        duration = int((datetime.utcnow() - call_start).total_seconds())
-        asyncio.create_task(
-            save_call_log(clinic_id, direction, call_start, duration, transcript, **log_kwargs)
-        )
+        if not is_demo:
+            duration = int((datetime.utcnow() - call_start).total_seconds())
+            asyncio.create_task(
+                save_call_log(clinic_id, direction, call_start, duration, transcript, **log_kwargs)
+            )
 
 
 # ── Başlat ─────────────────────────────────────────────────────────────────────

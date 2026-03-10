@@ -21,8 +21,8 @@ export async function POST(req: Request) {
     // Inbound için scenario metadata'ya eklenmez → agent.py inbound moduna girer
     const isInbound = scenario === 'inbound';
     const metaObj = isInbound
-      ? { clinic_id, lang }
-      : { clinic_id, scenario, patient_name, service_name: 'Demo Hizmet', appointment_time: 'Demo Randevu', phone_number: '', lang };
+      ? { clinic_id, lang, is_demo: true }
+      : { clinic_id, scenario, patient_name, service_name: 'Demo Hizmet', appointment_time: 'Demo Randevu', phone_number: '', lang, is_demo: true };
     const metadata = JSON.stringify(metaObj);
 
     // 1. Room oluştur
