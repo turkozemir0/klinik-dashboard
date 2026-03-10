@@ -8,6 +8,17 @@ type Lang      = 'tr' | 'en';
 type CallState = 'idle' | 'connecting' | 'ringing' | 'connected' | 'ended' | 'error';
 type Step      = 'lang' | 'main';
 
+interface CallSummary {
+  ready: boolean;
+  duration?: number;
+  name?: string | null;
+  phone?: string | null;
+  interested_service?: string | null;
+  key_questions?: string[];
+  next_step?: string | null;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+}
+
 const SCENARIO_LABELS: Record<Scenario, Record<Lang, string>> = {
   inbound:              { tr: 'Resepsiyon',          en: 'Receptionist'         },
   follow_up:            { tr: 'Takip Araması',        en: 'Follow-up Call'       },
@@ -15,9 +26,9 @@ const SCENARIO_LABELS: Record<Scenario, Record<Lang, string>> = {
 };
 
 const SCENARIO_DESC: Record<Scenario, Record<Lang, string>> = {
-  inbound:              { tr: 'Kliniği aradığında karşılayan resepsiyonist',    en: 'Receptionist answering your call'         },
-  follow_up:            { tr: 'İlgilendiğin hizmet için seni arayan asistan',   en: 'Agent following up on your interest'      },
-  appointment_reminder: { tr: 'Randevundan önce seni arayan hatırlatma asistanı', en: 'Agent reminding you of your appointment' },
+  inbound:              { tr: 'Kliniği aradığında karşılayan resepsiyonist',       en: 'Receptionist answering your call'         },
+  follow_up:            { tr: 'İlgilendiğin hizmet için seni arayan asistan',      en: 'Agent following up on your interest'      },
+  appointment_reminder: { tr: 'Randevundan önce seni arayan hatırlatma asistanı',  en: 'Agent reminding you of your appointment'  },
 };
 
 const STATUS_LABELS: Record<CallState, Record<Lang, string>> = {
@@ -29,6 +40,26 @@ const STATUS_LABELS: Record<CallState, Record<Lang, string>> = {
   error:      { tr: 'Hata oluştu',     en: 'Error occurred' },
 };
 
+function SummaryRow({
+  icon, label, value, highlight = false,
+}: {
+  icon: string; label: string; value: string; highlight?: boolean;
+}) {
+  return (
+    <div className={`rounded-lg border px-3 py-2 flex items-start gap-2 ${
+      highlight ? 'border-demo-cyan/40 bg-demo-cyan/5' : 'border-demo-border bg-demo-bg/60'
+    }`}>
+      <span className="text-sm mt-0.5">{icon}</span>
+      <div className="min-w-0">
+        <p className="text-[10px] text-demo-muted">{label}</p>
+        <p className={`text-xs font-medium mt-0.5 ${highlight ? 'text-demo-cyan' : 'text-demo-text'}`}>
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function VoiceDemoPage() {
   const [step, setStep]           = useState<Step>('lang');
   const [lang, setLang]           = useState<Lang>('tr');
@@ -36,6 +67,8 @@ export default function VoiceDemoPage() {
   const [callState, setCallState] = useState<CallState>('idle');
   const [error, setError]         = useState('');
   const [duration, setDuration]   = useState(0);
+  const [summary, setSummary]     = useState<CallSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   const roomRef    = useRef<Room | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
@@ -59,7 +92,6 @@ export default function VoiceDemoPage() {
   async function startCall() {
     setError('');
     setCallState('connecting');
-
     try {
       const res = await fetch('/api/demo/voice-token', {
         method: 'POST',
@@ -75,7 +107,6 @@ export default function VoiceDemoPage() {
         throw new Error(data.error || 'Token alınamadı');
       }
       const { token, ws_url } = await res.json();
-
       setCallState('ringing');
 
       const room = new Room({
@@ -105,7 +136,6 @@ export default function VoiceDemoPage() {
 
       await room.connect(ws_url, token);
       await room.localParticipant.setMicrophoneEnabled(true);
-
       if (room.remoteParticipants.size > 0) setCallState('connected');
 
     } catch (err: unknown) {
@@ -123,6 +153,29 @@ export default function VoiceDemoPage() {
     }
   }
 
+  async function fetchSummary() {
+    setSummaryLoading(true);
+    setSummary(null);
+    // Agent transcript'i kaydetsin diye 4 saniye bekle
+    await new Promise(r => setTimeout(r, 4000));
+    try {
+      const res = await fetch('/api/demo/call-summary');
+      const data: CallSummary = await res.json();
+      if (!data.ready) {
+        // Bir kez daha dene
+        await new Promise(r => setTimeout(r, 3000));
+        const res2 = await fetch('/api/demo/call-summary');
+        const data2: CallSummary = await res2.json();
+        setSummary(data2.ready ? data2 : null);
+      } else {
+        setSummary(data);
+      }
+    } catch {
+      setSummary(null);
+    }
+    setSummaryLoading(false);
+  }
+
   async function endCall() {
     if (roomRef.current) {
       await roomRef.current.disconnect();
@@ -130,11 +183,14 @@ export default function VoiceDemoPage() {
     }
     cleanup();
     setCallState('ended');
+    fetchSummary();
   }
 
   function reset() {
     setCallState('idle');
     setError('');
+    setSummary(null);
+    setSummaryLoading(false);
   }
 
   const isActive = callState === 'connecting' || callState === 'ringing' || callState === 'connected';
@@ -149,7 +205,6 @@ export default function VoiceDemoPage() {
         backgroundSize: '28px 28px',
       }}
     >
-      {/* Ambient glow */}
       <div className="fixed top-1/4 left-1/3 w-96 h-96 rounded-full bg-demo-blue opacity-[0.04] blur-3xl pointer-events-none" />
       <div className="fixed bottom-1/3 right-1/4 w-80 h-80 rounded-full bg-demo-cyan opacity-[0.04] blur-3xl pointer-events-none" />
 
@@ -170,11 +225,9 @@ export default function VoiceDemoPage() {
               {lang === 'tr' ? 'Sesli Demo' : 'Voice Demo'}
             </span>
           </div>
-
-          {/* Dil seçimine dön butonu — sadece main stepte göster */}
           {step === 'main' && (
             <button
-              onClick={() => { setStep('lang'); setCallState('idle'); setError(''); }}
+              onClick={() => { setStep('lang'); setCallState('idle'); setError(''); setSummary(null); }}
               className="text-xs border border-demo-border rounded-lg px-2.5 py-1.5 text-demo-muted hover:text-demo-text hover:border-demo-cyan transition font-medium flex items-center gap-1.5"
             >
               <span>{lang === 'tr' ? '🇹🇷' : '🇬🇧'}</span>
@@ -200,9 +253,7 @@ export default function VoiceDemoPage() {
                     LiveKit · Deepgram · Cartesia
                   </span>
                 </div>
-                <h1 className="text-2xl font-bold text-demo-text mb-2">
-                  AI Voice Assistant
-                </h1>
+                <h1 className="text-2xl font-bold text-demo-text mb-2">AI Voice Assistant</h1>
                 <p className="text-sm text-demo-muted">
                   Hangi dilde test etmek istiyorsunuz?
                   <br />
@@ -218,37 +269,25 @@ export default function VoiceDemoPage() {
                   Dil Seçin · Select Language
                 </label>
                 <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => selectLang('tr')}
-                    className="group flex flex-col items-center gap-3 py-7 px-4 rounded-xl border border-demo-border hover:border-demo-cyan hover:bg-demo-cyan/5 transition-all"
-                    style={{ transition: 'border-color 0.2s, box-shadow 0.2s, background 0.2s' }}
-                    onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 24px rgba(0,229,255,0.15)')}
-                    onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-                  >
-                    <span className="text-4xl">🇹🇷</span>
-                    <div className="text-center">
-                      <p className="text-base font-bold text-demo-text group-hover:text-demo-cyan transition-colors">
-                        Türkçe
-                      </p>
-                      <p className="text-[11px] text-demo-muted mt-0.5">Turkish</p>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => selectLang('en')}
-                    className="group flex flex-col items-center gap-3 py-7 px-4 rounded-xl border border-demo-border hover:border-demo-cyan hover:bg-demo-cyan/5 transition-all"
-                    style={{ transition: 'border-color 0.2s, box-shadow 0.2s, background 0.2s' }}
-                    onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 24px rgba(0,229,255,0.15)')}
-                    onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-                  >
-                    <span className="text-4xl">🇬🇧</span>
-                    <div className="text-center">
-                      <p className="text-base font-bold text-demo-text group-hover:text-demo-cyan transition-colors">
-                        English
-                      </p>
-                      <p className="text-[11px] text-demo-muted mt-0.5">İngilizce</p>
-                    </div>
-                  </button>
+                  {(['tr', 'en'] as Lang[]).map(l => (
+                    <button
+                      key={l}
+                      onClick={() => selectLang(l)}
+                      className="group flex flex-col items-center gap-3 py-7 px-4 rounded-xl border border-demo-border hover:border-demo-cyan hover:bg-demo-cyan/5 transition-all"
+                      onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 24px rgba(0,229,255,0.15)')}
+                      onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+                    >
+                      <span className="text-4xl">{l === 'tr' ? '🇹🇷' : '🇬🇧'}</span>
+                      <div className="text-center">
+                        <p className="text-base font-bold text-demo-text group-hover:text-demo-cyan transition-colors">
+                          {l === 'tr' ? 'Türkçe' : 'English'}
+                        </p>
+                        <p className="text-[11px] text-demo-muted mt-0.5">
+                          {l === 'tr' ? 'Turkish' : 'İngilizce'}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -378,7 +417,6 @@ export default function VoiceDemoPage() {
                       {lang === 'tr' ? 'Aramayı Başlat' : 'Start Call'}
                     </button>
                   )}
-
                   {(callState === 'connecting' || callState === 'ringing') && (
                     <button
                       onClick={endCall}
@@ -387,7 +425,6 @@ export default function VoiceDemoPage() {
                       {lang === 'tr' ? 'İptal' : 'Cancel'}
                     </button>
                   )}
-
                   {callState === 'connected' && (
                     <button
                       onClick={endCall}
@@ -396,7 +433,6 @@ export default function VoiceDemoPage() {
                       {lang === 'tr' ? 'Görüşmeyi Kapat' : 'End Call'}
                     </button>
                   )}
-
                   {(callState === 'ended' || callState === 'error') && (
                     <button
                       onClick={reset}
@@ -406,6 +442,104 @@ export default function VoiceDemoPage() {
                     </button>
                   )}
                 </div>
+
+                {/* ── Görüşme Özeti ── */}
+                {callState === 'ended' && (
+                  <div className="mt-6 border-t border-demo-border pt-6">
+                    {summaryLoading && (
+                      <div className="flex items-center justify-center gap-2 text-demo-muted text-xs py-4">
+                        <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" style={{ animationDelay: '0.2s' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" style={{ animationDelay: '0.4s' }} />
+                        <span className="ml-1">
+                          {lang === 'tr' ? 'Özet hazırlanıyor...' : 'Preparing summary...'}
+                        </span>
+                      </div>
+                    )}
+
+                    {!summaryLoading && summary?.ready && (
+                      <div>
+                        <p className="text-[10px] text-demo-muted uppercase tracking-widest mb-3 flex items-center gap-2">
+                          <svg className="w-3 h-3 text-demo-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                          {lang === 'tr' ? 'Görüşme Özeti' : 'Call Summary'}
+                          {summary.duration != null && (
+                            <span className="ml-auto font-mono">
+                              {fmt(summary.duration)}
+                            </span>
+                          )}
+                        </p>
+
+                        <div className="space-y-2">
+                          {summary.name && (
+                            <SummaryRow
+                              icon="👤"
+                              label={lang === 'tr' ? 'İsim' : 'Name'}
+                              value={summary.name}
+                            />
+                          )}
+                          {summary.phone && (
+                            <SummaryRow
+                              icon="📞"
+                              label={lang === 'tr' ? 'Telefon' : 'Phone'}
+                              value={summary.phone}
+                            />
+                          )}
+                          {summary.interested_service && (
+                            <SummaryRow
+                              icon="💼"
+                              label={lang === 'tr' ? 'İlgilenilen Hizmet' : 'Service Interest'}
+                              value={summary.interested_service}
+                            />
+                          )}
+                          {summary.key_questions && summary.key_questions.length > 0 && (
+                            <div className="rounded-lg bg-demo-bg/60 border border-demo-border px-3 py-2.5">
+                              <p className="text-[10px] text-demo-muted mb-1.5">
+                                {lang === 'tr' ? '💬 Sorulan Sorular' : '💬 Key Questions'}
+                              </p>
+                              <ul className="space-y-1">
+                                {summary.key_questions.map((q, i) => (
+                                  <li key={i} className="text-xs text-demo-text flex gap-1.5">
+                                    <span className="text-demo-cyan mt-0.5">·</span>
+                                    <span>{q}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {summary.next_step && (
+                            <SummaryRow
+                              icon="✅"
+                              label={lang === 'tr' ? 'Sonraki Adım' : 'Next Step'}
+                              value={summary.next_step}
+                              highlight
+                            />
+                          )}
+                          {summary.sentiment && (
+                            <div className="flex justify-end">
+                              <span className={`text-[10px] rounded-full px-2 py-0.5 border ${
+                                summary.sentiment === 'positive'
+                                  ? 'text-emerald-400 border-emerald-800 bg-emerald-950/40'
+                                  : summary.sentiment === 'negative'
+                                  ? 'text-red-400 border-red-800 bg-red-950/40'
+                                  : 'text-demo-muted border-demo-border'
+                              }`}>
+                                {summary.sentiment === 'positive'
+                                  ? (lang === 'tr' ? 'Olumlu' : 'Positive')
+                                  : summary.sentiment === 'negative'
+                                  ? (lang === 'tr' ? 'Olumsuz' : 'Negative')
+                                  : (lang === 'tr' ? 'Nötr' : 'Neutral')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <p className="text-center text-[11px] text-demo-muted mt-6">
