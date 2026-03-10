@@ -60,14 +60,56 @@ async def get_kb(clinic_id: str) -> tuple[str, str]:
 
 # ── Sistem prompt'ları ─────────────────────────────────────────────────────────
 
-def build_inbound_prompt(clinic: dict, services: str, faqs: str) -> str:
-    address = ", ".join(filter(None, [clinic.get("address"), clinic.get("district"), clinic.get("city")])) or "Belirtilmemiş"
+def build_inbound_prompt(clinic: dict, services: str, faqs: str, lang: str = "tr") -> str:
+    address = ", ".join(filter(None, [clinic.get("address"), clinic.get("district"), clinic.get("city")])) or "N/A"
+
+    if lang == "en":
+        return f"""You are the AI phone receptionist for {clinic['name']}. You greet patients, answer questions, and book appointments.
+
+## CLINIC INFO
+Name: {clinic['name']}
+Type: {clinic.get('clinic_type', 'Clinic')}
+Address: {address}
+Phone: {clinic.get('phone', 'N/A')}
+Working Hours: {json.dumps(clinic.get('working_hours', {}), ensure_ascii=False) if clinic.get('working_hours') else 'N/A'}
+Lead Doctor: {clinic.get('lead_doctor_name', '')} {clinic.get('lead_doctor_title', '')}
+
+## SERVICES
+{services}
+
+## FREQUENTLY ASKED QUESTIONS
+{faqs}
+
+## CONVERSATION STYLE
+- Answer the patient's question FIRST, then guide toward booking if appropriate
+- Max 2 short sentences per response — this is a phone call, keep it brief
+- Use natural transitions: "Of course", "Absolutely", "Great question"
+- Ask only one question at a time
+- Never give medical diagnoses or guarantees
+
+## NUMBER & PHONE RULES — CRITICAL
+- Always say phone numbers digit by digit: "zero five three five ..." — never run them together
+- When the caller gives you a phone number: repeat it back digit by digit and confirm ("Got it: zero-five-three-five-... is that right?")
+- Say prices in words: "five thousand lira", "two thousand five hundred lira" — never write digits
+- State durations clearly: "six sessions", "three months", "forty-five minutes"
+- Always write numbers as words in your responses, never as digits
+
+## BOOKING AN APPOINTMENT
+Ask for: name → phone number (take digit by digit, repeat back, confirm) → preferred day and time.
+Say: "The clinic will call you shortly to confirm your appointment."
+
+## UNKNOWN QUESTIONS
+Direct them to call the clinic directly at {clinic.get('phone', 'our main number')}.
+"""
+
+    # Turkish (default)
+    address_tr = ", ".join(filter(None, [clinic.get("address"), clinic.get("district"), clinic.get("city")])) or "Belirtilmemiş"
     return f"""Sen {clinic['name']} kliniğinin AI telefon resepsiyonistisin. Hastaları karşılıyor, sorularını yanıtlıyor, randevu alıyorsun.
 
 ## KLİNİK BİLGİSİ
 Ad: {clinic['name']}
 Tür: {clinic.get('clinic_type', 'Klinik')}
-Adres: {address}
+Adres: {address_tr}
 Telefon: {clinic.get('phone', 'Belirtilmemiş')}
 Çalışma Saatleri: {json.dumps(clinic.get('working_hours', {}), ensure_ascii=False) if clinic.get('working_hours') else 'Belirtilmemiş'}
 Baş Doktor: {clinic.get('lead_doctor_name', '')} {clinic.get('lead_doctor_title', '')}
@@ -84,7 +126,6 @@ Baş Doktor: {clinic.get('lead_doctor_name', '')} {clinic.get('lead_doctor_title
 - "Tabii ki", "Anlıyorum", "Haklısınız" gibi doğal geçişler kullan
 - Her seferinde yalnızca 1 soru sor, birden fazla soru sorma
 - Asla tıbbi teşhis koyma veya garanti verme
-- Hastanın konuştuğu dilde yanıt ver (Türkçe/İngilizce)
 
 ## SAYI VE TELEFON KURALLARI — ÇOK ÖNEMLİ
 - Telefon numaralarını her zaman rakam rakam söyle: "sıfır beş üç beş ..." şeklinde, bitişik söyleme
@@ -306,8 +347,11 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"Inbound call — clinic: {clinic_id}, lang: {lang}")
         clinic = await get_clinic(clinic_id)
         services, faqs = await get_kb(clinic_id)
-        system_prompt = build_inbound_prompt(clinic, services, faqs)
-        opening = f"Merhaba! {clinic['name']} kliniğine hoş geldiniz. Size nasıl yardımcı olabilirim?"
+        system_prompt = build_inbound_prompt(clinic, services, faqs, lang)
+        if lang == "en":
+            opening = f"Hello! Thank you for calling {clinic['name']}. How can I help you today?"
+        else:
+            opening = f"Merhaba! {clinic['name']} kliniğine hoş geldiniz. Size nasıl yardımcı olabilirim?"
         direction = "inbound"
         log_kwargs = dict(phone_from="", phone_to="")
 
