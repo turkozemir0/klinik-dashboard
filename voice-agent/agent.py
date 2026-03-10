@@ -357,12 +357,18 @@ async def entrypoint(ctx: JobContext):
 
     # ── Session ───────────────────────────────────────────────────────────────
 
+    VOICE_IDS = {
+        "tr": os.environ.get("CARTESIA_VOICE_ID_TR", "8036098f-cff4-401e-bfba-f0a6a6e5e49b"),  # Elif
+        "en": os.environ.get("CARTESIA_VOICE_ID_EN", "2f251ac3-89a9-4a77-a452-704b474ccd01"),  # Lucy
+    }
+    tts_lang = lang if lang in ("tr", "en") else "tr"
+
     session = AgentSession(
-        stt=deepgram.STT(model="nova-2", language=lang if lang in ("tr", "en") else "tr"),
+        stt=deepgram.STT(model="nova-2", language=tts_lang),
         llm=openai.LLM(model="gpt-4o-mini"),
         tts=cartesia.TTS(
-            voice=os.environ.get("CARTESIA_VOICE_ID", "79a125e8-cd45-4c13-8a67-188112f4dd22"),
-            language=lang if lang in ("tr", "en") else "tr",
+            voice=VOICE_IDS[tts_lang],
+            language=tts_lang,
         ),
         vad=silero.VAD.load(),
     )
