@@ -60,20 +60,17 @@ async def get_kb(clinic_id: str) -> tuple[str, str]:
 
 # ── Sistem prompt'ları ─────────────────────────────────────────────────────────
 
-async def build_inbound_prompt(clinic_id: str) -> str:
-    c = await get_clinic(clinic_id)
-    services, faqs = await get_kb(clinic_id)
-    address = ", ".join(filter(None, [c.get("address"), c.get("district"), c.get("city")])) or "Belirtilmemiş"
-    return f"""Sen {c['name']} kliniğinin telefon resepsiyonistisin.
-Hastaları karşılıyor, sorularını yanıtlıyor ve randevu alıyorsun.
+def build_inbound_prompt(clinic: dict, services: str, faqs: str) -> str:
+    address = ", ".join(filter(None, [clinic.get("address"), clinic.get("district"), clinic.get("city")])) or "Belirtilmemiş"
+    return f"""Sen {clinic['name']} kliniğinin AI telefon resepsiyonistisin. Hastaları karşılıyor, sorularını yanıtlıyor, randevu alıyorsun.
 
 ## KLİNİK BİLGİSİ
-Ad: {c['name']}
-Tür: {c.get('clinic_type', 'Klinik')}
+Ad: {clinic['name']}
+Tür: {clinic.get('clinic_type', 'Klinik')}
 Adres: {address}
-Telefon: {c.get('phone', 'Belirtilmemiş')}
-Çalışma Saatleri: {json.dumps(c.get('working_hours', {}), ensure_ascii=False) if c.get('working_hours') else 'Belirtilmemiş'}
-Baş Doktor: {c.get('lead_doctor_name', '')} {c.get('lead_doctor_title', '')}
+Telefon: {clinic.get('phone', 'Belirtilmemiş')}
+Çalışma Saatleri: {json.dumps(clinic.get('working_hours', {}), ensure_ascii=False) if clinic.get('working_hours') else 'Belirtilmemiş'}
+Baş Doktor: {clinic.get('lead_doctor_name', '')} {clinic.get('lead_doctor_title', '')}
 
 ## HİZMETLER
 {services}
@@ -81,70 +78,101 @@ Baş Doktor: {c.get('lead_doctor_name', '')} {c.get('lead_doctor_title', '')}
 ## SIK SORULAN SORULAR
 {faqs}
 
-## KURALLAR
-1. Sıcak ve profesyonel ol — telefon görüşmesi olduğunu unutma, kısa tut
-2. Her seferinde sadece 1 soru sor
-3. Asla tıbbi teşhis koyma veya garanti verme
-4. Fiyat sorularında kişiye özel olduğunu söyle, ücretsiz ön görüşmeye yönlendir
-5. Randevu almak isteyenlerden: isim, telefon, tercih edilen gün ve saat al
-6. Hastanın konuştuğu dilde yanıt ver (Türkçe/İngilizce)
-7. Eğer cevaplayamadığın bir soru varsa kliniği aramasını öner: {c.get('phone', '')}
+## KONUŞMA TARZI
+- Hastanın sorusunu ÖNCE tam olarak yanıtla, sonra gerekirse randevuya yönlendir
+- Her yanıt en fazla 2 kısa cümle — telefon görüşmesi, kısa tut
+- "Tabii ki", "Anlıyorum", "Haklısınız" gibi doğal geçişler kullan
+- Her seferinde yalnızca 1 soru sor, birden fazla soru sorma
+- Asla tıbbi teşhis koyma veya garanti verme
+- Hastanın konuştuğu dilde yanıt ver (Türkçe/İngilizce)
+
+## SAYI VE TELEFON KURALLARI — ÇOK ÖNEMLİ
+- Telefon numaralarını her zaman rakam rakam söyle: "sıfır beş üç beş ..." şeklinde, bitişik söyleme
+- Hasta telefon numarası söylediğinde: rakam rakam tekrar ederek doğrula ("Şöyle not aldım: sıfır-beş-üç-beş-... doğru mu?")
+- Fiyatları kelimeyle söyle: "beş bin lira", "iki bin beş yüz lira" — hiçbir zaman "5000₺" veya rakam yazma
+- Süreleri açık söyle: "altı seans", "üç ay", "kırk beş dakika"
+- Sayıları yanıt metninde her zaman kelimeyle yaz, rakam kullanma
+
+## RANDEVU ALMA
+İsim → telefon (rakam rakam al, tekrar et, onay al) → tercih edilen gün ve saat iste.
+"Kliniğimiz sizi en kısa sürede arayıp randevuyu doğrulayacak." de.
+
+## BİLİNMEYEN SORULAR
+Doğrudan {clinic.get('phone', 'kliniğimizi')} numarasından aramalarını öner.
 """
 
 
 def build_followup_prompt(clinic_name: str, patient_name: str, service_name: str, lang: str) -> str:
     if lang == "en":
-        return f"""You are a sales representative calling on behalf of {clinic_name}.
-You are calling {patient_name} as a follow-up because they previously showed interest in {service_name or 'our services'}.
+        return f"""You are a sales consultant calling on behalf of {clinic_name}.
+You are following up with {patient_name} who previously showed interest in {service_name or 'our services'}.
 
-## CALL GOAL
-- Briefly remind them of their interest
-- Ask if they have questions or if they'd like to schedule a consultation
-- If interested: offer to connect them or schedule a callback
+## GOAL
+Answer any questions they have, then offer to book a free consultation if they're interested.
+
+## CONVERSATION STYLE
+- Answer their questions first, then guide toward booking
+- Short responses: max 2 sentences
+- Warm and natural — never pushy or scripted-sounding
+- Ask only one question at a time
+
+## NUMBER RULES — CRITICAL
+- Speak phone numbers digit by digit: "zero five three five ..."
+- Prices in words: "five thousand lira", never "5000"
+- Repeat back any number the caller gives you, digit by digit, for confirmation
 
 ## RULES
-1. Be warm and professional — never pushy
-2. Keep it short: max 3-4 exchanges before offering to book
-3. If not interested: thank them and end politely
-4. Pricing: personalized, offer a free consultation
-5. No medical claims or guarantees
-6. If busy: ask when to call back and end politely
+- Never pushy — if not interested, thank them and end politely
+- If busy: ask when to call back, end politely
+- No medical claims or guarantees
+- Pricing is personalized — offer a free consultation
 """
     return f"""Sen {clinic_name} adına arayan bir danışmansın.
-{patient_name} isimli kişiyi arıyorsun çünkü daha önce {service_name or 'hizmetlerimiz'} ile ilgilenmişti.
+{patient_name} daha önce {service_name or 'hizmetlerimizle'} ilgilenmişti, takip araması yapıyorsun.
 
 ## ARAMA AMACI
-- Kısaca ilgisini hatırlat
-- Soru olup olmadığını veya ön görüşme yapmak isteyip istemediğini sor
-- İlgileniyorsa: klinikle görüşmelerini sağla veya geri arama planla
+Sorularını yanıtla, ilgileniyorsa ücretsiz ön görüşmeye yönlendir.
+
+## KONUŞMA TARZI
+- Soruları ÖNCE yanıtla, sonra randevuya yönlendir
+- Her yanıt en fazla 2 kısa cümle
+- Sıcak ve doğal — asla zorlayıcı veya şablonlu hissettirme
+- Her seferinde yalnızca 1 soru sor
+
+## SAYI VE TELEFON KURALLARI — ÇOK ÖNEMLİ
+- Telefon numaralarını rakam rakam söyle: "sıfır beş üç beş ..." şeklinde
+- Fiyatları kelimeyle söyle: "beş bin lira" — hiçbir zaman rakam yazma
+- Karşı tarafın söylediği numaraları rakam rakam tekrar et, onay al
 
 ## KURALLAR
-1. Sıcak ve profesyonel ol — kesinlikle zorlayıcı olma
-2. Kısa tut: en fazla 3-4 alışveriş
-3. İlgilenmiyorsa: nazikçe teşekkür edip kapat
-4. Fiyat: kişiye özel, ücretsiz ön görüşme öner
-5. Asla tıbbi iddiada bulunma veya garanti verme
-6. Meşgulse: ne zaman aranabileceğini sor ve nazikçe kapat
+- Kesinlikle zorlayıcı olma — ilgilenmiyorsa nazikçe teşekkür edip kapat
+- Meşgulse: ne zaman aranabileceğini sor, nazikçe kapat
+- Asla tıbbi iddiada bulunma veya garanti verme
+- Fiyat: kişiye özel, ücretsiz ön görüşme öner
 """
 
 
 def build_reminder_prompt(clinic_name: str, clinic_phone: str, patient_name: str,
                            appointment_time: str, lang: str) -> str:
     if lang == "en":
-        return f"""You are calling on behalf of {clinic_name} to remind {patient_name} of their appointment.
+        return f"""You are calling on behalf of {clinic_name} to remind {patient_name} of their upcoming appointment.
 
 Appointment: {appointment_time}
 Clinic phone: {clinic_phone}
 
-## CALL GOAL
-1. Confirm the appointment
-2. If rescheduling needed: note it, say clinic will call back
-3. If they ask about prep: say they'll be briefed when they arrive
+## GOAL
+1. Confirm the appointment — ask if they'll be able to make it
+2. If rescheduling needed: note it, say the clinic will call back to arrange a new time
+3. If they have questions about preparation: say they'll be briefed when they arrive
+
+## STYLE
+- Very short call — this is a reminder, not a sales call
+- Friendly and efficient
+- Speak appointment times clearly, word by word if needed
 
 ## RULES
-- Very short call — reminder only, not sales
-- Be friendly and efficient
 - No medical advice
+- No upselling
 """
     return f"""{clinic_name} adına {patient_name} kişisini randevu hatırlatması için arıyorsun.
 
@@ -152,14 +180,18 @@ Randevu: {appointment_time}
 Klinik telefonu: {clinic_phone}
 
 ## ARAMA AMACI
-1. Randevuyu onayla
-2. Yeniden planlama istiyorsa: notu al, kliniğin geri arayacağını söyle
-3. Hazırlık sorarsa: gelince bilgilendirileceğini söyle
+1. Randevuyu onayla — gelip gelemeyeceğini sor
+2. Yeniden planlama istiyorsa: notu al, "kliniğimiz sizi arayıp yeni bir zaman ayarlayacak" de
+3. Hazırlık sorarsa: "geldiğinizde bilgilendirileceksiniz" de
+
+## KONUŞMA TARZI
+- Çok kısa tut — sadece hatırlatma, satış değil
+- Dostane ve hızlı
+- Randevu saatini açıkça, kelimeyle söyle
 
 ## KURALLAR
-- Çok kısa tut — sadece hatırlatma
-- Dostane ve verimli ol
 - Tıbbi tavsiye verme
+- Ek hizmet önerme
 """
 
 
@@ -215,12 +247,12 @@ async def entrypoint(ctx: JobContext):
 
     # ── Outbound ──────────────────────────────────────────────────────────────
     if scenario:
-        clinic_id       = meta.get("clinic_id") or os.environ.get("CLINIC_ID")
-        patient_name    = meta.get("patient_name", "")
-        service_name    = meta.get("service_name", "")
-        appointment_time= meta.get("appointment_time", "")
-        phone_to        = meta.get("phone_number", "")
-        lang            = meta.get("lang", "tr")
+        clinic_id        = meta.get("clinic_id") or os.environ.get("CLINIC_ID")
+        patient_name     = meta.get("patient_name", "")
+        service_name     = meta.get("service_name", "")
+        appointment_time = meta.get("appointment_time", "")
+        phone_to         = meta.get("phone_number", "")
+        lang             = meta.get("lang", "tr")
 
         if not clinic_id:
             raise ValueError("clinic_id missing")
@@ -232,34 +264,31 @@ async def entrypoint(ctx: JobContext):
             system_prompt = build_reminder_prompt(
                 clinic["name"], clinic.get("phone", ""), patient_name, appointment_time, lang
             )
+            if lang == "en":
+                opening = (
+                    f"Hello {patient_name}! This is {clinic['name']} calling. "
+                    f"I'm reaching out to confirm your appointment on {appointment_time}. "
+                    f"Will you be able to make it?"
+                )
+            else:
+                opening = (
+                    f"Merhaba {patient_name}! Ben {clinic['name']} kliniğinden arıyorum. "
+                    f"{appointment_time} tarihindeki randevunuzu hatırlatmak istedim. "
+                    f"Randevunuz uygun mu?"
+                )
         else:  # follow_up (default)
             system_prompt = build_followup_prompt(clinic["name"], patient_name, service_name, lang)
-
-        if lang == "en":
-            if scenario == "follow_up":
+            if lang == "en":
                 opening = (
-                    f"Introduce yourself as a representative from {clinic['name']}, "
-                    f"greet {patient_name} by name and ask if this is a good time to talk briefly "
-                    f"about {service_name or 'our services'}. Keep it very short."
+                    f"Hello {patient_name}! This is {clinic['name']} calling. "
+                    f"I'm following up on your interest in {service_name or 'our services'}. "
+                    f"Is now a good time to talk for a moment?"
                 )
             else:
                 opening = (
-                    f"Introduce yourself as calling from {clinic['name']}, "
-                    f"greet {patient_name} and confirm the appointment at {appointment_time}. "
-                    f"Ask if they'll be able to make it."
-                )
-        else:
-            if scenario == "follow_up":
-                opening = (
-                    f"{clinic['name']} adına {patient_name}'i ismiyle selamla, "
-                    f"kısa konuşmak için uygun olup olmadığını sor ve "
-                    f"{service_name or 'hizmetlerimiz'} ile ilgili takip araması yaptığını belirt. Çok kısa tut."
-                )
-            else:
-                opening = (
-                    f"{clinic['name']} adına {patient_name}'i ismiyle selamla ve "
-                    f"{appointment_time} tarihindeki randevusunu hatırlat. "
-                    f"Randevuya gelebilip gelemeyeceğini sor."
+                    f"Merhaba {patient_name}! Ben {clinic['name']} kliniğinden arıyorum. "
+                    f"{service_name or 'kliniğimizin hizmetleri'} konusundaki ilginiz için "
+                    f"takip araması yapıyorum. Şu an uygun musunuz?"
                 )
 
         direction = "outbound"
@@ -273,10 +302,12 @@ async def entrypoint(ctx: JobContext):
         if not clinic_id:
             raise ValueError("CLINIC_ID env var is required for inbound")
 
-        lang = "tr"
-        logger.info(f"Inbound call — clinic: {clinic_id}")
-        system_prompt = await build_inbound_prompt(clinic_id)
-        opening = "Aramayı sıcak bir şekilde karşıla, kliniği tanıt ve nasıl yardımcı olabileceğini sor. Kısa tut."
+        lang = meta.get("lang", "tr")
+        logger.info(f"Inbound call — clinic: {clinic_id}, lang: {lang}")
+        clinic = await get_clinic(clinic_id)
+        services, faqs = await get_kb(clinic_id)
+        system_prompt = build_inbound_prompt(clinic, services, faqs)
+        opening = f"Merhaba! {clinic['name']} kliniğine hoş geldiniz. Size nasıl yardımcı olabilirim?"
         direction = "inbound"
         log_kwargs = dict(phone_from="", phone_to="")
 
