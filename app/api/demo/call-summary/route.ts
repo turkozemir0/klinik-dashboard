@@ -20,29 +20,31 @@ export async function POST(req: NextRequest) {
       .map(m => `[${m.role}] ${m.content}`)
       .join('\n');
 
-    const systemPrompt = lang === 'en'
-      ? `Extract structured info from this clinic receptionist AI + patient voice call transcript.
-Return ONLY valid JSON:
-{
+    const JSON_SCHEMA = `{
   "name": "caller name or null",
   "phone": "phone number or null",
   "interested_service": "service they asked about or null",
   "key_questions": ["up to 3 main questions asked"],
   "next_step": "next step agreed or null",
   "sentiment": "positive | neutral | negative"
-}
-Null for fields not mentioned. Be concise.`
-      : `Klinik AI resepsiyonist + hasta sesli görüşme transkriptinden bilgi çıkar.
-SADECE geçerli JSON döndür:
-{
-  "name": "arayanın adı veya null",
-  "phone": "telefon numarası veya null",
-  "interested_service": "ilgilenilen hizmet veya null",
-  "key_questions": ["en fazla 3 ana soru"],
-  "next_step": "kararlaştırılan sonraki adım veya null",
-  "sentiment": "positive | neutral | negative"
-}
-Belirtilmeyenler için null. Kısa ol.`;
+}`;
+
+    const systemPromptMap: Record<string, string> = {
+      en: `Extract structured info from this clinic receptionist AI + patient voice call transcript.
+Return ONLY valid JSON:
+${JSON_SCHEMA}
+Null for fields not mentioned. Be concise.`,
+      de: `Extrahiere strukturierte Informationen aus diesem Transkript eines KI-Rezeptionisten + Patienten.
+Gib NUR gültiges JSON zurück:
+${JSON_SCHEMA}
+Null für nicht erwähnte Felder. Sei präzise.`,
+      ar: `استخرج المعلومات المنظمة من نص هذه المكالمة بين موظف الاستقبال الذكي والمريض.
+أعد JSON صحيحاً فقط:
+${JSON_SCHEMA}
+Null للحقول غير المذكورة. كن موجزاً.`,
+    };
+
+    const systemPrompt = systemPromptMap[lang] ?? systemPromptMap['en'];
 
     const resp = await openai.chat.completions.create({
       model: 'gpt-4o-mini',

@@ -8,7 +8,7 @@ const LK_SECRET = process.env.LIVEKIT_API_SECRET!;
 
 export async function POST(req: Request) {
   try {
-    const { scenario = 'inbound', lang = 'tr', patient_name = 'Demo Kullanıcı' } = await req.json();
+    const { scenario = 'inbound', lang = 'en', patient_name = 'Demo User' } = await req.json();
 
     const clinic_id = process.env.DEMO_CLINIC_ID;
     if (!clinic_id) {
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     const isInbound = scenario === 'inbound';
     const metaObj = isInbound
       ? { clinic_id, lang, is_demo: true }
-      : { clinic_id, scenario, patient_name, service_name: 'Demo Hizmet', appointment_time: 'Demo Randevu', phone_number: '', lang, is_demo: true };
+      : { clinic_id, scenario, patient_name, service_name: 'Demo Service', appointment_time: 'Demo Appointment', phone_number: '', lang, is_demo: true };
     const metadata = JSON.stringify(metaObj);
 
     // 1. Room oluştur

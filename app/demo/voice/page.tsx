@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Room, RoomEvent, Track } from 'livekit-client';
 
 type Scenario  = 'inbound' | 'follow_up' | 'appointment_reminder';
-type Lang      = 'tr' | 'en';
+type Lang      = 'en' | 'de' | 'ar';
 type CallState = 'idle' | 'connecting' | 'ringing' | 'connected' | 'ended' | 'error';
 type Step      = 'lang' | 'main';
 
@@ -19,25 +19,31 @@ interface CallSummary {
   sentiment?: 'positive' | 'neutral' | 'negative';
 }
 
+const LANG_META: Record<Lang, { flag: string; label: string; sublabel: string }> = {
+  en: { flag: '🇬🇧', label: 'English',  sublabel: 'English' },
+  de: { flag: '🇩🇪', label: 'Deutsch',  sublabel: 'German'  },
+  ar: { flag: '🇸🇦', label: 'العربية', sublabel: 'Arabic'  },
+};
+
 const SCENARIO_LABELS: Record<Scenario, Record<Lang, string>> = {
-  inbound:              { tr: 'Resepsiyon',          en: 'Receptionist'         },
-  follow_up:            { tr: 'Takip Araması',        en: 'Follow-up Call'       },
-  appointment_reminder: { tr: 'Randevu Hatırlatma',   en: 'Appointment Reminder' },
+  inbound:              { en: 'Receptionist',        de: 'Empfang',              ar: 'الاستقبال'     },
+  follow_up:            { en: 'Follow-up Call',       de: 'Nachverfolgungsanruf', ar: 'متابعة'        },
+  appointment_reminder: { en: 'Appointment Reminder', de: 'Terminerinnerung',     ar: 'تذكير بالموعد' },
 };
 
 const SCENARIO_DESC: Record<Scenario, Record<Lang, string>> = {
-  inbound:              { tr: 'Kliniği aradığında karşılayan resepsiyonist',       en: 'Receptionist answering your call'         },
-  follow_up:            { tr: 'İlgilendiğin hizmet için seni arayan asistan',      en: 'Agent following up on your interest'      },
-  appointment_reminder: { tr: 'Randevundan önce seni arayan hatırlatma asistanı',  en: 'Agent reminding you of your appointment'  },
+  inbound:              { en: 'Receptionist answering your call',        de: 'Rezeptionist beantwortet Ihren Anruf',  ar: 'موظف الاستقبال يرد على مكالمتك'  },
+  follow_up:            { en: 'Agent following up on your interest',     de: 'Agent verfolgt Ihr Interesse nach',     ar: 'مساعد يتابع اهتمامك'              },
+  appointment_reminder: { en: 'Agent reminding you of your appointment', de: 'Agent erinnert Sie an Ihren Termin',   ar: 'مساعد يذكرك بموعدك'               },
 };
 
 const STATUS_LABELS: Record<CallState, Record<Lang, string>> = {
-  idle:       { tr: 'Hazır',           en: 'Ready'          },
-  connecting: { tr: 'Bağlanıyor...',   en: 'Connecting...'  },
-  ringing:    { tr: 'Çalıyor...',      en: 'Ringing...'     },
-  connected:  { tr: 'Bağlandı',        en: 'Connected'      },
-  ended:      { tr: 'Görüşme bitti',   en: 'Call ended'     },
-  error:      { tr: 'Hata oluştu',     en: 'Error occurred' },
+  idle:       { en: 'Ready',           de: 'Bereit',              ar: 'جاهز'            },
+  connecting: { en: 'Connecting...',   de: 'Verbinde...',         ar: 'جاري الاتصال...' },
+  ringing:    { en: 'Ringing...',      de: 'Klingelt...',         ar: 'يرن...'           },
+  connected:  { en: 'Connected',       de: 'Verbunden',           ar: 'متصل'             },
+  ended:      { en: 'Call ended',      de: 'Anruf beendet',       ar: 'انتهت المكالمة'   },
+  error:      { en: 'Error occurred',  de: 'Fehler aufgetreten',  ar: 'حدث خطأ'          },
 };
 
 function SummaryRow({
@@ -62,7 +68,7 @@ function SummaryRow({
 
 export default function VoiceDemoPage() {
   const [step, setStep]           = useState<Step>('lang');
-  const [lang, setLang]           = useState<Lang>('tr');
+  const [lang, setLang]           = useState<Lang>('en');
   const [scenario, setScenario]   = useState<Scenario>('inbound');
   const [callState, setCallState] = useState<CallState>('idle');
   const [error, setError]         = useState('');
@@ -100,12 +106,12 @@ export default function VoiceDemoPage() {
         body: JSON.stringify({
           scenario,
           lang,
-          patient_name: lang === 'tr' ? 'Demo Kullanıcı' : 'Demo User',
+          patient_name: 'Demo User',
         }),
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Token alınamadı');
+        throw new Error(data.error || 'Failed to get token');
       }
       const { token, ws_url } = await res.json();
       setCallState('ringing');
@@ -151,7 +157,7 @@ export default function VoiceDemoPage() {
       if (room.remoteParticipants.size > 0) setCallState('connected');
 
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Bağlantı hatası';
+      const msg = err instanceof Error ? err.message : 'Connection error';
       setError(msg);
       setCallState('error');
     }
@@ -204,6 +210,8 @@ export default function VoiceDemoPage() {
   const fmt = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
+  const m = LANG_META[lang];
+
   return (
     <div
       className="min-h-screen bg-demo-bg text-demo-text flex flex-col"
@@ -228,17 +236,15 @@ export default function VoiceDemoPage() {
               <span className="text-base font-bold text-demo-text tracking-tight">stoaix</span>
             </a>
             <span className="text-demo-muted">/</span>
-            <span className="text-sm text-demo-muted">
-              {lang === 'tr' ? 'Sesli Demo' : 'Voice Demo'}
-            </span>
+            <span className="text-sm text-demo-muted">Voice Demo</span>
           </div>
           {step === 'main' && (
             <button
               onClick={() => { setStep('lang'); setCallState('idle'); setError(''); setSummary(null); }}
               className="text-xs border border-demo-border rounded-lg px-2.5 py-1.5 text-demo-muted hover:text-demo-text hover:border-demo-cyan transition font-medium flex items-center gap-1.5"
             >
-              <span>{lang === 'tr' ? '🇹🇷' : '🇬🇧'}</span>
-              <span>{lang === 'tr' ? 'TR' : 'EN'}</span>
+              <span>{m.flag}</span>
+              <span>{lang.toUpperCase()}</span>
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
@@ -250,7 +256,7 @@ export default function VoiceDemoPage() {
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
 
-          {/* ── ADIM 1: Dil Seçimi ── */}
+          {/* ── STEP 1: Language Selection ── */}
           {step === 'lang' && (
             <>
               <div className="text-center mb-10">
@@ -262,9 +268,7 @@ export default function VoiceDemoPage() {
                 </div>
                 <h1 className="text-2xl font-bold text-demo-text mb-2">AI Voice Assistant</h1>
                 <p className="text-sm text-demo-muted">
-                  Hangi dilde test etmek istiyorsunuz?
-                  <br />
-                  <span className="text-demo-muted/60">Which language would you like to test?</span>
+                  Select a language to begin your demo
                 </p>
               </div>
 
@@ -273,38 +277,41 @@ export default function VoiceDemoPage() {
                 style={{ boxShadow: '0 0 50px rgba(35,61,255,0.1)' }}
               >
                 <label className="block text-xs font-medium text-demo-muted uppercase tracking-wide mb-4 text-center">
-                  Dil Seçin · Select Language
+                  Select Language
                 </label>
-                <div className="grid grid-cols-2 gap-4">
-                  {(['tr', 'en'] as Lang[]).map(l => (
-                    <button
-                      key={l}
-                      onClick={() => selectLang(l)}
-                      className="group flex flex-col items-center gap-3 py-7 px-4 rounded-xl border border-demo-border hover:border-demo-cyan hover:bg-demo-cyan/5 transition-all"
-                      onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 24px rgba(0,229,255,0.15)')}
-                      onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-                    >
-                      <span className="text-4xl">{l === 'tr' ? '🇹🇷' : '🇬🇧'}</span>
-                      <div className="text-center">
-                        <p className="text-base font-bold text-demo-text group-hover:text-demo-cyan transition-colors">
-                          {l === 'tr' ? 'Türkçe' : 'English'}
-                        </p>
-                        <p className="text-[11px] text-demo-muted mt-0.5">
-                          {l === 'tr' ? 'Turkish' : 'İngilizce'}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
+                <div className="grid grid-cols-3 gap-3">
+                  {(['en', 'de', 'ar'] as Lang[]).map(l => {
+                    const lm = LANG_META[l];
+                    return (
+                      <button
+                        key={l}
+                        onClick={() => selectLang(l)}
+                        className="group flex flex-col items-center gap-3 py-6 px-3 rounded-xl border border-demo-border hover:border-demo-cyan hover:bg-demo-cyan/5 transition-all"
+                        onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 24px rgba(0,229,255,0.15)')}
+                        onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+                      >
+                        <span className="text-3xl">{lm.flag}</span>
+                        <div className="text-center">
+                          <p className="text-sm font-bold text-demo-text group-hover:text-demo-cyan transition-colors">
+                            {lm.label}
+                          </p>
+                          <p className="text-[10px] text-demo-muted mt-0.5">
+                            {lm.sublabel}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               <p className="text-center text-[11px] text-demo-muted mt-6">
-                Mikrofon izni gereklidir · Microphone permission required
+                Microphone permission required · demo.stoaix.com
               </p>
             </>
           )}
 
-          {/* ── ADIM 2: Senaryo + Arama ── */}
+          {/* ── STEP 2: Scenario + Call ── */}
           {step === 'main' && (
             <>
               <div className="text-center mb-10">
@@ -314,13 +321,9 @@ export default function VoiceDemoPage() {
                     LiveKit · Deepgram · Cartesia
                   </span>
                 </div>
-                <h1 className="text-2xl font-bold text-demo-text mb-2">
-                  {lang === 'tr' ? 'AI Sesli Asistan' : 'AI Voice Assistant'}
-                </h1>
+                <h1 className="text-2xl font-bold text-demo-text mb-2">AI Voice Assistant</h1>
                 <p className="text-sm text-demo-muted">
-                  {lang === 'tr'
-                    ? 'Gerçek sesli AI deneyimi — mikrofon üzerinden konuş'
-                    : 'Real voice AI experience — speak through your microphone'}
+                  Real voice AI experience — speak through your microphone
                 </p>
               </div>
 
@@ -328,11 +331,11 @@ export default function VoiceDemoPage() {
                 className="rounded-2xl border border-demo-border bg-demo-card/50 p-7"
                 style={{ boxShadow: '0 0 50px rgba(35,61,255,0.1)' }}
               >
-                {/* Senaryo seçici */}
+                {/* Scenario selector */}
                 {!isActive && callState !== 'ended' && (
                   <div className="mb-6">
                     <label className="block text-xs font-medium text-demo-muted uppercase tracking-wide mb-3">
-                      {lang === 'tr' ? 'Senaryo' : 'Scenario'}
+                      Scenario
                     </label>
                     <div className="flex flex-col gap-2">
                       {(['inbound', 'follow_up', 'appointment_reminder'] as Scenario[]).map(s => (
@@ -357,7 +360,7 @@ export default function VoiceDemoPage() {
                   </div>
                 )}
 
-                {/* Durum göstergesi */}
+                {/* Status indicator */}
                 <div className="flex flex-col items-center py-8">
                   <div
                     className={`relative w-24 h-24 rounded-full flex items-center justify-center mb-5 transition-all ${
@@ -414,14 +417,14 @@ export default function VoiceDemoPage() {
                   )}
                 </div>
 
-                {/* Butonlar */}
+                {/* Buttons */}
                 <div className="flex flex-col gap-3">
                   {callState === 'idle' && (
                     <button
                       onClick={startCall}
                       className="w-full rounded-xl bg-demo-blue hover:opacity-90 text-white py-3 text-sm font-semibold transition shadow-[0_0_20px_rgba(35,61,255,0.4)]"
                     >
-                      {lang === 'tr' ? 'Aramayı Başlat' : 'Start Call'}
+                      Start Call
                     </button>
                   )}
                   {(callState === 'connecting' || callState === 'ringing') && (
@@ -429,7 +432,7 @@ export default function VoiceDemoPage() {
                       onClick={endCall}
                       className="w-full rounded-xl bg-red-600/80 hover:bg-red-600 text-white py-3 text-sm font-semibold transition"
                     >
-                      {lang === 'tr' ? 'İptal' : 'Cancel'}
+                      Cancel
                     </button>
                   )}
                   {callState === 'connected' && (
@@ -437,7 +440,7 @@ export default function VoiceDemoPage() {
                       onClick={endCall}
                       className="w-full rounded-xl bg-red-600 hover:bg-red-700 text-white py-3 text-sm font-semibold transition shadow-[0_0_20px_rgba(220,38,38,0.3)]"
                     >
-                      {lang === 'tr' ? 'Görüşmeyi Kapat' : 'End Call'}
+                      End Call
                     </button>
                   )}
                   {(callState === 'ended' || callState === 'error') && (
@@ -445,12 +448,12 @@ export default function VoiceDemoPage() {
                       onClick={reset}
                       className="w-full rounded-xl border border-demo-border text-demo-muted hover:text-demo-text hover:border-demo-cyan py-3 text-sm font-semibold transition"
                     >
-                      {lang === 'tr' ? 'Yeni Arama' : 'New Call'}
+                      New Call
                     </button>
                   )}
                 </div>
 
-                {/* ── Görüşme Özeti ── */}
+                {/* ── Call Summary ── */}
                 {callState === 'ended' && (
                   <div className="mt-6 border-t border-demo-border pt-6">
                     {summaryLoading && (
@@ -458,9 +461,7 @@ export default function VoiceDemoPage() {
                         <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" />
                         <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" style={{ animationDelay: '0.2s' }} />
                         <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" style={{ animationDelay: '0.4s' }} />
-                        <span className="ml-1">
-                          {lang === 'tr' ? 'Özet hazırlanıyor...' : 'Preparing summary...'}
-                        </span>
+                        <span className="ml-1">Preparing summary...</span>
                       </div>
                     )}
 
@@ -472,7 +473,7 @@ export default function VoiceDemoPage() {
                               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                             />
                           </svg>
-                          {lang === 'tr' ? 'Görüşme Özeti' : 'Call Summary'}
+                          Call Summary
                           {summary.duration != null && (
                             <span className="ml-auto font-mono">
                               {fmt(summary.duration)}
@@ -482,31 +483,17 @@ export default function VoiceDemoPage() {
 
                         <div className="space-y-2">
                           {summary.name && (
-                            <SummaryRow
-                              icon="👤"
-                              label={lang === 'tr' ? 'İsim' : 'Name'}
-                              value={summary.name}
-                            />
+                            <SummaryRow icon="👤" label="Name" value={summary.name} />
                           )}
                           {summary.phone && (
-                            <SummaryRow
-                              icon="📞"
-                              label={lang === 'tr' ? 'Telefon' : 'Phone'}
-                              value={summary.phone}
-                            />
+                            <SummaryRow icon="📞" label="Phone" value={summary.phone} />
                           )}
                           {summary.interested_service && (
-                            <SummaryRow
-                              icon="💼"
-                              label={lang === 'tr' ? 'İlgilenilen Hizmet' : 'Service Interest'}
-                              value={summary.interested_service}
-                            />
+                            <SummaryRow icon="💼" label="Service Interest" value={summary.interested_service} />
                           )}
                           {summary.key_questions && summary.key_questions.length > 0 && (
                             <div className="rounded-lg bg-demo-bg/60 border border-demo-border px-3 py-2.5">
-                              <p className="text-[10px] text-demo-muted mb-1.5">
-                                {lang === 'tr' ? '💬 Sorulan Sorular' : '💬 Key Questions'}
-                              </p>
+                              <p className="text-[10px] text-demo-muted mb-1.5">💬 Key Questions</p>
                               <ul className="space-y-1">
                                 {summary.key_questions.map((q, i) => (
                                   <li key={i} className="text-xs text-demo-text flex gap-1.5">
@@ -518,12 +505,7 @@ export default function VoiceDemoPage() {
                             </div>
                           )}
                           {summary.next_step && (
-                            <SummaryRow
-                              icon="✅"
-                              label={lang === 'tr' ? 'Sonraki Adım' : 'Next Step'}
-                              value={summary.next_step}
-                              highlight
-                            />
+                            <SummaryRow icon="✅" label="Next Step" value={summary.next_step} highlight />
                           )}
                           {summary.sentiment && (
                             <div className="flex justify-end">
@@ -534,11 +516,9 @@ export default function VoiceDemoPage() {
                                   ? 'text-red-400 border-red-800 bg-red-950/40'
                                   : 'text-demo-muted border-demo-border'
                               }`}>
-                                {summary.sentiment === 'positive'
-                                  ? (lang === 'tr' ? 'Olumlu' : 'Positive')
-                                  : summary.sentiment === 'negative'
-                                  ? (lang === 'tr' ? 'Olumsuz' : 'Negative')
-                                  : (lang === 'tr' ? 'Nötr' : 'Neutral')}
+                                {summary.sentiment === 'positive' ? 'Positive'
+                                  : summary.sentiment === 'negative' ? 'Negative'
+                                  : 'Neutral'}
                               </span>
                             </div>
                           )}
@@ -550,9 +530,7 @@ export default function VoiceDemoPage() {
               </div>
 
               <p className="text-center text-[11px] text-demo-muted mt-6">
-                {lang === 'tr'
-                  ? 'Mikrofon izni gereklidir · Gerçek AI asistan · demo.stoaix.com'
-                  : 'Microphone permission required · Real AI agent · demo.stoaix.com'}
+                Microphone permission required · Real AI agent · demo.stoaix.com
               </p>
             </>
           )}
