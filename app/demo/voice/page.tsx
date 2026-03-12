@@ -14,8 +14,12 @@ interface CallSummary {
   name?: string | null;
   phone?: string | null;
   interested_service?: string | null;
-  key_questions?: string[];
+  lead_score?: number | null;
+  lead_score_reason?: string | null;
+  buying_signals?: string[];
+  objections?: string[];
   next_step?: string | null;
+  sales_action?: string | null;
   sentiment?: 'positive' | 'neutral' | 'negative';
 }
 
@@ -482,6 +486,43 @@ export default function VoiceDemoPage() {
                         </p>
 
                         <div className="space-y-2">
+
+                          {/* Lead Score */}
+                          {summary.lead_score != null && (
+                            <div className="rounded-lg border border-demo-border bg-demo-bg/60 px-3 py-2.5">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <p className="text-[10px] text-demo-muted">🎯 Lead Score</p>
+                                <span className={`text-sm font-bold ${
+                                  summary.lead_score >= 7 ? 'text-emerald-400' :
+                                  summary.lead_score >= 4 ? 'text-yellow-400' :
+                                  'text-red-400'
+                                }`}>{summary.lead_score}/10</span>
+                              </div>
+                              <div className="w-full bg-demo-border rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${
+                                    summary.lead_score >= 7 ? 'bg-emerald-400' :
+                                    summary.lead_score >= 4 ? 'bg-yellow-400' :
+                                    'bg-red-400'
+                                  }`}
+                                  style={{ width: `${summary.lead_score * 10}%` }}
+                                />
+                              </div>
+                              {summary.lead_score_reason && (
+                                <p className="text-[10px] text-demo-muted mt-1.5">{summary.lead_score_reason}</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Sales Action */}
+                          {summary.sales_action && (
+                            <div className="rounded-lg border border-demo-cyan/40 bg-demo-cyan/5 px-3 py-2.5">
+                              <p className="text-[10px] text-demo-muted mb-0.5">⚡ Sales Action</p>
+                              <p className="text-xs font-medium text-demo-cyan">{summary.sales_action}</p>
+                            </div>
+                          )}
+
+                          {/* Contact Info */}
                           {summary.name && (
                             <SummaryRow icon="👤" label="Name" value={summary.name} />
                           )}
@@ -491,21 +532,40 @@ export default function VoiceDemoPage() {
                           {summary.interested_service && (
                             <SummaryRow icon="💼" label="Service Interest" value={summary.interested_service} />
                           )}
-                          {summary.key_questions && summary.key_questions.length > 0 && (
-                            <div className="rounded-lg bg-demo-bg/60 border border-demo-border px-3 py-2.5">
-                              <p className="text-[10px] text-demo-muted mb-1.5">💬 Key Questions</p>
+
+                          {/* Buying Signals */}
+                          {summary.buying_signals && summary.buying_signals.length > 0 && (
+                            <div className="rounded-lg bg-demo-bg/60 border border-emerald-800/40 px-3 py-2.5">
+                              <p className="text-[10px] text-demo-muted mb-1.5">✅ Buying Signals</p>
                               <ul className="space-y-1">
-                                {summary.key_questions.map((q, i) => (
+                                {summary.buying_signals.map((s, i) => (
                                   <li key={i} className="text-xs text-demo-text flex gap-1.5">
-                                    <span className="text-demo-cyan mt-0.5">·</span>
-                                    <span>{q}</span>
+                                    <span className="text-emerald-400 mt-0.5">·</span>
+                                    <span>{s}</span>
                                   </li>
                                 ))}
                               </ul>
                             </div>
                           )}
+
+                          {/* Objections */}
+                          {summary.objections && summary.objections.length > 0 && (
+                            <div className="rounded-lg bg-demo-bg/60 border border-red-800/40 px-3 py-2.5">
+                              <p className="text-[10px] text-demo-muted mb-1.5">⚠️ Objections</p>
+                              <ul className="space-y-1">
+                                {summary.objections.map((o, i) => (
+                                  <li key={i} className="text-xs text-demo-text flex gap-1.5">
+                                    <span className="text-red-400 mt-0.5">·</span>
+                                    <span>{o}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Next Step + Sentiment */}
                           {summary.next_step && (
-                            <SummaryRow icon="✅" label="Next Step" value={summary.next_step} highlight />
+                            <SummaryRow icon="📅" label="Next Step" value={summary.next_step} highlight />
                           )}
                           {summary.sentiment && (
                             <div className="flex justify-end">
