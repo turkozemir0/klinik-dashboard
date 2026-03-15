@@ -779,14 +779,12 @@ async def entrypoint(ctx: JobContext):
 
     tts_lang = lang if lang in ("tr", "en", "de", "ar") else "en"
 
-    # Cartesia Voice IDs (sonic-3) — plugin default Katie used for all langs to verify API works
-    # Override via env vars once confirmed working, browse: https://play.cartesia.ai
-    _default_voice = "f786b574-daa5-4673-aa0c-cbe3e8534c02"  # Katie — plugin built-in default
+    # Cartesia Voice IDs (sonic-3) — browse: https://play.cartesia.ai
     VOICE_IDS = {
-        "tr": os.environ.get("CARTESIA_VOICE_ID_TR", _default_voice),
-        "en": os.environ.get("CARTESIA_VOICE_ID_EN", _default_voice),
-        "de": os.environ.get("CARTESIA_VOICE_ID_DE", _default_voice),
-        "ar": os.environ.get("CARTESIA_VOICE_ID_AR", _default_voice),
+        "tr": os.environ.get("CARTESIA_VOICE_ID_TR", "c1cfee3d-532d-47f8-8dd2-8e5b2b66bf1d"),
+        "en": os.environ.get("CARTESIA_VOICE_ID_EN", "b7d50908-b17c-442d-ad8d-810c63997ed9"),
+        "de": os.environ.get("CARTESIA_VOICE_ID_DE", "b7187e84-fe22-4344-ba4a-bc013fcb533e"),
+        "ar": os.environ.get("CARTESIA_VOICE_ID_AR", "002622d8-19d0-4567-a16a-f99c7397c062"),
     }
 
     session = AgentSession(
