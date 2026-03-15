@@ -1,6 +1,6 @@
 """
 stoaix Voice Agent — Combined Inbound + Outbound
-LiveKit Cloud + Deepgram STT + GPT-4o Mini + ElevenLabs TTS (eleven_flash_v2_5 multilingual)
+LiveKit Cloud + Deepgram STT + GPT-4o Mini + Cartesia TTS (sonic-3 multilingual)
 
 Inbound : SIP dispatch rule → room adı "call-" ile başlar
 Outbound: Explicit dispatch  → room metadata'da "scenario" alanı var
@@ -23,7 +23,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
-from livekit.plugins import elevenlabs, deepgram, openai, silero
+from livekit.plugins import cartesia, deepgram, openai, silero
 
 load_dotenv()
 
@@ -779,22 +779,21 @@ async def entrypoint(ctx: JobContext):
 
     tts_lang = lang if lang in ("tr", "en", "de", "ar") else "en"
 
-    # ElevenLabs Voice IDs — set via env vars (override from elevenlabs.io/voice-library)
-    # Defaults: Will (bIHbv24MWmeRgasZH58o) — plugin built-in default, guaranteed valid
-    _default_voice = "EXAVITQu4vr4xnSDxMaL"  # Sarah — confirmed working via multi-stream-input test
+    # Cartesia Voice IDs (sonic-3, multilingual) — override via env vars
+    # Browse voices: https://play.cartesia.ai
     VOICE_IDS = {
-        "tr": os.environ.get("ELEVENLABS_VOICE_ID_TR", _default_voice),
-        "en": os.environ.get("ELEVENLABS_VOICE_ID_EN", _default_voice),
-        "de": os.environ.get("ELEVENLABS_VOICE_ID_DE", _default_voice),
-        "ar": os.environ.get("ELEVENLABS_VOICE_ID_AR", _default_voice),
+        "tr": os.environ.get("CARTESIA_VOICE_ID_TR", "8036098f-cff4-401e-bfba-f0a6a6e5e49b"),  # Elif
+        "en": os.environ.get("CARTESIA_VOICE_ID_EN", "3faa81ae-d3d8-4ab1-9e44-e50e46d33c30"),
+        "de": os.environ.get("CARTESIA_VOICE_ID_DE", "38aabb6a-f52b-4fb0-a3d1-988518f4dc06"),  # Alina
+        "ar": os.environ.get("CARTESIA_VOICE_ID_AR", "fc923f89-1de5-4ddf-b93c-6da2ba63428a"),  # Nour
     }
 
     session = AgentSession(
         stt=deepgram.STT(model="nova-2", language=tts_lang),
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=elevenlabs.TTS(
-            voice_id=VOICE_IDS[tts_lang],
-            model="eleven_turbo_v2_5",
+        tts=cartesia.TTS(
+            model="sonic-3",
+            voice=VOICE_IDS[tts_lang],
             language=tts_lang,
         ),
         vad=silero.VAD.load(),

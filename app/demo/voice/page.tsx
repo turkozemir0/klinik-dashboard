@@ -271,7 +271,7 @@ export default function VoiceDemoPage() {
                 <div className="inline-flex items-center gap-2 border border-demo-border rounded-full px-3 py-1.5 mb-4 bg-demo-card">
                   <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" />
                   <span className="text-[10px] text-demo-muted uppercase tracking-widest">
-                    LiveKit · Deepgram · ElevenLabs
+                    LiveKit · Deepgram · Cartesia
                   </span>
                 </div>
                 <h1 className="text-2xl font-bold text-demo-text mb-2">AI Voice Assistant</h1>
@@ -326,7 +326,7 @@ export default function VoiceDemoPage() {
                 <div className="inline-flex items-center gap-2 border border-demo-border rounded-full px-3 py-1.5 mb-4 bg-demo-card">
                   <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" />
                   <span className="text-[10px] text-demo-muted uppercase tracking-widest">
-                    LiveKit · Deepgram · ElevenLabs
+                    LiveKit · Deepgram · Cartesia
                   </span>
                 </div>
                 <h1 className="text-2xl font-bold text-demo-text mb-2">AI Voice Assistant</h1>
