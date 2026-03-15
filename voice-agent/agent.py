@@ -779,13 +779,14 @@ async def entrypoint(ctx: JobContext):
 
     tts_lang = lang if lang in ("tr", "en", "de", "ar") else "en"
 
-    # ElevenLabs Voice IDs — eleven_flash_v2_5 (multilingual, ~75ms latency)
-    # Override via env vars, browse at elevenlabs.io/voice-library
+    # ElevenLabs Voice IDs — set via env vars (override from elevenlabs.io/voice-library)
+    # Defaults: Will (bIHbv24MWmeRgasZH58o) — plugin built-in default, guaranteed valid
+    _default_voice = "bIHbv24MWmeRgasZH58o"  # Will — ElevenLabs plugin default
     VOICE_IDS = {
-        "tr": os.environ.get("ELEVENLABS_VOICE_ID_TR", "pFZP5JQG7iQjIQuC4Bku"),  # Lily — multilingual female
-        "en": os.environ.get("ELEVENLABS_VOICE_ID_EN", "21m00Tcm4TlvDq8ikWAM"),  # Rachel — professional EN
-        "de": os.environ.get("ELEVENLABS_VOICE_ID_DE", "XB0fDUnXU5powFXDhCwa"),  # Charlotte — DE/multilingual
-        "ar": os.environ.get("ELEVENLABS_VOICE_ID_AR", "pNInz6obpgDQGcFmaJgB"),  # Adam — AR/multilingual
+        "tr": os.environ.get("ELEVENLABS_VOICE_ID_TR", _default_voice),
+        "en": os.environ.get("ELEVENLABS_VOICE_ID_EN", _default_voice),
+        "de": os.environ.get("ELEVENLABS_VOICE_ID_DE", _default_voice),
+        "ar": os.environ.get("ELEVENLABS_VOICE_ID_AR", _default_voice),
     }
 
     session = AgentSession(
@@ -793,7 +794,8 @@ async def entrypoint(ctx: JobContext):
         llm=openai.LLM(model="gpt-4o-mini"),
         tts=elevenlabs.TTS(
             voice_id=VOICE_IDS[tts_lang],
-            model="eleven_flash_v2_5",
+            model="eleven_turbo_v2_5",
+            language=tts_lang,
         ),
         vad=silero.VAD.load(),
     )
