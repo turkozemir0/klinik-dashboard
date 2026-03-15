@@ -781,7 +781,7 @@ async def entrypoint(ctx: JobContext):
 
     # ElevenLabs Voice IDs — set via env vars (override from elevenlabs.io/voice-library)
     # Defaults: Will (bIHbv24MWmeRgasZH58o) — plugin built-in default, guaranteed valid
-    _default_voice = "bIHbv24MWmeRgasZH58o"  # Will — ElevenLabs plugin default
+    _default_voice = "EXAVITQu4vr4xnSDxMaL"  # Sarah — confirmed working via multi-stream-input test
     VOICE_IDS = {
         "tr": os.environ.get("ELEVENLABS_VOICE_ID_TR", _default_voice),
         "en": os.environ.get("ELEVENLABS_VOICE_ID_EN", _default_voice),
