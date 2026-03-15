@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Room, RoomEvent, Track } from 'livekit-client';
 
 type Scenario  = 'inbound' | 'follow_up' | 'appointment_reminder';
-type Lang      = 'en' | 'de' | 'ar';
+type Lang      = 'tr' | 'en' | 'de' | 'ar';
 type CallState = 'idle' | 'connecting' | 'ringing' | 'connected' | 'ended' | 'error';
 type Step      = 'lang' | 'main';
 
@@ -24,30 +24,31 @@ interface CallSummary {
 }
 
 const LANG_META: Record<Lang, { flag: string; label: string; sublabel: string }> = {
+  tr: { flag: '🇹🇷', label: 'Türkçe',  sublabel: 'Turkish' },
   en: { flag: '🇬🇧', label: 'English',  sublabel: 'English' },
   de: { flag: '🇩🇪', label: 'Deutsch',  sublabel: 'German'  },
   ar: { flag: '🇸🇦', label: 'العربية', sublabel: 'Arabic'  },
 };
 
 const SCENARIO_LABELS: Record<Scenario, Record<Lang, string>> = {
-  inbound:              { en: 'Receptionist',        de: 'Empfang',              ar: 'الاستقبال'     },
-  follow_up:            { en: 'Follow-up Call',       de: 'Nachverfolgungsanruf', ar: 'متابعة'        },
-  appointment_reminder: { en: 'Appointment Reminder', de: 'Terminerinnerung',     ar: 'تذكير بالموعد' },
+  inbound:              { tr: 'Resepsiyonist',       en: 'Receptionist',        de: 'Empfang',              ar: 'الاستقبال'     },
+  follow_up:            { tr: 'Takip Araması',       en: 'Follow-up Call',       de: 'Nachverfolgungsanruf', ar: 'متابعة'        },
+  appointment_reminder: { tr: 'Randevu Hatırlatma',  en: 'Appointment Reminder', de: 'Terminerinnerung',     ar: 'تذكير بالموعد' },
 };
 
 const SCENARIO_DESC: Record<Scenario, Record<Lang, string>> = {
-  inbound:              { en: 'Receptionist answering your call',        de: 'Rezeptionist beantwortet Ihren Anruf',  ar: 'موظف الاستقبال يرد على مكالمتك'  },
-  follow_up:            { en: 'Agent following up on your interest',     de: 'Agent verfolgt Ihr Interesse nach',     ar: 'مساعد يتابع اهتمامك'              },
-  appointment_reminder: { en: 'Agent reminding you of your appointment', de: 'Agent erinnert Sie an Ihren Termin',   ar: 'مساعد يذكرك بموعدك'               },
+  inbound:              { tr: 'Yapay zeka resepsiyonist aramanıza yanıt veriyor', en: 'Receptionist answering your call',        de: 'Rezeptionist beantwortet Ihren Anruf',  ar: 'موظف الاستقبال يرد على مكالمتك'  },
+  follow_up:            { tr: 'Asistan ilginizi takip ediyor',                   en: 'Agent following up on your interest',     de: 'Agent verfolgt Ihr Interesse nach',     ar: 'مساعد يتابع اهتمامك'              },
+  appointment_reminder: { tr: 'Asistan randevunuzu hatırlatıyor',                en: 'Agent reminding you of your appointment', de: 'Agent erinnert Sie an Ihren Termin',   ar: 'مساعد يذكرك بموعدك'               },
 };
 
 const STATUS_LABELS: Record<CallState, Record<Lang, string>> = {
-  idle:       { en: 'Ready',           de: 'Bereit',              ar: 'جاهز'            },
-  connecting: { en: 'Connecting...',   de: 'Verbinde...',         ar: 'جاري الاتصال...' },
-  ringing:    { en: 'Ringing...',      de: 'Klingelt...',         ar: 'يرن...'           },
-  connected:  { en: 'Connected',       de: 'Verbunden',           ar: 'متصل'             },
-  ended:      { en: 'Call ended',      de: 'Anruf beendet',       ar: 'انتهت المكالمة'   },
-  error:      { en: 'Error occurred',  de: 'Fehler aufgetreten',  ar: 'حدث خطأ'          },
+  idle:       { tr: 'Hazır',            en: 'Ready',           de: 'Bereit',              ar: 'جاهز'            },
+  connecting: { tr: 'Bağlanıyor...',    en: 'Connecting...',   de: 'Verbinde...',         ar: 'جاري الاتصال...' },
+  ringing:    { tr: 'Çağrı sinyali...', en: 'Ringing...',      de: 'Klingelt...',         ar: 'يرن...'           },
+  connected:  { tr: 'Bağlandı',         en: 'Connected',       de: 'Verbunden',           ar: 'متصل'             },
+  ended:      { tr: 'Arama bitti',      en: 'Call ended',      de: 'Anruf beendet',       ar: 'انتهت المكالمة'   },
+  error:      { tr: 'Hata oluştu',      en: 'Error occurred',  de: 'Fehler aufgetreten',  ar: 'حدث خطأ'          },
 };
 
 function SummaryRow({
@@ -144,8 +145,10 @@ export default function VoiceDemoPage() {
         if (track.kind === Track.Kind.Audio) {
           const audioEl = track.attach();
           audioEl.autoplay = true;
+          audioEl.muted = false;
           document.body.appendChild(audioEl);
           audioElRef.current = audioEl;
+          audioEl.play().catch(() => {/* autoplay blocked, startAudio will handle */});
         }
       });
 
@@ -157,6 +160,7 @@ export default function VoiceDemoPage() {
       });
 
       await room.connect(ws_url, token);
+      await room.startAudio();
       await room.localParticipant.setMicrophoneEnabled(true);
       if (room.remoteParticipants.size > 0) setCallState('connected');
 
@@ -267,7 +271,7 @@ export default function VoiceDemoPage() {
                 <div className="inline-flex items-center gap-2 border border-demo-border rounded-full px-3 py-1.5 mb-4 bg-demo-card">
                   <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" />
                   <span className="text-[10px] text-demo-muted uppercase tracking-widest">
-                    LiveKit · Deepgram · Cartesia
+                    LiveKit · Deepgram · ElevenLabs
                   </span>
                 </div>
                 <h1 className="text-2xl font-bold text-demo-text mb-2">AI Voice Assistant</h1>
@@ -283,8 +287,8 @@ export default function VoiceDemoPage() {
                 <label className="block text-xs font-medium text-demo-muted uppercase tracking-wide mb-4 text-center">
                   Select Language
                 </label>
-                <div className="grid grid-cols-3 gap-3">
-                  {(['en', 'de', 'ar'] as Lang[]).map(l => {
+                <div className="grid grid-cols-2 gap-3">
+                  {(['tr', 'en', 'de', 'ar'] as Lang[]).map(l => {
                     const lm = LANG_META[l];
                     return (
                       <button
@@ -322,7 +326,7 @@ export default function VoiceDemoPage() {
                 <div className="inline-flex items-center gap-2 border border-demo-border rounded-full px-3 py-1.5 mb-4 bg-demo-card">
                   <span className="w-1.5 h-1.5 rounded-full bg-demo-cyan animate-pulse" />
                   <span className="text-[10px] text-demo-muted uppercase tracking-widest">
-                    LiveKit · Deepgram · Cartesia
+                    LiveKit · Deepgram · ElevenLabs
                   </span>
                 </div>
                 <h1 className="text-2xl font-bold text-demo-text mb-2">AI Voice Assistant</h1>
