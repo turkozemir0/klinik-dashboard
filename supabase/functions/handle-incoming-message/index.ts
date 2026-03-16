@@ -46,9 +46,20 @@ function normalizePayload(
     const contactId = (rawPayload.contact_id || rawPayload.contactId) as string | null
     const message   = (rawPayload.message || rawPayload.body || '') as string
     const phone     = (rawPayload.phone || rawPayload.contact_phone || null) as string | null
-    let attachments = (rawPayload.attachments || []) as unknown[]
-    // GHL type 20 = WhatsApp image (webhook'ta attachment URL gelmez, sadece type gelir)
-    if (rawPayload.type === 20 && attachments.length === 0) {
+
+    // attachments: string (JSON) veya array gelebilir
+    let attachments: unknown[] = []
+    const rawAtch = rawPayload.attachments
+    if (Array.isArray(rawAtch)) {
+      attachments = rawAtch
+    } else if (typeof rawAtch === 'string' && rawAtch.trim().startsWith('[')) {
+      try { attachments = JSON.parse(rawAtch) } catch { /* ignore */ }
+    }
+
+    // GHL message_type: "20" veya 20 = WhatsApp image
+    const msgType = rawPayload.message_type ?? rawPayload.type
+    const isImageMsg = msgType == 20 || msgType === '20'  // loose equality handles both
+    if (isImageMsg && attachments.length === 0) {
       attachments = [{ url: null }]
     }
     return { contactId, message, phone, attachments }
@@ -102,7 +113,7 @@ Deno.serve(async (req) => {
     // ── 2. Token'a göre klinik bul ────────────────────────────────
     const { data: clinic, error: clinicError } = await supabase
       .from('clinics')
-      .select('id, crm_provider, crm_config, crm_token')
+      .select('id, crm_provider, crm_config, crm_token, lang')
       .eq('webhook_token', webhookToken)
       .eq('status', 'active')
       .single()
@@ -115,6 +126,7 @@ Deno.serve(async (req) => {
     }
 
     const clinicId    = clinic.id
+    const clinicLang  = (clinic.lang || 'tr') as string
     const crmProvider = clinic.crm_provider || 'ghl'
     const crmConfig   = (clinic.crm_config || {}) as Record<string, unknown>
 
@@ -204,6 +216,7 @@ Deno.serve(async (req) => {
     const n8nPayload = {
       contactId,
       clinicId,
+      lang:          clinicLang,
       contactPhone:  phone,
       mergedMessage: fullText || (hasImage ? '(Görsel gönderildi)' : ''),
       containsImage: hasImage,

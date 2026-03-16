@@ -4,7 +4,10 @@ import { useState, useTransition, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Plus, Trash2, ChevronDown, ChevronUp, Loader2, Sparkles, Clock, CheckCircle, AlertCircle } from 'lucide-react';
-import { CLINIC_SERVICE_TEMPLATES, CLINIC_TYPES } from '@/lib/clinic-types';
+import { getClinicTypes, getClinicTemplates } from '@/lib/clinic-types';
+import { getClientLang } from '@/lib/client-lang';
+import { getT } from '@/lib/i18n/messages';
+import type { Lang } from '@/lib/i18n/messages';
 
 interface ServiceForm {
   display_name: string; service_key: string; category: string;
@@ -24,8 +27,10 @@ export default function OnboardingServicesPage() {
   const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lang, setLang] = useState<Lang>('tr');
 
   useEffect(() => {
+    setLang(getClientLang());
     supabase.from('clinic_users')
       .select('clinic_id, clinic:clinic_id(clinic_types)')
       .single()
@@ -34,7 +39,6 @@ export default function OnboardingServicesPage() {
         setClinicId(data.clinic_id);
         const types: string[] = (data.clinic as any)?.clinic_types ?? [];
         setClinicTypes(types);
-        // Tüm grupları açık başlat
         const init: Record<string, boolean> = {};
         types.forEach(t => { init[t] = true; });
         setOpenGroups(init);
@@ -51,19 +55,23 @@ export default function OnboardingServicesPage() {
       });
   }, []);
 
-  // Klinik tiplerine göre gruplu şablonlar
-  const templateGroups = clinicTypes
-    .filter(t => CLINIC_SERVICE_TEMPLATES[t]?.length > 0)
-    .map(t => ({
-      key: t,
-      label: CLINIC_TYPES.find(ct => ct.key === t)?.label ?? t,
-      emoji: CLINIC_TYPES.find(ct => ct.key === t)?.emoji ?? '🏥',
-      templates: CLINIC_SERVICE_TEMPLATES[t] ?? [],
-    }));
+  const t = getT(lang);
+  const s = t.onboarding.services;
 
-  function addFromTemplate(t: any) {
-    if (services.some(s => s.service_key === t.service_key)) return;
-    setServices(prev => [...prev, { ...t, expanded: false, sort_order: prev.length + 1 }]);
+  const clinicTypeList = getClinicTypes(lang);
+
+  const templateGroups = clinicTypes
+    .map(typeKey => {
+      const templates = getClinicTemplates(lang, typeKey);
+      if (!templates.length) return null;
+      const meta = clinicTypeList.find(ct => ct.key === typeKey);
+      return { key: typeKey, label: meta?.label ?? typeKey, emoji: meta?.emoji ?? '🏥', templates };
+    })
+    .filter(Boolean) as { key: string; label: string; emoji: string; templates: any[] }[];
+
+  function addFromTemplate(tmpl: any) {
+    if (services.some(sv => sv.service_key === tmpl.service_key)) return;
+    setServices(prev => [...prev, { ...tmpl, expanded: false, sort_order: prev.length + 1 }]);
   }
 
   function addBlank() {
@@ -75,24 +83,24 @@ export default function OnboardingServicesPage() {
   }
 
   function update(i: number, key: string, val: string) {
-    setServices(prev => prev.map((s, idx) => idx === i ? { ...s, [key]: val } : s));
+    setServices(prev => prev.map((sv, idx) => idx === i ? { ...sv, [key]: val } : sv));
   }
 
   function toggleExpand(i: number) {
-    setServices(prev => prev.map((s, idx) => idx === i ? { ...s, expanded: !s.expanded } : s));
+    setServices(prev => prev.map((sv, idx) => idx === i ? { ...sv, expanded: !sv.expanded } : sv));
   }
 
   function handleSubmit() {
     if (!clinicId) return;
-    const valid = services.filter(s => s.display_name.trim());
-    if (valid.length === 0) { setError('En az 1 hizmet ekleyin'); return; }
+    const valid = services.filter(sv => sv.display_name.trim());
+    if (valid.length === 0) { setError(s.minOneError); return; }
     setError(null);
 
     startTransition(async () => {
       const { error: err } = await supabase.from('onboarding_submissions').upsert({
         clinic_id: clinicId,
         section: 'services',
-        data: { services: valid.map(({ expanded, ...s }) => s) },
+        data: { services: valid.map(({ expanded, ...sv }) => sv) },
         status: 'pending',
         reviewed_by: null, reviewed_at: null, rejection_note: null,
       }, { onConflict: 'clinic_id,section' });
@@ -108,39 +116,39 @@ export default function OnboardingServicesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Hizmetlerinizi Ekleyin</h1>
-        <p className="text-slate-500 text-sm mt-1">Şablondan ekle veya sıfırdan oluştur. Admin onayından sonra sisteme işlenir.</p>
+        <h1 className="text-2xl font-bold text-slate-900">{s.title}</h1>
+        <p className="text-slate-500 text-sm mt-1">{s.subtitle}</p>
       </div>
 
       {submissionStatus === 'pending' && (
         <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
           <Clock className="w-5 h-5 text-amber-500 flex-shrink-0" />
-          <p className="text-sm font-semibold text-amber-800">Onay Bekleniyor — Admin inceliyor.</p>
+          <p className="text-sm font-semibold text-amber-800">{s.awaitingApproval}</p>
         </div>
       )}
       {submissionStatus === 'approved' && (
         <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4">
           <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-          <p className="text-sm font-semibold text-emerald-800">Onaylandı ✓</p>
+          <p className="text-sm font-semibold text-emerald-800">{s.approved}</p>
         </div>
       )}
       {submissionStatus === 'rejected' && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-4">
           <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-red-800">Reddedildi — Düzenleyip tekrar gönderin.</p>
-            {rejectionNote && <p className="text-xs text-red-600 mt-1">Not: {rejectionNote}</p>}
+            <p className="text-sm font-semibold text-red-800">{s.rejected}</p>
+            {rejectionNote && <p className="text-xs text-red-600 mt-1">{s.rejectionNote} {rejectionNote}</p>}
           </div>
         </div>
       )}
 
-      {/* Şablonlar — klinik tipine göre gruplu */}
+      {/* Templates */}
       {templateGroups.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-brand-600" />
-            <span className="text-sm font-semibold text-slate-700">Klinik Tipinize Göre Önerilen Şablonlar</span>
-            <span className="text-xs text-slate-400 ml-1">— tıklayarak ekle</span>
+            <span className="text-sm font-semibold text-slate-700">{s.templateSection}</span>
+            <span className="text-xs text-slate-400 ml-1">{s.templateHint}</span>
           </div>
 
           {templateGroups.map(group => (
@@ -151,18 +159,18 @@ export default function OnboardingServicesPage() {
               >
                 <span className="text-lg">{group.emoji}</span>
                 <span className="text-sm font-semibold text-brand-800 flex-1">{group.label}</span>
-                <span className="text-xs text-brand-500 mr-2">{group.templates.length} şablon</span>
+                <span className="text-xs text-brand-500 mr-2">{s.templateCount(group.templates.length)}</span>
                 {openGroups[group.key] ? <ChevronUp className="w-4 h-4 text-brand-400" /> : <ChevronDown className="w-4 h-4 text-brand-400" />}
               </button>
 
               {openGroups[group.key] && (
                 <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {group.templates.map(t => {
-                    const already = services.some(s => s.service_key === t.service_key);
+                  {group.templates.map(tmpl => {
+                    const already = services.some(sv => sv.service_key === tmpl.service_key);
                     return (
                       <button
-                        key={t.service_key}
-                        onClick={() => !already && addFromTemplate(t)}
+                        key={tmpl.service_key}
+                        onClick={() => !already && addFromTemplate(tmpl)}
                         disabled={already}
                         className={`text-left px-4 py-3 rounded-xl border text-xs font-medium transition-all ${
                           already
@@ -171,9 +179,9 @@ export default function OnboardingServicesPage() {
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span className="font-semibold">{already ? '✓ ' : '+ '}{t.display_name}</span>
+                          <span className="font-semibold">{already ? '✓ ' : '+ '}{tmpl.display_name}</span>
                         </div>
-                        {t.category && <span className="text-slate-400 mt-0.5 block">{t.category}</span>}
+                        {tmpl.category && <span className="text-slate-400 mt-0.5 block">{tmpl.category}</span>}
                       </button>
                     );
                   })}
@@ -184,10 +192,10 @@ export default function OnboardingServicesPage() {
         </div>
       )}
 
-      {/* Eklenen hizmetler */}
+      {/* Added services */}
       {services.length > 0 && (
         <div className="space-y-3">
-          <p className="text-sm font-semibold text-slate-700">Eklenen Hizmetler ({services.filter(s => s.display_name).length})</p>
+          <p className="text-sm font-semibold text-slate-700">{s.addedSection(services.filter(sv => sv.display_name).length)}</p>
           {services.map((svc, i) => (
             <div key={i} className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
               <div
@@ -195,7 +203,7 @@ export default function OnboardingServicesPage() {
                 onClick={() => toggleExpand(i)}
               >
                 <span className="flex-1 text-sm font-medium text-slate-800">
-                  {svc.display_name || <span className="text-slate-400 italic">İsimsiz</span>}
+                  {svc.display_name || <span className="text-slate-400 italic">{s.unnamed}</span>}
                   {svc.category && <span className="text-xs text-slate-400 ml-2">· {svc.category}</span>}
                 </span>
                 <button
@@ -209,17 +217,17 @@ export default function OnboardingServicesPage() {
               {svc.expanded && (
                 <div className="px-5 pb-5 pt-1 space-y-3 border-t border-slate-50">
                   <div className="grid grid-cols-2 gap-3">
-                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">Hizmet Adı *</label><input className={inputCls} value={svc.display_name} onChange={e => update(i, 'display_name', e.target.value)} /></div>
-                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">Kategori</label><input className={inputCls} value={svc.category} onChange={e => update(i, 'category', e.target.value)} /></div>
+                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">{s.serviceName}</label><input className={inputCls} value={svc.display_name} onChange={e => update(i, 'display_name', e.target.value)} /></div>
+                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">{s.category}</label><input className={inputCls} value={svc.category} onChange={e => update(i, 'category', e.target.value)} /></div>
                   </div>
-                  <div><label className="text-xs font-semibold text-slate-400 block mb-1">AI Açıklaması</label><textarea className={`${inputCls} resize-none`} rows={3} value={svc.description_for_ai} onChange={e => update(i, 'description_for_ai', e.target.value)} /></div>
+                  <div><label className="text-xs font-semibold text-slate-400 block mb-1">{s.aiDesc}</label><textarea className={`${inputCls} resize-none`} rows={3} value={svc.description_for_ai} onChange={e => update(i, 'description_for_ai', e.target.value)} /></div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">İşlem Süresi</label><input className={inputCls} value={svc.procedure_duration} onChange={e => update(i, 'procedure_duration', e.target.value)} /></div>
-                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">Anestezi</label><input className={inputCls} value={svc.anesthesia_type} onChange={e => update(i, 'anesthesia_type', e.target.value)} /></div>
-                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">İyileşme</label><input className={inputCls} value={svc.recovery_time} onChange={e => update(i, 'recovery_time', e.target.value)} /></div>
-                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">Sonuç</label><input className={inputCls} value={svc.final_result_time} onChange={e => update(i, 'final_result_time', e.target.value)} /></div>
+                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">{s.duration}</label><input className={inputCls} value={svc.procedure_duration} onChange={e => update(i, 'procedure_duration', e.target.value)} /></div>
+                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">{s.anesthesia}</label><input className={inputCls} value={svc.anesthesia_type} onChange={e => update(i, 'anesthesia_type', e.target.value)} /></div>
+                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">{s.recovery}</label><input className={inputCls} value={svc.recovery_time} onChange={e => update(i, 'recovery_time', e.target.value)} /></div>
+                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">{s.result}</label><input className={inputCls} value={svc.final_result_time} onChange={e => update(i, 'final_result_time', e.target.value)} /></div>
                   </div>
-                  <div><label className="text-xs font-semibold text-slate-400 block mb-1">Fiyat Yanıtı</label><textarea className={`${inputCls} resize-none`} rows={2} value={svc.pricing_response} onChange={e => update(i, 'pricing_response', e.target.value)} /></div>
+                  <div><label className="text-xs font-semibold text-slate-400 block mb-1">{s.pricing}</label><textarea className={`${inputCls} resize-none`} rows={2} value={svc.pricing_response} onChange={e => update(i, 'pricing_response', e.target.value)} /></div>
                 </div>
               )}
             </div>
@@ -231,18 +239,18 @@ export default function OnboardingServicesPage() {
         onClick={addBlank}
         className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-brand-300 hover:bg-brand-50 text-slate-400 hover:text-brand-600 text-sm font-medium transition-all"
       >
-        <Plus className="w-4 h-4" /> Boş Hizmet Ekle
+        <Plus className="w-4 h-4" /> {s.addEmpty}
       </button>
 
       {error && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>}
 
       <div className="flex items-center justify-between pt-2">
-        <button onClick={() => router.push('/onboarding/profile')} className="btn-ghost text-sm">← Geri</button>
+        <button onClick={() => router.push('/onboarding/profile')} className="btn-ghost text-sm">{s.back}</button>
         <div className="flex gap-3">
-          <button onClick={() => router.push('/onboarding/faqs')} className="text-sm text-slate-400 hover:text-slate-600">Atla →</button>
+          <button onClick={() => router.push('/onboarding/faqs')} className="text-sm text-slate-400 hover:text-slate-600">{s.skip}</button>
           <button onClick={handleSubmit} disabled={isPending} className="btn-primary flex items-center gap-2 text-sm">
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            Gönder & Devam <ArrowRight className="w-4 h-4" />
+            {s.submit} <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </div>

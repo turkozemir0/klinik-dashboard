@@ -22,13 +22,27 @@ export async function saveCrmSettings(formData: FormData) {
   const crmProvider    = formData.get('crm_provider') as string;
   const sendMessageUrl = formData.get('send_message_url') as string;
   const fieldMapRaw    = formData.get('field_map') as string;
+  const pipelineStagesRaw = formData.get('pipeline_stages') as string;
+  const customFieldsRaw   = formData.get('custom_fields') as string;
 
   let fieldMap: Record<string, string> = {};
   if (fieldMapRaw) {
-    try {
-      fieldMap = JSON.parse(fieldMapRaw);
-    } catch {
+    try { fieldMap = JSON.parse(fieldMapRaw); } catch {
       redirect(`/admin/clinics/${clinicId}/crm-settings?error=${encodeURIComponent('field_map geçerli bir JSON değil')}`);
+    }
+  }
+
+  let pipelineStages: Record<string, string> = {};
+  if (pipelineStagesRaw) {
+    try { pipelineStages = JSON.parse(pipelineStagesRaw); } catch {
+      redirect(`/admin/clinics/${clinicId}/crm-settings?error=${encodeURIComponent('pipeline_stages geçerli bir JSON değil')}`);
+    }
+  }
+
+  let customFields: Record<string, string> = {};
+  if (customFieldsRaw) {
+    try { customFields = JSON.parse(customFieldsRaw); } catch {
+      redirect(`/admin/clinics/${clinicId}/crm-settings?error=${encodeURIComponent('custom_fields geçerli bir JSON değil')}`);
     }
   }
 
@@ -38,8 +52,10 @@ export async function saveCrmSettings(formData: FormData) {
   };
 
   if (crmProvider === 'ghl') {
-    crmConfig.location_id = (formData.get('location_id') as string) || '';
-    crmConfig.pipeline_id = (formData.get('pipeline_id') as string) || '';
+    crmConfig.location_id    = (formData.get('location_id') as string) || '';
+    crmConfig.pipeline_id    = (formData.get('pipeline_id') as string) || '';
+    crmConfig.pipeline_stages = pipelineStages;
+    crmConfig.custom_fields   = customFields;
   }
 
   const { error } = await supabase

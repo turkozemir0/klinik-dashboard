@@ -125,3 +125,30 @@ git push origin main
 # Supabase SQL çalıştır
 # → Supabase Dashboard → SQL Editor'dan yapılır
 ```
+
+<!-- CMC:START -->
+## 🧠 Project State
+
+**Stack:** Anthropic SDK, Next.js, OpenAI, React, Supabase, Tailwind, TypeScript
+
+**Recent files** _(last 15)_:
+- `WF1 - Bilingual Incoming Message Handler.json` — 2026-03-16
+- `page.tsx` — 2026-03-16
+- `index.ts` — 2026-03-16
+- `crm-actions.ts` — 2026-03-16
+- `agent.py` — 2026-03-15
+- `requirements.txt` — 2026-03-15
+
+**Open tasks:**
+_No open tasks._
+
+**Last session:**
+_No session recorded yet._
+
+**Key decisions:**
+_None recorded yet._
+
+**Problems solved:**
+_None recorded yet._
+
+<!-- CMC:END -->

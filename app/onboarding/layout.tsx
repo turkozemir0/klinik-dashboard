@@ -1,14 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getLang, getT } from '@/lib/i18n-server';
 import { CheckCircle } from 'lucide-react';
-
-const STEPS = [
-  { num: 0, label: 'Klinik Tipi', slug: 'type' },
-  { num: 1, label: 'Profil',      slug: 'profile' },
-  { num: 2, label: 'Hizmetler',   slug: 'services' },
-  { num: 3, label: 'SSS',         slug: 'faqs' },
-  { num: 4, label: 'Tamamlandı',  slug: 'done' },
-];
 
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
@@ -21,7 +14,6 @@ export default async function OnboardingLayout({ children }: { children: React.R
     .eq('user_id', user.id)
     .single();
 
-  // Klinik yoksa waiting sayfasına — middleware zaten hallediyor ama guard olarak
   if (!cu) redirect('/waiting');
 
   const clinic = cu.clinic as any;
@@ -38,9 +30,19 @@ export default async function OnboardingLayout({ children }: { children: React.R
     .select('section, status')
     .eq('clinic_id', cu.clinic_id);
 
+  const lang = getLang();
+  const t = getT(lang);
   const pct = progress?.completion_pct ?? 0;
   const completedSteps = progress?.completed_steps ?? [];
   const hasTypes = clinic?.clinic_types?.length > 0;
+
+  const STEPS = [
+    { num: 0, label: t.onboarding.steps.type,     slug: 'type' },
+    { num: 1, label: t.onboarding.steps.profile,  slug: 'profile' },
+    { num: 2, label: t.onboarding.steps.services, slug: 'services' },
+    { num: 3, label: t.onboarding.steps.faqs,     slug: 'faqs' },
+    { num: 4, label: t.onboarding.steps.done,     slug: 'done' },
+  ];
 
   const getStepStatus = (num: number) => {
     if (num === 0) return hasTypes ? 'done' : 'pending';
@@ -63,13 +65,15 @@ export default async function OnboardingLayout({ children }: { children: React.R
           <div className="flex items-center gap-3">
             <span className="font-bold text-slate-900 text-lg">stoaix</span>
             <span className="text-slate-300">·</span>
-            <span className="text-sm text-slate-500">Klinik Kurulumu</span>
+            <span className="text-sm text-slate-500">{t.onboarding.setup}</span>
           </div>
           <div className="flex items-center gap-3">
             <div className="w-32 h-2 bg-slate-100 rounded-full overflow-hidden">
               <div className="h-full bg-brand-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
             </div>
-            <span className="text-sm font-semibold text-slate-600">%{pct}</span>
+            <span className="text-sm font-semibold text-slate-600">
+              {lang === 'en' ? `${pct}%` : `%${pct}`}
+            </span>
           </div>
         </div>
       </div>

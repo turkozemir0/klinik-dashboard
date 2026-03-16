@@ -4,7 +4,10 @@ import { useState, useTransition, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Loader2, Check } from 'lucide-react';
-import { CLINIC_TYPES } from '@/lib/clinic-types';
+import { getClinicTypes } from '@/lib/clinic-types';
+import { getClientLang } from '@/lib/client-lang';
+import { getT } from '@/lib/i18n/messages';
+import type { Lang } from '@/lib/i18n/messages';
 
 export default function OnboardingTypePage() {
   const supabase = createClient();
@@ -14,12 +17,17 @@ export default function OnboardingTypePage() {
   const [otherText, setOtherText] = useState('');
   const [clinicId, setClinicId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lang, setLang] = useState<Lang>('tr');
 
   useEffect(() => {
+    setLang(getClientLang());
     supabase.from('clinic_users').select('clinic_id').single().then(({ data }) => {
       if (data) setClinicId(data.clinic_id);
     });
   }, []);
+
+  const t = getT(lang);
+  const clinicTypes = getClinicTypes(lang);
 
   function toggle(key: string) {
     setSelected(prev =>
@@ -49,15 +57,12 @@ export default function OnboardingTypePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Kliniğiniz ne tür hizmet veriyor?</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Birden fazla seçebilirsiniz. Seçiminize göre size özel şablonlar önerilecek.
-        </p>
+        <h1 className="text-2xl font-bold text-slate-900">{t.onboarding.type.title}</h1>
+        <p className="text-slate-500 text-sm mt-1">{t.onboarding.type.subtitle}</p>
       </div>
 
-      {/* Klinik tipi seçimi */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {CLINIC_TYPES.map(type => {
+        {clinicTypes.map(type => {
           const isSelected = selected.includes(type.key);
           return (
             <button
@@ -81,35 +86,32 @@ export default function OnboardingTypePage() {
         })}
       </div>
 
-      {/* Diğer text input */}
       {selected.includes('diger') && (
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-            Klinik türünüzü belirtin <span className="text-red-500">*</span>
+            {t.onboarding.type.otherLabel} <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
             value={otherText}
             onChange={e => setOtherText(e.target.value)}
-            placeholder="ör: Fizik Tedavi ve Rehabilitasyon"
+            placeholder={t.onboarding.type.otherPlaceholder}
             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"
             autoFocus
           />
         </div>
       )}
 
-      {/* Seçilen tipler özeti */}
       {selected.length > 0 && (
         <div className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-3">
           <p className="text-xs text-brand-600 font-medium">
-            Seçilen: {selected.map(k => {
-              const t = CLINIC_TYPES.find(ct => ct.key === k);
-              return k === 'diger' && otherText ? otherText : t?.label;
+            {t.onboarding.type.selectedLabel}{' '}
+            {selected.map(k => {
+              const ct = clinicTypes.find(c => c.key === k);
+              return k === 'diger' && otherText ? otherText : ct?.label;
             }).filter(Boolean).join(', ')}
           </p>
-          <p className="text-xs text-brand-500 mt-0.5">
-            Bir sonraki adımda bu türlere uygun hizmet şablonları önerilecek ✨
-          </p>
+          <p className="text-xs text-brand-500 mt-0.5">{t.onboarding.type.templateHint}</p>
         </div>
       )}
 
@@ -117,7 +119,6 @@ export default function OnboardingTypePage() {
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      {/* Footer */}
       <div className="flex justify-end pt-2">
         <button
           onClick={handleNext}
@@ -125,7 +126,7 @@ export default function OnboardingTypePage() {
           className="btn-primary flex items-center gap-2 text-sm"
         >
           {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          Devam Et
+          {t.onboarding.type.continue}
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

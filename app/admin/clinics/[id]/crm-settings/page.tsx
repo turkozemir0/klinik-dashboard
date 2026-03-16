@@ -49,6 +49,34 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
     2
   );
 
+  const pipelineStagesStr = JSON.stringify(
+    crmConfig.pipeline_stages || {
+      'New Lead': '',
+      'AI Qualifying': '',
+      'Hot Lead / Handoff': '',
+      'Nurturing': '',
+      'Appointment Booked': '',
+      'Won / Treatment': '',
+      'Lost / Archive': '',
+    },
+    null,
+    2
+  );
+
+  const customFieldsStr = JSON.stringify(
+    crmConfig.custom_fields || {
+      lead_score: '',
+      interested_service: '',
+      pain_point: '',
+      timeline: '',
+      budget_awareness: '',
+      previous_consultation: '',
+      ai_summary: '',
+    },
+    null,
+    2
+  );
+
   const rawToken    = clinic.crm_token || '';
   const maskedToken = rawToken.length > 4
     ? '*'.repeat(rawToken.length - 4) + rawToken.slice(-4)
@@ -129,6 +157,20 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Pipeline ID <span className="text-slate-400 font-normal">(GHL için)</span>
+            </label>
+            <input
+              type="text"
+              name="pipeline_id"
+              defaultValue={(crmConfig.pipeline_id as string) || ''}
+              placeholder="GHL Pipeline ID"
+              className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+            <p className="text-xs text-slate-400 mt-1">GHL → Pipelines sekmesinden URL&apos;de bulunur</p>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Mesaj Gönderme URL</label>
             <input
               type="text"
@@ -144,17 +186,45 @@ export default async function CrmSettingsPage({ params, searchParams }: PageProp
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Field Map <span className="text-slate-400 font-normal">(JSON)</span>
+              Pipeline Stages <span className="text-slate-400 font-normal">(JSON — aşama adı → GHL stage ID)</span>
+            </label>
+            <textarea
+              name="pipeline_stages"
+              defaultValue={pipelineStagesStr}
+              rows={10}
+              className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+              spellCheck={false}
+            />
+            <p className="text-xs text-slate-400 mt-1">GHL → Pipelines → stage ID&apos;leri buraya gir</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Custom Fields <span className="text-slate-400 font-normal">(JSON — alan adı → GHL field ID)</span>
+            </label>
+            <textarea
+              name="custom_fields"
+              defaultValue={customFieldsStr}
+              rows={10}
+              className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+              spellCheck={false}
+            />
+            <p className="text-xs text-slate-400 mt-1">GHL → Contacts → Custom Fields&apos;ten field ID&apos;leri kopyala</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Field Map <span className="text-slate-400 font-normal">(JSON — gelen webhook alan eşlemesi)</span>
             </label>
             <textarea
               name="field_map"
               defaultValue={fieldMapStr}
-              rows={5}
+              rows={4}
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
               spellCheck={false}
             />
             <p className="text-xs text-slate-400 mt-1">
-              Gelen webhook&apos;tan alan eşlemesi. Nokta notasyonu desteklenir: <code className="bg-slate-100 px-1 rounded">data.contact.id</code>
+              Nokta notasyonu: <code className="bg-slate-100 px-1 rounded">data.contact.id</code>
             </p>
           </div>
 

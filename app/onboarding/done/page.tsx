@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { CheckCircle, ArrowRight, BookOpen, BarChart3, Loader2 } from 'lucide-react';
+import { getClientLang } from '@/lib/client-lang';
+import { getT } from '@/lib/i18n/messages';
+import type { Lang } from '@/lib/i18n/messages';
 
 export default function OnboardingDonePage() {
   const supabase = createClient();
@@ -11,8 +14,10 @@ export default function OnboardingDonePage() {
   const [pct, setPct] = useState(0);
   const [missing, setMissing] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState<Lang>('tr');
 
   useEffect(() => {
+    setLang(getClientLang());
     supabase.from('clinic_users').select('clinic_id').single().then(async ({ data }) => {
       if (!data) return;
       const { data: prog } = await supabase
@@ -24,13 +29,16 @@ export default function OnboardingDonePage() {
       if (prog) {
         setPct(prog.completion_pct ?? 0);
         const m: string[] = [];
-        if (!prog.profile_done)   m.push('Klinik profili (telefon, karşılama mesajı)');
-        if (!prog.services_done)  m.push('En az 1 hizmet');
+        if (!prog.profile_done)  m.push('profile');
+        if (!prog.services_done) m.push('service');
         setMissing(m);
       }
       setLoading(false);
     });
   }, []);
+
+  const t = getT(lang);
+  const d = t.onboarding.done;
 
   if (loading) {
     return (
@@ -41,6 +49,9 @@ export default function OnboardingDonePage() {
   }
 
   const isFullyDone = missing.length === 0;
+  const missingLabels = missing.map(key =>
+    key === 'profile' ? d.missingProfile : d.missingService
+  );
 
   return (
     <div className="max-w-lg mx-auto text-center space-y-8 py-6">
@@ -53,15 +64,13 @@ export default function OnboardingDonePage() {
           : <span className="text-3xl">🎯</span>}
       </div>
 
-      {/* Başlık */}
+      {/* Title */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">
-          {isFullyDone ? 'Kurulum Tamamlandı!' : `%${pct} Tamamlandı`}
+          {isFullyDone ? d.setupComplete : d.pctComplete(pct)}
         </h1>
         <p className="text-slate-500 text-sm mt-2">
-          {isFullyDone
-            ? 'AI asistanınız artık kliniğinizi tanıyor ve hastalara doğru bilgi verebilir.'
-            : 'Harika bir başlangıç! Eksik alanları istediğiniz zaman tamamlayabilirsiniz.'}
+          {isFullyDone ? d.setupCompleteDesc : d.partialDesc}
         </p>
       </div>
 
@@ -75,12 +84,12 @@ export default function OnboardingDonePage() {
         />
       </div>
 
-      {/* Eksikler */}
-      {missing.length > 0 && (
+      {/* Missing items */}
+      {missingLabels.length > 0 && (
         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5 text-left">
-          <p className="text-sm font-semibold text-amber-800 mb-3">Tamamlanmayı bekleyenler:</p>
+          <p className="text-sm font-semibold text-amber-800 mb-3">{d.pendingTitle}</p>
           <ul className="space-y-2">
-            {missing.map((m, i) => (
+            {missingLabels.map((m, i) => (
               <li key={i} className="flex items-center gap-2 text-sm text-amber-700">
                 <span className="w-5 h-5 rounded-full border-2 border-amber-300 flex-shrink-0" />
                 {m}
@@ -90,21 +99,17 @@ export default function OnboardingDonePage() {
         </div>
       )}
 
-      {/* Sonraki adımlar */}
+      {/* Next steps */}
       <div className="grid grid-cols-2 gap-3 text-left">
         <div className="bg-white rounded-2xl border border-slate-100 p-4">
           <BookOpen className="w-5 h-5 text-brand-500 mb-2" />
-          <p className="text-sm font-semibold text-slate-800">Knowledge Base</p>
-          <p className="text-xs text-slate-400 mt-1">
-            Bilgileri istediğiniz zaman güncelleyebilir, değişiklik önerebilirsiniz.
-          </p>
+          <p className="text-sm font-semibold text-slate-800">{d.kbTitle}</p>
+          <p className="text-xs text-slate-400 mt-1">{d.kbDesc}</p>
         </div>
         <div className="bg-white rounded-2xl border border-slate-100 p-4">
           <BarChart3 className="w-5 h-5 text-brand-500 mb-2" />
-          <p className="text-sm font-semibold text-slate-800">Dashboard</p>
-          <p className="text-xs text-slate-400 mt-1">
-            Lead skorlarını, konuşmaları ve handoff loglarını takip edin.
-          </p>
+          <p className="text-sm font-semibold text-slate-800">{d.dashboardTitle}</p>
+          <p className="text-xs text-slate-400 mt-1">{d.dashboardDesc}</p>
         </div>
       </div>
 
@@ -113,16 +118,16 @@ export default function OnboardingDonePage() {
         onClick={() => router.push('/dashboard')}
         className="btn-primary w-full flex items-center justify-center gap-2 py-3"
       >
-        Panele Git
+        {d.goToDashboard}
         <ArrowRight className="w-4 h-4" />
       </button>
 
-      {missing.length > 0 && (
+      {missingLabels.length > 0 && (
         <button
           onClick={() => router.push('/onboarding/profile')}
           className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
         >
-          ← Geri dön, eksikleri tamamla
+          {d.goBack}
         </button>
       )}
     </div>
