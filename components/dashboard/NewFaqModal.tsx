@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { submitChangeRequest } from '@/lib/actions/kb-actions';
 import { X, Send, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
@@ -62,7 +63,11 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
 
   const inputCls = "w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm text-slate-900";
 
-  return (
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
         {/* Header */}
@@ -176,6 +181,7 @@ export default function NewFaqModal({ clinicId, onClose }: NewFaqModalProps) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
