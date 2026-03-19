@@ -7,6 +7,9 @@ Kliniğe özel AI satış asistanı platformu. Klinikler bu dashboard üzerinden
 - Lead skorlarını ve satış devirlerini yönetir
 - Bilgi bankasını günceller
 
+**NOT:** Bu repo klinik sistemine aittir (panel.stoaix.com).
+Yeni multi-tenant platform → `stoaix-platform/` klasörüne bakın (kendi CLAUDE.md'si var).
+
 ## Mimari
 
 ```
@@ -22,35 +25,23 @@ GoHighLevel (CRM — WhatsApp/SMS gelen mesajlar)
 ## Klasör Yapısı
 
 ```
-stoaix/
-├── klinik-dashboard/          ← Next.js 14 App Router (panel.stoaix.com)
-│   ├── app/
-│   │   ├── (auth)/            ← Login, register, waiting sayfaları
-│   │   ├── admin/             ← Super admin paneli
-│   │   ├── dashboard/         ← Klinik dashboard
-│   │   └── onboarding/        ← Onboarding akışı
-│   ├── components/
-│   ├── lib/
-│   │   ├── supabase/          ← Supabase client'ları
-│   │   └── clinic-types.ts    ← Klinik tipi şablonları
-│   └── middleware.ts          ← Auth yönlendirme
-│
-├── sql/                       ← Supabase SQL dosyaları
-│   ├── 01_schema.sql          ← Tablo tanımları
-│   ├── 02_functions.sql       ← Fonksiyonlar ve triggerlar
-│   ├── 03_rls.sql             ← Row Level Security politikaları
-│   ├── 04_realtime.sql        ← Realtime ve son ayarlar
-│   └── migrations/            ← Tarihli değişiklikler
-│
-├── supabase/
-│   └── functions/
-│       └── handle-incoming-message/
-│           └── index.ts       ← GHL webhook → n8n köprüsü
-│
-├── n8n-workflows/             ← n8n workflow JSON export'ları
-│
-└── docs/
-    └── database.docx          ← Database dokümantasyonu
+stoaix/                            ← Bu repo kökü = klinik dashboard
+├── app/
+│   ├── (auth)/                    ← Login, register, waiting sayfaları
+│   ├── admin/                     ← Super admin paneli
+│   ├── dashboard/                 ← Klinik dashboard
+│   └── onboarding/                ← Onboarding akışı
+├── components/
+├── lib/
+│   ├── supabase/                  ← Supabase client'ları
+│   └── clinic-types.ts            ← Klinik tipi şablonları
+├── middleware.ts                  ← Auth yönlendirme
+├── sql/                           ← Supabase SQL dosyaları
+│   └── migrations/                ← Tarihli değişiklikler
+├── supabase/functions/
+│   └── handle-incoming-message/   ← GHL webhook → n8n köprüsü
+├── n8n-workflows/                 ← WF1..WF5 JSON export'ları
+└── stoaix-platform/               ← YENİ PLATFORM (ayrı proje)
 ```
 
 ## Teknolojiler
@@ -66,9 +57,9 @@ stoaix/
 ## Önemli Bilgiler
 
 ### Veritabanı
-- Supabase project ID: iylabpsokydolhuhvvwi
-- Tüm tablo değişiklikleri sql/migrations/ altına tarihle eklenmeli
-- Migration format: YYYY-MM-DD_kisa_aciklama.sql
+- Supabase project ID: **iylabpsokydolhuhvvwi**
+- Tüm tablo değişiklikleri `sql/migrations/` altına tarihle eklenmeli
+- Migration format: `YYYY-MM-DD_kisa_aciklama.sql`
 - SQL değişikliklerini Supabase Dashboard → SQL Editor'dan çalıştır
 
 ### Auth Akışı
@@ -104,7 +95,7 @@ stoaix/
 
 ## Geliştirme Kuralları
 
-1. Her SQL değişikliği için sql/migrations/ altına dosya ekle
+1. Her SQL değişikliği için `sql/migrations/` altına dosya ekle
 2. TypeScript strict mode kapalı (tsconfig.json'da strict: false)
 3. Supabase anon key frontend'de kullanılabilir, service role key asla
 4. RLS her zaman açık olmalı
@@ -113,9 +104,8 @@ stoaix/
 ## Sık Kullanılan Komutlar
 
 ```bash
-# Lokal geliştirme
-cd klinik-dashboard
-npm run dev
+# Lokal geliştirme (klinik dashboard)
+npm run dev   # stoaix/ root'ta çalıştır
 
 # Deploy
 git add .
@@ -126,29 +116,6 @@ git push origin main
 # → Supabase Dashboard → SQL Editor'dan yapılır
 ```
 
-<!-- CMC:START -->
-## 🧠 Project State
+## Açık Görevler
 
-**Stack:** Anthropic SDK, Next.js, OpenAI, React, Supabase, Tailwind, TypeScript
-
-**Recent files** _(last 15)_:
-- `WF1 - Bilingual Incoming Message Handler.json` — 2026-03-16
-- `page.tsx` — 2026-03-16
-- `index.ts` — 2026-03-16
-- `crm-actions.ts` — 2026-03-16
-- `agent.py` — 2026-03-15
-- `requirements.txt` — 2026-03-15
-
-**Open tasks:**
-_No open tasks._
-
-**Last session:**
-_No session recorded yet._
-
-**Key decisions:**
-_None recorded yet._
-
-**Problems solved:**
-_None recorded yet._
-
-<!-- CMC:END -->
+- [ ] GHL image analizi (WF1): n8n'de OpenAI vision entegrasyonu
