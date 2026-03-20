@@ -20,6 +20,14 @@ klinik-dashboard/.env.*.local
 # Vercel
 .vercel
 
+# stoaix-platform secrets & build
+stoaix-platform/.env.txt
+stoaix-platform/.claude/
+stoaix-platform/dashboard/.next/
+stoaix-platform/dashboard/node_modules/
+stoaix-platform/voice-agent/.env
+stoaix-platform/voice-agent/.env.txt
+
 # OS
 .DS_Store
 Thumbs.db

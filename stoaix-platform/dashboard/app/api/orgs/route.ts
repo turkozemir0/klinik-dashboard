@@ -26,11 +26,19 @@ export async function POST(request: NextRequest) {
   const { name, slug, sector } = await request.json()
   if (!name || !slug || !sector) return NextResponse.json({ error: 'name, slug ve sector zorunlu' }, { status: 400 })
 
+  const normalizedSlug = String(slug).trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+  const trimmedName = String(name).trim()
+  const trimmedSector = String(sector).trim()
+
+  if (!trimmedName || !normalizedSlug || !trimmedSector) {
+    return NextResponse.json({ error: 'Geçerli name, slug ve sector zorunlu' }, { status: 400 })
+  }
+
   const service = getServiceClient()
 
   const { data: org, error: orgError } = await service
     .from('organizations')
-    .insert({ name, slug, sector, status: 'onboarding', onboarding_status: 'not_started' })
+    .insert({ name: trimmedName, slug: normalizedSlug, sector: trimmedSector, status: 'onboarding', onboarding_status: 'not_started' })
     .select('id')
     .single()
 
@@ -44,6 +52,9 @@ export async function POST(request: NextRequest) {
     .insert({ token, organization_id: org.id, expires_at: expiresAt, is_used: false })
 
   if (tokenError) return NextResponse.json({ error: tokenError.message }, { status: 500 })
+
+  // data/<slug>/source.config.json lokal geliştirmede manuel oluşturulur;
+  // Vercel (read-only FS) ortamında dosya yazımı yapılmaz.
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   return NextResponse.json({ org_id: org.id, invite_url: `${baseUrl}/register?token=${token}` })

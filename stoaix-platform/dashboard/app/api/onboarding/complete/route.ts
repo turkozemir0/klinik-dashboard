@@ -16,11 +16,35 @@ export async function POST(request: NextRequest) {
 
   if (!orgUser) return NextResponse.json({ error: 'Org bulunamadı' }, { status: 404 })
 
-  const { error } = await service
+  const orgId = orgUser.organization_id
+
+  const { data: org, error } = await service
     .from('organizations')
     .update({ status: 'active', onboarding_status: 'completed' })
-    .eq('id', orgUser.organization_id)
+    .eq('id', orgId)
+    .select('name')
+    .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Playbook yoksa minimal bir kayıt oluştur
+  const { data: existing } = await service
+    .from('agent_playbooks')
+    .select('id')
+    .eq('organization_id', orgId)
+    .maybeSingle()
+
+  if (!existing) {
+    await service.from('agent_playbooks').insert({
+      organization_id: orgId,
+      name: org?.name ?? 'AI Asistan',
+      channel: 'voice',
+      system_prompt_template: '',
+      hard_blocks: [],
+      routing_rules: [],
+      is_active: true,
+    })
+  }
+
   return NextResponse.json({ ok: true })
 }

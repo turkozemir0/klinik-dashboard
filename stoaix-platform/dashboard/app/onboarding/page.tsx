@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CheckCircle2, Plus, Trash2 } from 'lucide-react'
 
-type Step = 1 | 2 | 3 | 4
+type Step = 1 | 2 | 3 | 4 | 5
 
 interface KbItem {
   id: string
@@ -21,25 +21,30 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false)
   const [step1Error, setStep1Error] = useState('')
 
-  // Step 1
+  // Step 1 — İşletme Bilgileri
   const [phone, setPhone] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('TR')
 
-  // Step 2 - Services
+  // Step 2 — Genel Tanıtım
+  const [about, setAbout] = useState('')
+  const [workingHours, setWorkingHours] = useState('')
+  const [genLoading, setGenLoading] = useState(false)
+
+  // Step 3 — Hizmetler
   const [services, setServices] = useState<KbItem[]>([])
   const [svcTitle, setSvcTitle] = useState('')
   const [svcDesc, setSvcDesc] = useState('')
   const [svcLoading, setSvcLoading] = useState(false)
 
-  // Step 3 - FAQs
+  // Step 4 — SSS
   const [faqs, setFaqs] = useState<KbItem[]>([])
   const [faqQ, setFaqQ] = useState('')
   const [faqA, setFaqA] = useState('')
   const [faqLoading, setFaqLoading] = useState(false)
 
-  // Step 4
+  // Step 5 — Politika & Fiyatlandırma
   const [pricing, setPricing] = useState('')
   const [policy, setPolicy] = useState('')
 
@@ -76,11 +81,42 @@ export default function OnboardingPage() {
         const d = await res.json()
         setStep1Error(d.error || `Hata (${res.status})`)
       }
-    } catch (err) {
+    } catch {
       setStep1Error('Bağlantı hatası. Lütfen tekrar deneyin.')
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleStep2General() {
+    if (!orgId) { setStep(3); return }
+    setGenLoading(true)
+    if (about.trim()) {
+      await fetch('/api/knowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Hakkımızda',
+          description_for_ai: about.trim(),
+          item_type: 'general',
+          organization_id: orgId,
+        }),
+      })
+    }
+    if (workingHours.trim()) {
+      await fetch('/api/knowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Çalışma Saatleri & İletişim',
+          description_for_ai: workingHours.trim(),
+          item_type: 'general',
+          organization_id: orgId,
+        }),
+      })
+    }
+    setGenLoading(false)
+    setStep(3)
   }
 
   async function addService() {
@@ -152,9 +188,10 @@ export default function OnboardingPage() {
 
   const steps = [
     { n: 1, label: 'İşletme Bilgileri' },
-    { n: 2, label: 'Hizmetler' },
-    { n: 3, label: 'Sık Sorulan Sorular' },
-    { n: 4, label: 'Ek Bilgiler' },
+    { n: 2, label: 'Genel Tanıtım' },
+    { n: 3, label: 'Hizmetler' },
+    { n: 4, label: 'Sık Sorulan Sorular' },
+    { n: 5, label: 'Politika & Fiyat' },
   ]
 
   return (
@@ -192,7 +229,7 @@ export default function OnboardingPage() {
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
 
-          {/* Step 1 */}
+          {/* Step 1 — İşletme Bilgileri */}
           {step === 1 && (
             <form onSubmit={handleStep1} className="space-y-4">
               <div className="mb-2">
@@ -265,8 +302,51 @@ export default function OnboardingPage() {
             </form>
           )}
 
-          {/* Step 2 */}
+          {/* Step 2 — Genel Tanıtım */}
           {step === 2 && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-slate-800">Genel Tanıtım</h2>
+                <p className="text-sm text-slate-500 mt-0.5">İşletmenizi tanıtın. Bu bilgiler AI asistanınızın müşterilere kendini tanıtmasında kullanılır.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Hakkımızda</label>
+                <textarea
+                  value={about}
+                  onChange={e => setAbout(e.target.value)}
+                  rows={4}
+                  placeholder="İşletmeniz ne yapar? Kaç yıldır faaliyette? Neden tercih edilmeli? Kısaca tanıtın..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Çalışma Saatleri & Adres <span className="text-slate-400 font-normal">(isteğe bağlı)</span></label>
+                <textarea
+                  value={workingHours}
+                  onChange={e => setWorkingHours(e.target.value)}
+                  rows={3}
+                  placeholder="Örn: Hafta içi 09:00–18:00, Cumartesi 10:00–14:00. Adres: Bağcılar, İstanbul"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm resize-none"
+                />
+              </div>
+
+              <div className="flex justify-between pt-2">
+                <button onClick={() => setStep(1)} className="text-sm text-slate-500 hover:text-slate-700">← Geri</button>
+                <button
+                  onClick={handleStep2General}
+                  disabled={genLoading}
+                  className="bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors"
+                >
+                  {genLoading ? 'Kaydediliyor...' : 'Devam Et →'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Hizmetler */}
+          {step === 3 && (
             <div className="space-y-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-800">Hizmetleriniz</h2>
@@ -314,9 +394,9 @@ export default function OnboardingPage() {
               )}
 
               <div className="flex justify-between pt-2">
-                <button onClick={() => setStep(1)} className="text-sm text-slate-500 hover:text-slate-700">← Geri</button>
+                <button onClick={() => setStep(2)} className="text-sm text-slate-500 hover:text-slate-700">← Geri</button>
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(4)}
                   className="bg-brand-500 hover:bg-brand-600 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors"
                 >
                   Devam Et →
@@ -325,8 +405,8 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 3 */}
-          {step === 3 && (
+          {/* Step 4 — SSS */}
+          {step === 4 && (
             <div className="space-y-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-800">Sık Sorulan Sorular</h2>
@@ -374,9 +454,9 @@ export default function OnboardingPage() {
               )}
 
               <div className="flex justify-between pt-2">
-                <button onClick={() => setStep(2)} className="text-sm text-slate-500 hover:text-slate-700">← Geri</button>
+                <button onClick={() => setStep(3)} className="text-sm text-slate-500 hover:text-slate-700">← Geri</button>
                 <button
-                  onClick={() => setStep(4)}
+                  onClick={() => setStep(5)}
                   className="bg-brand-500 hover:bg-brand-600 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors"
                 >
                   Devam Et →
@@ -385,11 +465,11 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 4 */}
-          {step === 4 && (
+          {/* Step 5 — Politika & Fiyatlandırma */}
+          {step === 5 && (
             <form onSubmit={handleComplete} className="space-y-4">
               <div>
-                <h2 className="text-base font-semibold text-slate-800">Ek Bilgiler</h2>
+                <h2 className="text-base font-semibold text-slate-800">Politika & Fiyatlandırma</h2>
                 <p className="text-sm text-slate-500 mt-0.5">Bu adım isteğe bağlıdır, isterseniz atlayabilirsiniz.</p>
               </div>
 
@@ -404,18 +484,18 @@ export default function OnboardingPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Genel Politika</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Genel Politika & Kurallar</label>
                 <textarea
                   value={policy}
                   onChange={e => setPolicy(e.target.value)}
                   rows={4}
-                  placeholder="İptal politikası, çalışma saatleri, garantiler vb..."
+                  placeholder="İptal politikası, AI asistanın yanıt vermemesi gereken konular, garantiler, çalışma koşulları vb..."
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm resize-none"
                 />
               </div>
 
               <div className="flex justify-between pt-2">
-                <button type="button" onClick={() => setStep(3)} className="text-sm text-slate-500 hover:text-slate-700">← Geri</button>
+                <button type="button" onClick={() => setStep(4)} className="text-sm text-slate-500 hover:text-slate-700">← Geri</button>
                 <button
                   type="submit"
                   disabled={loading}

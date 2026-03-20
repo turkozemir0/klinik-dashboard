@@ -1,0 +1,9 @@
+{
+  "organization_id": "a1b2c3d4-0000-0000-0000-000000000001",
+  "organization_name": "Eurostar Yurtdışı Eğitim Danışmanlığı",
+  "brand_name": "Eurostar",
+  "slug": "eurostar",
+  "sector": "education",
+  "parser_profile": "education_eurostar_v3",
+  "notes": "Eurostar CSV kaynak klasoru. Yeni bir parser gerekmiyorsa script bu config uzerinden calisir."
+}

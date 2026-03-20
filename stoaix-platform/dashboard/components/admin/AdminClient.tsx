@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Building2, Users } from 'lucide-react'
+import { Plus, Building2, Users, Settings, BookOpen } from 'lucide-react'
+import Link from 'next/link'
 import { t } from '@/lib/i18n'
 import NewOrgModal from './NewOrgModal'
+import OrgSettingsModal from './OrgSettingsModal'
 
 interface Org {
   id: string
@@ -33,8 +35,10 @@ const statusColors: Record<string, string> = {
   inactive: 'bg-red-100 text-red-700',
 }
 
-export default function AdminClient({ orgs, countsByOrg }: Props) {
-  const [showModal, setShowModal] = useState(false)
+export default function AdminClient({ orgs: initialOrgs, countsByOrg }: Props) {
+  const [orgs, setOrgs] = useState(initialOrgs)
+  const [showNewModal, setShowNewModal] = useState(false)
+  const [settingsOrg, setSettingsOrg] = useState<{ id: string; name: string } | null>(null)
 
   return (
     <div className="p-6">
@@ -44,7 +48,7 @@ export default function AdminClient({ orgs, countsByOrg }: Props) {
           <p className="text-sm text-slate-500 mt-0.5">{t.allOrgs}</p>
         </div>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => setShowNewModal(true)}
           className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <Plus size={16} />
@@ -83,11 +87,12 @@ export default function AdminClient({ orgs, countsByOrg }: Props) {
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.status}</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.leadsCount}</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.lastActivity}</th>
+              <th className="px-5 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {orgs.length === 0 ? (
-              <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400">{t.noData}</td></tr>
+              <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">{t.noData}</td></tr>
             ) : orgs.map(org => (
               <tr key={org.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-5 py-3">
@@ -108,13 +113,44 @@ export default function AdminClient({ orgs, countsByOrg }: Props) {
                 <td className="px-5 py-3 text-xs text-slate-400">
                   {new Date(org.updated_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </td>
+                <td className="px-5 py-3">
+                  <div className="flex items-center gap-1">
+                    <Link
+                      href={`/admin/knowledge/${org.id}`}
+                      className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                      title="Bilgi Bankası"
+                    >
+                      <BookOpen size={15} />
+                    </Link>
+                    <button
+                      onClick={() => setSettingsOrg({ id: org.id, name: org.name })}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                      title="Entegrasyon Ayarları"
+                    >
+                      <Settings size={15} />
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {showModal && <NewOrgModal onClose={() => setShowModal(false)} />}
+      {showNewModal && (
+        <NewOrgModal
+          onClose={() => setShowNewModal(false)}
+        />
+      )}
+
+      {settingsOrg && (
+        <OrgSettingsModal
+          orgId={settingsOrg.id}
+          orgName={settingsOrg.name}
+          onClose={() => setSettingsOrg(null)}
+          onSaved={() => setSettingsOrg(null)}
+        />
+      )}
     </div>
   )
 }
