@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, MessageSquare, Phone, BookOpen, Settings, LogOut, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Phone, BookOpen, Settings, LogOut, ShieldCheck, LifeBuoy, Bot } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { createClient } from '@/lib/supabase/client'
 
@@ -16,6 +16,8 @@ const navItems = [
   { href: '/dashboard/conversations', label: t.conversations, icon: MessageSquare },
   { href: '/dashboard/calls', label: t.calls, icon: Phone },
   { href: '/dashboard/knowledge', label: t.knowledge, icon: BookOpen },
+  { href: '/dashboard/agent', label: 'AI Asistan', icon: Bot },
+  { href: '/dashboard/support', label: t.tickets, icon: LifeBuoy },
 ]
 
 export default function Sidebar({ orgName, isSuperAdmin }: Props) {
@@ -31,16 +33,11 @@ export default function Sidebar({ orgName, isSuperAdmin }: Props) {
   return (
     <aside className="w-60 flex-shrink-0 bg-white border-r border-slate-100 flex flex-col h-screen sticky top-0">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-slate-100">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">S</span>
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-900">stoaix</p>
-            <p className="text-xs text-slate-400 truncate max-w-[140px]">{orgName}</p>
-          </div>
+      <div className="px-4 py-4 border-b border-slate-100">
+        <div className="bg-brand-500 rounded-xl px-3 py-2 flex items-center justify-center">
+          <img src="/stoaixlogo-tight.png" alt="stoaix" className="h-9 w-auto brightness-0 invert" />
         </div>
+        <p className="text-xs text-slate-400 truncate text-center mt-2">{orgName}</p>
       </div>
 
       {/* Nav */}

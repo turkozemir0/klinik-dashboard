@@ -199,8 +199,8 @@ export default function OnboardingPage() {
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-brand-500 rounded-2xl mb-3">
-            <span className="text-white font-bold text-lg">S</span>
+          <div className="bg-brand-500 rounded-2xl px-4 py-2 inline-flex items-center justify-center mb-3">
+            <img src="/stoaixlogo-tight.png" alt="stoaix" className="h-11 w-auto brightness-0 invert" />
           </div>
           <h1 className="text-xl font-bold text-slate-900">
             {orgName ? `Hoş Geldiniz, ${orgName}` : 'Hoş Geldiniz'}
