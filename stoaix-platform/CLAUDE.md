@@ -130,6 +130,41 @@ stoaix-platform/
 - **KB:** 62 knowledge_item (ülkeler, fiyatlar, SSS)
 - **Voice:** LiveKit SIP → Twilio +1 318 569 8481
 
+## Standart GHL Pipeline (Tüm Müşteriler)
+
+Her GHL müşterisi için aynı pipeline yapısı kullanılır. `stage_mapping` key'leri sabit:
+
+| Key | GHL Stage Adı | DB `leads.status` |
+|---|---|---|
+| `new_lead` | New Lead | `new` |
+| `ai_qualifying` | AI Qualifying | `in_progress` |
+| `hot_lead` | 🔥 Hot Lead / Handoff | `handed_off` |
+| `nurturing` | ⏳ Nurturing | `nurturing` |
+| `appointment_booked` | 📅 Appointment Booked | `qualified` |
+| `won` | ✅ Won | `converted` |
+| `lost` | ❌ Lost / Archive | `lost` |
+
+Edge function yeni lead geldiğinde otomatik `ai_qualifying` stage'ine taşır.
+Hot Lead / Handoff: appointment booking'i insan satışçıya devretmek isteyen müşteriler için opsiyonel.
+
+```json
+{
+  "provider": "ghl",
+  "location_id": "...",
+  "pit_token": "...",
+  "pipeline_id": "...",
+  "stage_mapping": {
+    "new_lead":           "ghl_stage_id",
+    "ai_qualifying":      "ghl_stage_id",
+    "hot_lead":           "ghl_stage_id",
+    "nurturing":          "ghl_stage_id",
+    "appointment_booked": "ghl_stage_id",
+    "won":                "ghl_stage_id",
+    "lost":               "ghl_stage_id"
+  }
+}
+```
+
 ## Geliştirme Kuralları
 
 1. API route'larda service client için `@supabase/supabase-js` direkt kullan (`createClient` from package, cookies bağımsız) — GET route'larda `cookies()` sorun çıkarır

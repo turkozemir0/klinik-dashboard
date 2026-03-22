@@ -88,7 +88,8 @@ function RegisterForm() {
       return
     }
 
-    router.push('/onboarding')
+    const d = await res.json()
+    router.push(d.redirect ?? '/onboarding')
   }
 
   if (!tokenChecked) {

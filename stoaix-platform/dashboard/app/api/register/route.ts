@@ -38,11 +38,20 @@ export async function POST(request: NextRequest) {
 
   if (orgUserError) return NextResponse.json({ error: `org_users hatası: ${orgUserError.message}` }, { status: 500 })
 
-  // Set org status
-  await service
+  // Set org status — only downgrade if not already completed (migration case)
+  const { data: org } = await service
     .from('organizations')
-    .update({ status: 'onboarding', onboarding_status: 'in_progress' })
+    .select('onboarding_status')
     .eq('id', tokenData.organization_id)
+    .maybeSingle()
 
-  return NextResponse.json({ ok: true })
+  if (org?.onboarding_status !== 'completed') {
+    await service
+      .from('organizations')
+      .update({ status: 'onboarding', onboarding_status: 'in_progress' })
+      .eq('id', tokenData.organization_id)
+  }
+
+  const redirect = org?.onboarding_status === 'completed' ? '/dashboard' : '/onboarding'
+  return NextResponse.json({ ok: true, redirect })
 }
