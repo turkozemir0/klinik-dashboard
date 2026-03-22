@@ -18,5 +18,15 @@ export default async function AdminPage() {
     countsByOrg[lead.organization_id] = (countsByOrg[lead.organization_id] || 0) + 1
   }
 
-  return <AdminClient orgs={orgs ?? []} countsByOrg={countsByOrg} />
+  const { data: kbCounts } = await supabase
+    .from('knowledge_items')
+    .select('organization_id')
+    .eq('is_active', true)
+
+  const kbCountsByOrg: Record<string, number> = {}
+  for (const item of kbCounts ?? []) {
+    kbCountsByOrg[item.organization_id] = (kbCountsByOrg[item.organization_id] || 0) + 1
+  }
+
+  return <AdminClient orgs={orgs ?? []} countsByOrg={countsByOrg} kbCountsByOrg={kbCountsByOrg} />
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Building2, Users, Settings, BookOpen } from 'lucide-react'
+import { Plus, Building2, Users, Settings, BookOpen, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 import { t } from '@/lib/i18n'
 import NewOrgModal from './NewOrgModal'
@@ -19,6 +19,7 @@ interface Org {
 interface Props {
   orgs: Org[]
   countsByOrg: Record<string, number>
+  kbCountsByOrg: Record<string, number>
 }
 
 const sectorColors: Record<string, string> = {
@@ -35,7 +36,7 @@ const statusColors: Record<string, string> = {
   inactive: 'bg-red-100 text-red-700',
 }
 
-export default function AdminClient({ orgs: initialOrgs, countsByOrg }: Props) {
+export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsByOrg }: Props) {
   const [orgs, setOrgs] = useState(initialOrgs)
   const [showNewModal, setShowNewModal] = useState(false)
   const [settingsOrg, setSettingsOrg] = useState<{ id: string; name: string } | null>(null)
@@ -86,13 +87,14 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg }: Props) {
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.sector}</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.status}</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.leadsCount}</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Bilgi Bankası</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.lastActivity}</th>
               <th className="px-5 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {orgs.length === 0 ? (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">{t.noData}</td></tr>
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-slate-400">{t.noData}</td></tr>
             ) : orgs.map(org => (
               <tr key={org.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-5 py-3">
@@ -110,6 +112,24 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg }: Props) {
                   </span>
                 </td>
                 <td className="px-5 py-3 text-slate-700 font-medium">{countsByOrg[org.id] ?? 0}</td>
+                <td className="px-5 py-3">
+                  {(() => {
+                    const count = kbCountsByOrg[org.id] ?? 0
+                    if (count === 0) return (
+                      <span className="flex items-center gap-1 text-xs font-medium text-red-600">
+                        <AlertTriangle size={12} />
+                        Boş
+                      </span>
+                    )
+                    if (count < 5) return (
+                      <span className="flex items-center gap-1 text-xs font-medium text-amber-600">
+                        <AlertTriangle size={12} />
+                        {count} öğe
+                      </span>
+                    )
+                    return <span className="text-xs text-slate-600 font-medium">{count} öğe</span>
+                  })()}
+                </td>
                 <td className="px-5 py-3 text-xs text-slate-400">
                   {new Date(org.updated_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </td>

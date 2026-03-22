@@ -1,0 +1,400 @@
+{
+  "name": "stoaix Platform — Follow-up Sequence",
+  "nodes": [
+
+    {
+      "id": "n01",
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+        }
+      }
+    },
+
+    {
+      "id": "n02",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [420, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg_supabase_url",
+              "name": "SUPABASE_URL",
+              "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "cfg_supabase_key",
+              "name": "SUPABASE_SERVICE_KEY",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",
+              "type": "string"
+            },
+            {
+              "id": "cfg_openai",
+              "name": "OPENAI_API_KEY",
+              "value": "YOUR_OPENAI_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "cfg_batch_limit",
+              "name": "BATCH_LIMIT",
+              "value": "50",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "n03",
+      "name": "Get Pending Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/follow_up_tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "status",       "value": "eq.pending" },
+            { "name": "scheduled_at", "value": "=lte.{{ new Date().toISOString() }}" },
+            {
+              "name": "select",
+              "value": "id,organization_id,lead_id,contact_id,sequence_stage,channel,organizations!organization_id(id,name,crm_config,ai_persona),contacts!contact_id(id,phone,channel_identifiers),leads!lead_id(id,status,source_channel,collected_data)"
+            },
+            { "name": "limit", "value": "={{ $('Config').first().json.BATCH_LIMIT }}" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "n04",
+      "name": "Split Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 300],
+      "parameters": {
+        "jsCode": "// Supabase dizisini ayrı n8n item'larına böl.\n// Her task bağımsız, paralel olarak işlenir — loop yok.\nconst tasks = $input.first().json;\nif (!Array.isArray(tasks) || tasks.length === 0) {\n  return [];  // pending task yok, workflow durur\n}\nreturn tasks.map(task => ({ json: task }));"
+      }
+    },
+
+    {
+      "id": "n05",
+      "name": "Lead Active?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1080, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.leads?.status }}",
+              "rightValue": "converted",
+              "operator": { "type": "string", "operation": "notEquals" }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.leads?.status }}",
+              "rightValue": "won",
+              "operator": { "type": "string", "operation": "notEquals" }
+            },
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.leads?.status }}",
+              "rightValue": "lost",
+              "operator": { "type": "string", "operation": "notEquals" }
+            },
+            {
+              "id": "c4",
+              "leftValue": "={{ $json.leads?.status }}",
+              "rightValue": "appointment_booked",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+
+    {
+      "id": "n06",
+      "name": "Cancel Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 460],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/follow_up_tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "id", "value": "=eq.{{ $json.id }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{ \"status\": \"cancelled\" }"
+      }
+    },
+
+    {
+      "id": "n07",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 160],
+      "parameters": {
+        "jsCode": "const task    = $input.first().json;\nconst stage   = task.sequence_stage;\nconst org     = task.organizations;\nconst lead    = task.leads;\nconst contact = task.contacts;\n\nconst stageInstructions = {\n  // ── Organik (inbound'dan gelen lead'ler) ────────────────────────────────────\n  'first_reminder': 'Bu kişi dün ilgi gösterdi ama yanıt alamadın. Nazik, kısa bir hatırlatma yaz (max 2 cümle).',\n  'warm_day4':      '4 gün önce ilgi gösteren birine sıcak bir takip mesajı yaz. Değer önerini vurgula.',\n  'warm_day11':     '11 gün önce ilgi gösteren birine hâlâ ilgili olup olmadığını soran, yeni bir açı sunan mesaj yaz.',\n  'warm_to_cold':   '2 haftadır cevap yok. Baskısız, nazik bir \"hâlâ buradayız\" mesajı yaz.',\n  'cold_month1':    '1 aydır iletişim yok. Farklı bir açıdan yaklaş, merak uyandır. Kısa tut.',\n  'cold_month2':    '2 aydır sessiz. Sadece 1 cümle — hafif, merak uyandıran.',\n  'cold_final':     '3 aydır iletişim yok. Son bir mesaj, kapıyı açık bırakan tarzda.',\n  // ── Re-engagement (eski CRM'den import edilen soğuk lead'ler) ────────────────\n  // Bu kişilerle hiç konuşulmadı, ilgi alanı bilinmiyor. Hizmet tanıtım tonu.\n  're_contact_1':   'Bu kişiyle daha önce hiç konuşulmadı. Şirketi ve sunduğu hizmeti kısaca tanıtan, merak uyandıran samimi bir ilk temas mesajı yaz. Baskısız, kısa (2 cümle max).',\n  're_contact_2':   'İlk mesajda cevap gelmedi. Hizmetin somut faydasını veya müşteri hayatına kattığı değeri vurgulayan, soru içeren bir mesaj yaz.',\n  're_contact_3':   'Son deneme. Kısa ve yumuşak bir harekete geçirici mesaj yaz — konuşmaya davette kapıyı açık bırak.',\n};\n\nconst personaLine = org?.ai_persona?.persona_name\n  ? `Senin adın ${org.ai_persona.persona_name}.` : '';\n\nconst name = lead?.collected_data?.full_name\n  || lead?.collected_data?.name\n  || lead?.collected_data?.first_name\n  || null;\n\nconst systemPrompt = [\n  `Sen ${org?.name || 'bir şirket'} adına çalışan bir satış asistanısın. ${personaLine}`,\n  'WhatsApp mesajı yazıyorsun: samimi, kısa, emoji kullanma.',\n  stageInstructions[stage] || stageInstructions['first_reminder'],\n].join(' ');\n\nconst userMessage = name\n  ? `Müşteri adı: ${name}. Bu kişi için uygun takip mesajı yaz.`\n  : 'Bu kişi için uygun takip mesajı yaz.';\n\nreturn [{ json: { ...task, ai_system_prompt: systemPrompt, ai_user_message: userMessage } }];"
+      }
+    },
+
+    {
+      "id": "n08",
+      "name": "Generate AI Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.OPENAI_API_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"max_tokens\": 150,\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"{{ $json.ai_system_prompt.replace(/\"/g, '\\\\\"') }}\" },\n    { \"role\": \"user\",   \"content\": \"{{ $json.ai_user_message }}\" }\n  ]\n}"
+      }
+    },
+
+    {
+      "id": "n09",
+      "name": "Extract Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1740, 160],
+      "parameters": {
+        "jsCode": "// OpenAI yanıtını task verisiyle birleştir.\n// $('Build AI Prompt').item — bu item'a karşılık gelen task datasını alır.\nconst openaiResponse = $input.first().json;\nconst task           = $('Build AI Prompt').item.json;\nconst reply          = openaiResponse.choices?.[0]?.message?.content?.trim() || '';\n\nif (!reply) {\n  // AI yanıt üretemedi — task'ı atla\n  return [];\n}\n\nreturn [{ json: { ...task, ai_reply: reply } }];"
+      }
+    },
+
+    {
+      "id": "n10",
+      "name": "Provider GHL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1960, 160],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.organizations?.crm_config?.provider }}",
+              "rightValue": "ghl",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+
+    {
+      "id": "n11_ghl",
+      "name": "Send GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2180, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.organizations.crm_config.pit_token }}" },
+            { "name": "Version",       "value": "2021-04-15" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"contactId\": \"{{ $json.contacts.channel_identifiers.ghl_contact_id }}\",\n  \"message\":   \"{{ $json.ai_reply.replace(/\"/g, '\\\\\"') }}\",\n  \"type\":       \"{{ $json.channel === 'instagram' ? 'Instagram' : 'SMS' }}\"\n}"
+      }
+    },
+
+    {
+      "id": "n11_meta",
+      "name": "Send Meta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2180, 280],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v19.0/{{ $json.organizations.crm_config.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.organizations.crm_config.access_token }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\":   \"{{ $json.contacts.channel_identifiers.wa_id }}\",\n  \"type\": \"text\",\n  \"text\": { \"body\": \"{{ $json.ai_reply.replace(/\"/g, '\\\\\"') }}\" }\n}"
+      }
+    },
+
+    {
+      "id": "n12",
+      "name": "Mark Task Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, 160],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/follow_up_tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "id", "value": "=eq.{{ $('Extract Reply').item.json.id }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"status\":       \"sent\",\n  \"sent_at\":      \"{{ new Date().toISOString() }}\",\n  \"sent_message\": \"{{ $('Extract Reply').item.json.ai_reply.replace(/\"/g, '\\\\\"') }}\"\n}"
+      }
+    },
+
+    {
+      "id": "n13",
+      "name": "Schedule Next Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 160],
+      "parameters": {
+        "jsCode": "// Sıradaki aşamayı hesapla.\n// Yoksa [] döner → Create Next Task çalışmaz, item bu noktada biter.\nconst task = $('Extract Reply').item.json;\n\nconst sequence = {\n  // Organik follow-up\n  'first_reminder': { next: 'warm_day4',    days: 3  },\n  'warm_day4':      { next: 'warm_day11',   days: 7  },\n  'warm_day11':     { next: 'warm_to_cold', days: 3  },\n  'warm_to_cold':   { next: 'cold_month1',  days: 16 },\n  'cold_month1':    { next: 'cold_month2',  days: 30 },\n  'cold_month2':    { next: 'cold_final',   days: 30 },\n  'cold_final':     { next: null,           days: 0  },\n  // Re-engagement (eski CRM import)\n  're_contact_1':   { next: 're_contact_2', days: 3  },\n  're_contact_2':   { next: 're_contact_3', days: 4  },\n  're_contact_3':   { next: null,           days: 0  },\n};\n\nconst seq = sequence[task.sequence_stage];\nif (!seq?.next) return [];  // son aşama — bitti\n\nreturn [{ json: {\n  organization_id: task.organization_id,\n  lead_id:         task.lead_id,\n  contact_id:      task.contact_id,\n  task_type:       'whatsapp_followup',\n  sequence_stage:  seq.next,\n  channel:         task.channel,\n  scheduled_at:    new Date(Date.now() + seq.days * 86_400_000).toISOString(),\n  status:          'pending',\n} }];"
+      }
+    },
+
+    {
+      "id": "n14",
+      "name": "Create Next Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2860, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/follow_up_tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"organization_id\": \"{{ $json.organization_id }}\",\n  \"lead_id\":         \"{{ $json.lead_id }}\",\n  \"contact_id\":      \"{{ $json.contact_id }}\",\n  \"task_type\":       \"{{ $json.task_type }}\",\n  \"sequence_stage\":  \"{{ $json.sequence_stage }}\",\n  \"channel\":         \"{{ $json.channel }}\",\n  \"scheduled_at\":    \"{{ $json.scheduled_at }}\",\n  \"status\":          \"pending\"\n}"
+      }
+    }
+
+  ],
+
+  "connections": {
+    "Schedule": {
+      "main": [[{ "node": "Config", "type": "main", "index": 0 }]]
+    },
+    "Config": {
+      "main": [[{ "node": "Get Pending Tasks", "type": "main", "index": 0 }]]
+    },
+    "Get Pending Tasks": {
+      "main": [[{ "node": "Split Tasks", "type": "main", "index": 0 }]]
+    },
+    "Split Tasks": {
+      "main": [[{ "node": "Lead Active?", "type": "main", "index": 0 }]]
+    },
+    "Lead Active?": {
+      "main": [
+        [{ "node": "Build AI Prompt", "type": "main", "index": 0 }],
+        [{ "node": "Cancel Task",     "type": "main", "index": 0 }]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [[{ "node": "Generate AI Message", "type": "main", "index": 0 }]]
+    },
+    "Generate AI Message": {
+      "main": [[{ "node": "Extract Reply", "type": "main", "index": 0 }]]
+    },
+    "Extract Reply": {
+      "main": [[{ "node": "Provider GHL?", "type": "main", "index": 0 }]]
+    },
+    "Provider GHL?": {
+      "main": [
+        [{ "node": "Send GHL",  "type": "main", "index": 0 }],
+        [{ "node": "Send Meta", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send GHL": {
+      "main": [[{ "node": "Mark Task Sent", "type": "main", "index": 0 }]]
+    },
+    "Send Meta": {
+      "main": [[{ "node": "Mark Task Sent", "type": "main", "index": 0 }]]
+    },
+    "Mark Task Sent": {
+      "main": [[{ "node": "Schedule Next Task", "type": "main", "index": 0 }]]
+    },
+    "Schedule Next Task": {
+      "main": [[{ "node": "Create Next Task", "type": "main", "index": 0 }]]
+    }
+  },
+
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "meta": { "instanceId": "stoaix-platform" }
+}

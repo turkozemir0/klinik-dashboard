@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, MessageSquare, Phone, BookOpen, Settings, LogOut, ShieldCheck, LifeBuoy, Bot } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Phone, BookOpen, Settings, LogOut, ShieldCheck, LifeBuoy, Bot, RefreshCw, ClipboardList } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { createClient } from '@/lib/supabase/client'
 
@@ -16,8 +16,9 @@ const navItems = [
   { href: '/dashboard/conversations', label: t.conversations, icon: MessageSquare },
   { href: '/dashboard/calls', label: t.calls, icon: Phone },
   { href: '/dashboard/knowledge', label: t.knowledge, icon: BookOpen },
-  { href: '/dashboard/agent', label: 'AI Asistan', icon: Bot },
-  { href: '/dashboard/support', label: t.tickets, icon: LifeBuoy },
+  { href: '/dashboard/agent',    label: 'AI Asistan',   icon: Bot },
+  { href: '/dashboard/followup', label: 'Follow-up',    icon: RefreshCw },
+  { href: '/dashboard/support',  label: t.tickets,      icon: LifeBuoy },
 ]
 
 export default function Sidebar({ orgName, isSuperAdmin }: Props) {
@@ -86,6 +87,17 @@ export default function Sidebar({ orgName, isSuperAdmin }: Props) {
             >
               <Settings size={16} />
               {t.tickets}
+            </Link>
+            <Link
+              href="/admin/checklist"
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                pathname === '/admin/checklist'
+                  ? 'bg-brand-50 text-brand-600'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <ClipboardList size={16} />
+              Kurulum Checklist
             </Link>
           </>
         )}

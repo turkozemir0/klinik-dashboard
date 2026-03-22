@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Loader2 } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, Sparkles } from 'lucide-react'
 import type { KnowledgeItem } from '@/lib/types'
 import { t } from '@/lib/i18n'
 import { getSchemasForSector, getSchema, type FieldDef } from '@/lib/kb-schemas'
@@ -12,6 +12,23 @@ interface Props {
   item?: KnowledgeItem
   onClose: () => void
   onSaved: (item: KnowledgeItem) => void
+}
+
+const TAG_PLACEHOLDERS: Record<string, string> = {
+  faq: 'ör. ödeme, iptal, garanti...',
+  service: 'ör. premium, hızlı, online...',
+  policy: 'ör. iade, garanti, sözleşme...',
+  pricing: 'ör. paket, kampanya, indirim...',
+  general: 'ör. hakkımızda, iletişim...',
+  office_location: 'ör. merkez, temsilcilik, istanbul...',
+  treatment: 'ör. cerrahi, lazer, estetik...',
+  doctor: 'ör. uzman, cerrah, pediatri...',
+  country_overview: 'ör. avrupa, vize, burs...',
+  university_programs: 'ör. tıp, mühendislik, lisans...',
+  property: 'ör. deniz manzarası, merkezi, lüks...',
+  neighborhood: 'ör. ulaşım, sakin, yatırım...',
+  service_package: 'ör. startup, kurumsal, premium...',
+  case_study: 'ör. e-ticaret, saas, fintech...',
 }
 
 export default function KBItemModal({ orgId, sector, item, onClose, onSaved }: Props) {
@@ -25,8 +42,34 @@ export default function KBItemModal({ orgId, sector, item, onClose, onSaved }: P
   const [formData, setFormData] = useState<Record<string, any>>(item?.data || {})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [suggestingField, setSuggestingField] = useState<string | null>(null)
 
   const schema = getSchema(itemType)
+
+  async function suggestTags(fieldName: string, fieldLabel?: string) {
+    setSuggestingField(fieldName)
+    try {
+      const res = await fetch('/api/knowledge/suggest-tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_type: itemType, title, data: formData, field_name: fieldName, field_label: fieldLabel }),
+      })
+      if (!res.ok) return
+      const { tags: suggested } = await res.json()
+      if (fieldName === '__tags__') {
+        const existing = tags.split(',').map((s: string) => s.trim()).filter(Boolean)
+        const merged = Array.from(new Set([...existing, ...suggested]))
+        setTags(merged.join(', '))
+      } else {
+        const cur = Array.isArray(formData[fieldName]) ? formData[fieldName]
+          : typeof formData[fieldName] === 'string' ? formData[fieldName].split(',').map((s: string) => s.trim()).filter(Boolean)
+          : []
+        setField(fieldName, Array.from(new Set([...cur, ...suggested])))
+      }
+    } finally {
+      setSuggestingField(null)
+    }
+  }
 
   // Reset form data when item type changes (unless editing)
   useEffect(() => {
@@ -107,27 +150,54 @@ export default function KBItemModal({ orgId, sector, item, onClose, onSaved }: P
     }
 
     if (field.type === 'tags') {
+      const displayVal = Array.isArray(val) ? val.join(', ') : (val || '')
       return (
-        <input
-          type="text"
-          value={Array.isArray(val) ? val.join(', ') : val}
-          onChange={e => {
-            const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-            setField(field.name, arr.length > 0 || e.target.value.endsWith(',') ? arr : e.target.value)
-          }}
-          placeholder={field.placeholder || 'Virgülle ayır...'}
-          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={displayVal}
+            onChange={e => {
+              const raw = e.target.value
+              if (raw.endsWith(',') || raw.endsWith(', ')) {
+                setField(field.name, raw)
+              } else {
+                const arr = raw.split(',').map(s => s.trim()).filter(Boolean)
+                setField(field.name, arr.length > 0 ? arr : raw)
+              }
+            }}
+            placeholder={field.placeholder || 'Virgülle ayır...'}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <button
+            type="button"
+            onClick={() => suggestTags(field.name, field.label)}
+            disabled={suggestingField === field.name}
+            title="AI ile öner"
+            className="flex-shrink-0 flex items-center gap-1 px-2.5 py-2 border border-slate-200 rounded-lg text-xs text-brand-600 hover:bg-brand-50 disabled:opacity-50 transition-colors"
+          >
+            {suggestingField === field.name
+              ? <Loader2 size={13} className="animate-spin" />
+              : <Sparkles size={13} />}
+          </button>
+        </div>
       )
     }
 
     if (field.type === 'array') {
-      const arr: string[] = Array.isArray(val) ? val : []
+      const displayVal = Array.isArray(val) ? val.join(', ') : (val || '')
       return (
         <input
           type="text"
-          value={arr.join(', ')}
-          onChange={e => setField(field.name, e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+          value={displayVal}
+          onChange={e => {
+            const raw = e.target.value
+            // Preserve trailing comma so user can continue typing next item
+            if (raw.endsWith(',') || raw.endsWith(', ')) {
+              setField(field.name, raw)
+            } else {
+              setField(field.name, raw.split(',').map(s => s.trim()).filter(Boolean))
+            }
+          }}
           placeholder={field.placeholder || 'Virgülle ayır...'}
           className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
@@ -318,13 +388,27 @@ export default function KBItemModal({ orgId, sector, item, onClose, onSaved }: P
           {/* Tags */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Etiketler (virgülle ayır)</label>
-            <input
-              type="text"
-              value={tags}
-              onChange={e => setTags(e.target.value)}
-              placeholder="polonya, tıp, yüksek lisans..."
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={tags}
+                onChange={e => setTags(e.target.value)}
+                placeholder={TAG_PLACEHOLDERS[itemType] || 'Virgülle ayır...'}
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <button
+                type="button"
+                onClick={() => suggestTags('__tags__')}
+                disabled={suggestingField === '__tags__'}
+                title="AI ile etiket öner"
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-xs text-brand-600 hover:bg-brand-50 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {suggestingField === '__tags__'
+                  ? <Loader2 size={13} className="animate-spin" />
+                  : <Sparkles size={13} />}
+                {suggestingField !== '__tags__' && 'AI Öner'}
+              </button>
+            </div>
           </div>
 
           {/* Is Active */}

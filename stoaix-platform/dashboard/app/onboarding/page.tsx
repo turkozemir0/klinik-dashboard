@@ -97,7 +97,7 @@ export default function OnboardingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: 'Hakkımızda',
-          description_for_ai: about.trim(),
+          data: { title: 'Hakkımızda', content: about.trim() },
           item_type: 'general',
           organization_id: orgId,
         }),
@@ -109,7 +109,7 @@ export default function OnboardingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: 'Çalışma Saatleri & İletişim',
-          description_for_ai: workingHours.trim(),
+          data: { title: 'Çalışma Saatleri & İletişim', content: workingHours.trim() },
           item_type: 'general',
           organization_id: orgId,
         }),
@@ -125,7 +125,7 @@ export default function OnboardingPage() {
     const res = await fetch('/api/knowledge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: svcTitle, description_for_ai: svcDesc, item_type: 'service', organization_id: orgId }),
+      body: JSON.stringify({ title: svcTitle, data: { name: svcTitle, description: svcDesc }, item_type: 'service', organization_id: orgId }),
     })
     if (res.ok) {
       const d = await res.json()
@@ -147,7 +147,7 @@ export default function OnboardingPage() {
     const res = await fetch('/api/knowledge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: faqQ, description_for_ai: faqA, item_type: 'faq', organization_id: orgId }),
+      body: JSON.stringify({ title: faqQ, data: { question: faqQ, answer: faqA }, item_type: 'faq', organization_id: orgId }),
     })
     if (res.ok) {
       const d = await res.json()
@@ -171,14 +171,14 @@ export default function OnboardingPage() {
       await fetch('/api/knowledge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Fiyatlandırma', description_for_ai: pricing, item_type: 'pricing', organization_id: orgId }),
+        body: JSON.stringify({ title: 'Fiyatlandırma', data: { service_name: 'Genel Fiyatlandırma', conditions: pricing }, item_type: 'pricing', organization_id: orgId }),
       })
     }
     if (policy.trim() && orgId) {
       await fetch('/api/knowledge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Genel Politika', description_for_ai: policy, item_type: 'policy', organization_id: orgId }),
+        body: JSON.stringify({ title: 'Genel Politika', data: { title: 'Genel Politika', content: policy }, item_type: 'policy', organization_id: orgId }),
       })
     }
 

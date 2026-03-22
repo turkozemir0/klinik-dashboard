@@ -25,6 +25,25 @@ export const KB_SCHEMAS: Record<string, KBSchema> = {
 
   // ─── Universal ────────────────────────────────────────────────────────────
 
+  service: {
+    label: 'Hizmet',
+    sectors: 'all',
+    fields: [
+      { name: 'name', label: 'Hizmet Adı', type: 'text', required: true, placeholder: 'Dil Okulu Yerleştirme' },
+      { name: 'description', label: 'Açıklama', type: 'textarea', required: true, placeholder: 'Hizmet açıklaması...' },
+      { name: 'price', label: 'Fiyat (opsiyonel)', type: 'text', placeholder: '1500 TRY' },
+      { name: 'duration', label: 'Süre (opsiyonel)', type: 'text', placeholder: '45 dakika' },
+    ],
+    llmPrompt: (d) => `Aşağıdaki hizmet bilgisini AI asistanı için açıklayıcı Türkçe metin yap.
+
+Hizmet: ${d.name}
+Açıklama: ${d.description}
+${d.price ? `Fiyat: ${d.price}` : ''}
+${d.duration ? `Süre: ${d.duration}` : ''}
+
+Sadece metin çıktısı ver.`,
+  },
+
   faq: {
     label: 'SSS',
     sectors: 'all',

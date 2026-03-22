@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS public.intake_schemas (
   id                  uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id     uuid    NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   channel             text    NOT NULL DEFAULT 'all'
-                              CHECK (channel IN ('voice','chat','all')),
+                              CHECK (channel IN ('voice','chat','whatsapp','instagram','all')),
   name                text    NOT NULL,
   fields              jsonb   NOT NULL DEFAULT '[]'::jsonb,
   -- [{key, label, type, priority: must|should|nice, ask_first, voice_prompt, options, validation}]

@@ -6,6 +6,7 @@ Her işletme aynı agent kodu — davranış DB config'inden gelir.
 
 Room metadata:
   Inbound : {"organization_id": "uuid"}
+            phone_from → SIP participant attribute 'sip.callFrom' ile okunur (room metadata'da değil)
   Outbound: {"organization_id": "uuid", "scenario": "followup", "contact_id": "...", "lead_id": "..."}
 """
 
@@ -14,6 +15,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from typing import Annotated
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -24,6 +26,7 @@ from livekit.agents import (
     RoomInputOptions,
     WorkerOptions,
     cli,
+    llm,
 )
 from livekit.plugins import cartesia, deepgram, openai, silero
 
@@ -136,6 +139,84 @@ async def vector_search_kb(org_id: str, query: str, limit: int = 5) -> str:
         return ""
 
 
+# ── Calendar API helpers ───────────────────────────────────────────────────────
+
+async def fetch_free_slots_ghl(calendar_id: str, pit_token: str) -> str:
+    """GHL free-slots API'sinden sonraki 3 günün müsait saatlerini çek."""
+    import urllib.request
+    try:
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        start_date = now.strftime("%Y-%m-%d")
+        end_date = (now + timedelta(days=3)).strftime("%Y-%m-%d")
+
+        url = (
+            f"https://services.leadconnectorhq.com/calendars/{calendar_id}/free-slots"
+            f"?startDate={start_date}&endDate={end_date}&timezone=Europe%2FIstanbul"
+        )
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {pit_token}",
+            "Version": "2021-04-15",
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+
+        slots = data.get("slots", {})
+        if not slots:
+            return ""
+
+        DAYS = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"]
+        lines = []
+        for date, times in slots.items():
+            if not times:
+                continue
+            d = datetime.strptime(date, "%Y-%m-%d")
+            lines.append(f"{DAYS[d.weekday() + 1 if d.weekday() < 6 else 0]} ({date}): {', '.join(times[:5])}")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"fetch_free_slots failed: {e}")
+        return ""
+
+
+async def create_appointment_ghl(
+    calendar_id: str,
+    pit_token: str,
+    name: str,
+    phone: str,
+    datetime_str: str,
+    notes: str = "",
+) -> bool:
+    """GHL'de randevu oluştur."""
+    import urllib.request
+    try:
+        payload = json.dumps({
+            "calendarId": calendar_id,
+            "selectedTimezone": "Europe/Istanbul",
+            "startTime": datetime_str,
+            "title": f"Randevu — {name}",
+            "appointmentStatus": "confirmed",
+            "notes": notes,
+            "contactName": name,
+            "phone": phone,
+        }).encode()
+        req = urllib.request.Request(
+            "https://services.leadconnectorhq.com/calendars/events/appointments",
+            data=payload,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {pit_token}",
+                "Version": "2021-04-15",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status in (200, 201)
+    except Exception as e:
+        logger.warning(f"create_appointment failed: {e}")
+        return False
+
+
 # ── Prompt builder ─────────────────────────────────────────────────────────────
 
 def build_system_prompt(
@@ -143,6 +224,7 @@ def build_system_prompt(
     playbook: dict,
     intake_fields: list,
     kb_context: str,
+    calendar_enabled: bool = False,
 ) -> str:
     persona      = org.get("ai_persona", {})
     persona_name = persona.get("persona_name", "Asistan")
@@ -150,6 +232,13 @@ def build_system_prompt(
         "no_kb_match",
         "Bu konuda elimde net bir bilgi yok. Danışmanımıza not alıyorum."
     )
+
+    calendar_section = (
+        "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "RANDEVU ALMA:\n"
+        "Kullanıcı randevu, görüşme veya uygun saat talep ederse check_availability tool'unu çağır.\n"
+        "Kullanıcı uygun bir saati seçince ad ve telefon al, ardından book_appointment tool'unu çağır.\n"
+    ) if calendar_enabled else ""
 
     must_fields  = [f for f in intake_fields if f.get("priority") == "must"]
     must_prompts = "\n".join(
@@ -188,6 +277,12 @@ BİLGİ TABANI (RAG — bu konuşma için ilgili içerik):
 TOPLANMASI GEREKEN BİLGİLER (zorunlu):
 {must_prompts}
 
+VERİ TOPLAMA TARZI (ÇOK ÖNEMLİ):
+- Bu bilgileri SORMADAN ÖNCE kullanıcının sorusunu cevapla.
+- Bilgileri tek seferde sormak YASAK. Konuşma akışına göre, birer birer doğal şekilde sor.
+- Örnek: Kullanıcı ülke sorarsa önce ülkeyi anlat, ardından "Sizi daha iyi yönlendirebilmem için hangi şehirden arıyorsunuz?" şeklinde sadece 1 soru sor.
+- Kullanıcı zaten bir bilgiyi paylaştıysa (yaş, şehir vb.) tekrar sorma.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 YÖNLENDİRME KURALLARI:{routing_text if routing_text else " (tanımlı kural yok)"}
 
@@ -201,7 +296,7 @@ HANDOFF TETİKLEYİCİLER:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 HALÜSİNASYON KURALI:
 {fallback_no_kb}
-"""
+{calendar_section}"""
 
 
 # ── Agent sınıfı ───────────────────────────────────────────────────────────────
@@ -334,8 +429,64 @@ Sadece JSON döndür. Örnek: {{"full_name": "Ali Veli", "phone": null, "budget"
         return {}
 
 
-async def update_lead_data(lead_id: str, intake_fields: list, collected_data: dict):
-    """collected_data, data_completeness, missing_fields güncelle."""
+def calculate_qualification_score(intake_fields: list, collected_data: dict) -> int:
+    """Toplanan veri doluluk oranına göre 0-100 qualification score hesapla."""
+    if not intake_fields or not collected_data:
+        return 0
+
+    must_fields   = [f["key"] for f in intake_fields if f.get("priority") == "must"]
+    should_fields = [f["key"] for f in intake_fields if f.get("priority") == "should"]
+
+    if not must_fields:
+        return 0
+
+    must_collected   = sum(1 for k in must_fields   if collected_data.get(k))
+    should_collected = sum(1 for k in should_fields if collected_data.get(k))
+
+    # Must alanlar %70, should alanlar %30 ağırlık
+    must_score   = (must_collected   / len(must_fields))   * 70 if must_fields   else 0
+    should_score = (should_collected / len(should_fields)) * 30 if should_fields else 0
+
+    return min(100, round(must_score + should_score))
+
+
+async def generate_call_summary(transcript: list, collected_data: dict, org_name: str) -> str:
+    """GPT-4o mini ile konuşmanın kısa AI özetini üret."""
+    if not transcript:
+        return ""
+    try:
+        from openai import OpenAI as OpenAIClient
+        oa = OpenAIClient(api_key=os.environ["OPENAI_API_KEY"])
+
+        transcript_text = "\n".join(
+            f"[{m['role']}] {m['content']}"
+            for m in transcript
+            if m.get("role") in ("user", "assistant")
+        )
+        data_str = ", ".join(f"{k}: {v}" for k, v in collected_data.items() if v)
+
+        prompt = f"""Aşağıdaki sesli görüşmeyi 2-3 cümleyle özetle. Türkçe yaz.
+Müşterinin ilgilendiği konu, temel bilgileri ve sonraki adım varsa belirt.
+Toplanan veriler: {data_str or 'yok'}
+
+Konuşma:
+{transcript_text[:3000]}
+
+Özet:"""
+
+        resp = oa.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning(f"summary generation failed: {e}")
+        return ""
+
+
+async def update_lead_data(lead_id: str, intake_fields: list, collected_data: dict, summary: str = ""):
+    """collected_data, data_completeness, missing_fields, score ve özet güncelle."""
     if not lead_id:
         return
     try:
@@ -346,15 +497,21 @@ async def update_lead_data(lead_id: str, intake_fields: list, collected_data: di
             for f in intake_fields
         }
         missing = [k for k in must_keys if not collected_data.get(k)]
+        score   = calculate_qualification_score(intake_fields, collected_data)
+
+        update_payload = {
+            "collected_data":      collected_data,
+            "data_completeness":   completeness,
+            "missing_fields":      missing,
+            "qualification_score": score,
+            "status":              "in_progress" if collected_data else "new",
+        }
+        if summary:
+            update_payload["ai_summary"] = summary
 
         sb = get_supabase()
-        sb.table("leads").update({
-            "collected_data":    collected_data,
-            "data_completeness": completeness,
-            "missing_fields":    missing,
-            "status":            "in_progress" if collected_data else "new",
-        }).eq("id", lead_id).execute()
-        logger.info(f"lead data updated — missing: {missing}")
+        sb.table("leads").update(update_payload).eq("id", lead_id).execute()
+        logger.info(f"lead updated — score: {score}, missing: {missing}")
     except Exception as e:
         logger.warning(f"lead data update failed: {e}")
 
@@ -465,6 +622,15 @@ async def upsert_contact_and_lead(
                 }).execute()
                 if res.data:
                     contact_id = res.data[0]["id"]
+        else:
+            # Caller number unavailable — create anonymous contact so conversation insert doesn't fail
+            res = sb.table("contacts").insert({
+                "organization_id": org_id,
+                "status":          "anonymous",
+                "source_channel":  source,
+            }).execute()
+            if res.data:
+                contact_id = res.data[0]["id"]
 
         if contact_id:
             open_lead = sb.table("leads") \
@@ -497,6 +663,22 @@ async def upsert_contact_and_lead(
         return None, None
 
 
+# ── SIP yardımcıları ───────────────────────────────────────────────────────────
+
+def _get_sip_caller_number(ctx: JobContext) -> str:
+    """
+    Inbound SIP aramasında arayan numarasını LiveKit participant attribute'larından okur.
+    LiveKit, SIP katılımcısına otomatik olarak 'sip.callFrom' attribute'u set eder.
+    Room metadata'daki 'phone_from' (dispatch rule'da statik) yerine bu kullanılmalı.
+    """
+    for participant in ctx.room.remote_participants.values():
+        attrs = participant.attributes or {}
+        call_from = attrs.get("sip.callFrom", "")
+        if call_from:
+            return call_from if call_from.startswith("+") else "+" + call_from
+    return ""
+
+
 # ── Entrypoint ─────────────────────────────────────────────────────────────────
 
 async def entrypoint(ctx: JobContext):
@@ -522,6 +704,15 @@ async def entrypoint(ctx: JobContext):
     lang         = meta.get("lang") or persona.get("language", "tr")
     room_name    = ctx.room.name
 
+    # Calendar feature
+    features         = (playbook or {}).get("features", {}) if playbook else {}
+    calendar_enabled = features.get("calendar_booking", False)
+    crm_config       = org.get("crm_config", {})
+    calendar_id      = crm_config.get("calendar_id", "")
+    pit_token        = crm_config.get("pit_token", "")
+    if not (calendar_id and pit_token):
+        calendar_enabled = False
+
     logger.info(f"{'Outbound' if scenario else 'Inbound'} — org: {org['name']} | lang: {lang} | scenario: {scenario}")
 
     # Handoff keyword listesi (runtime'da kontrol için)
@@ -532,10 +723,10 @@ async def entrypoint(ctx: JobContext):
     # ── İnbound ───────────────────────────────────────────────────────────────
     if not scenario:
         initial_kb = await vector_search_kb(org_id, "genel bilgi hizmetler")
-        system_prompt = build_system_prompt(org, playbook, intake, initial_kb)
+        system_prompt = build_system_prompt(org, playbook, intake, initial_kb, calendar_enabled)
         opening    = f"Merhaba, {org['name']}, ben {persona_name} — buyurun, sizi dinliyorum."
         direction  = "inbound"
-        phone_from = meta.get("phone_from", "")
+        phone_from = _get_sip_caller_number(ctx) or meta.get("phone_from", "")
         phone_to   = os.environ.get("PLATFORM_INBOUND_NUMBER", "")
 
         contact_id, lead_id = await upsert_contact_and_lead(
@@ -549,6 +740,14 @@ async def entrypoint(ctx: JobContext):
         lead_id      = meta.get("lead_id") or None
         contact_id   = meta.get("contact_id") or None
         context_note = meta.get("context_note", "")
+
+        # If contact_id wasn't passed in metadata, upsert from phone_to so conversation insert never fails
+        if not contact_id:
+            contact_id, fallback_lead_id = await upsert_contact_and_lead(
+                org_id, phone_to, org["name"], source="voice_outbound"
+            )
+            if not lead_id:
+                lead_id = fallback_lead_id
 
         outbound_playbook_text = playbook.get("system_prompt_template", "") if playbook else ""
         system_prompt = f"""{outbound_playbook_text}
@@ -572,6 +771,32 @@ KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
     # ── Conversation aç ───────────────────────────────────────────────────────
     conv_id = await create_conversation(org_id, contact_id, lead_id, room_name)
 
+    # ── Calendar tools (only if feature enabled) ───────────────────────────────
+    fnc_ctx = None
+    if calendar_enabled:
+        fnc_ctx = llm.FunctionContext()
+
+        @fnc_ctx.ai_callable(description="Müsait randevu saatlerini listeler. Kullanıcı randevu/görüşme istediğinde çağır.")
+        async def check_availability(
+            date: Annotated[str, llm.TypeInfo(description="Kontrol edilecek tarih, YYYY-MM-DD formatında. Belirtilmezse yakın 3 günü döndür.")] = ""
+        ) -> str:
+            slots = await fetch_free_slots_ghl(calendar_id, pit_token)
+            if not slots:
+                return "TAKVİM_HATA: Takvime şu an erişemiyorum. Kullanıcıya ekibimizin en kısa sürede kendisini arayacağını söyle ve görüşmeyi nazikçe sonlandır."
+            return f"Müsait saatler:\n{slots}"
+
+        @fnc_ctx.ai_callable(description="Randevu oluşturur. Kullanıcı ad, telefon ve saat bilgisini verdikten sonra çağır.")
+        async def book_appointment(
+            name: Annotated[str, llm.TypeInfo(description="Randevu sahibinin adı soyadı")],
+            phone: Annotated[str, llm.TypeInfo(description="Telefon numarası, +90 ile başlayan format")],
+            datetime_str: Annotated[str, llm.TypeInfo(description="Randevu tarihi ve saati, YYYY-MM-DDTHH:MM formatında")],
+            notes: Annotated[str, llm.TypeInfo(description="Ek notlar veya özel istekler")] = "",
+        ) -> str:
+            ok = await create_appointment_ghl(calendar_id, pit_token, name, phone, datetime_str, notes)
+            if ok:
+                return f"Randevunuz oluşturuldu: {name}, {datetime_str}. Onay bilgisi size iletilecektir."
+            return "Randevu oluşturulurken bir sorun oluştu. Lütfen tekrar deneyin veya bizi arayın."
+
     # ── Session ───────────────────────────────────────────────────────────────
     VOICE_IDS = {
         "tr": os.environ.get("CARTESIA_VOICE_ID_TR", "c1cfee3d-532d-47f8-8dd2-8e5b2b66bf1d"),
@@ -588,6 +813,7 @@ KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
             language=tts_lang,
         ),
         vad=silero.VAD.load(),
+        **({"fnc_ctx": fnc_ctx} if fnc_ctx else {}),
     )
 
     call_start     = datetime.utcnow()
@@ -650,13 +876,15 @@ async def _save_all(
     # 1. Messages
     await save_messages(conv_id, org_id, transcript)
 
-    # 2. Collected data çıkar ve lead güncelle
+    # 2. Collected data çıkar, AI özet üret, lead güncelle
     collected_data = {}
     missing_fields = []
+    summary        = ""
     if lead_id and intake:
         collected_data = await extract_collected_data(transcript, intake)
-        await update_lead_data(lead_id, intake, collected_data)
-        must_keys = {f["key"] for f in intake if f.get("priority") == "must"}
+        summary        = await generate_call_summary(transcript, collected_data, org_id)
+        await update_lead_data(lead_id, intake, collected_data, summary)
+        must_keys      = {f["key"] for f in intake if f.get("priority") == "must"}
         missing_fields = [k for k in must_keys if not collected_data.get(k)]
 
     # 3. Handoff log

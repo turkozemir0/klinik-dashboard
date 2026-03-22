@@ -1,0 +1,453 @@
+{
+  "name": "stoaix Platform — Re-engagement Import Handler",
+  "nodes": [
+
+    {
+      "id": "n01",
+      "name": "GHL Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "reengagement-import",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reengagement-import",
+        "responseMode": "immediately",
+        "responseData": "allEntries",
+        "options": {}
+      }
+    },
+
+    {
+      "id": "n02",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [420, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg_supabase_url",
+              "name": "SUPABASE_URL",
+              "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "cfg_supabase_key",
+              "name": "SUPABASE_SERVICE_KEY",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",
+              "type": "string"
+            },
+            {
+              "id": "cfg_first_msg_hour_utc",
+              "name": "SEND_HOUR_UTC",
+              "value": "7",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "n03",
+      "name": "Parse GHL Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300],
+      "parameters": {
+        "jsCode": "// GHL webhook'tan gelen contact verisini normalize et.\n// GHL farklı event'lerde farklı field isimleri kullanabilir.\nconst body = $input.first().json.body ?? $input.first().json;\n\nconst locationId  = body.locationId  || body.location_id  || '';\nconst ghlContactId= body.contactId   || body.contact_id   || body.id || '';\nconst phone       = body.phone       || body.Phone        || null;\nconst firstName   = body.firstName   || body.first_name   || '';\nconst lastName    = body.lastName    || body.last_name    || '';\nconst email       = body.email       || body.Email        || null;\nconst fullName    = [firstName, lastName].filter(Boolean).join(' ') || null;\n\n// Saat: bugün SEND_HOUR_UTC'de mi geçtik? Geçtiyse yarın.\nconst sendHourUtc = parseInt($('Config').first().json.SEND_HOUR_UTC, 10);\nconst now         = new Date();\nconst target      = new Date(now);\ntarget.setUTCMinutes(0, 0, 0);\nif (now.getUTCHours() >= sendHourUtc) {\n  target.setUTCDate(target.getUTCDate() + 1);\n}\ntarget.setUTCHours(sendHourUtc);\nconst scheduledAt = target.toISOString();\n\nif (!locationId || !ghlContactId) {\n  throw new Error('locationId veya contactId eksik: ' + JSON.stringify(body));\n}\n\nreturn [{ json: {\n  locationId,\n  ghlContactId,\n  phone,\n  email,\n  fullName,\n  scheduledAt,\n} }];"
+      }
+    },
+
+    {
+      "id": "n04",
+      "name": "Find Org by locationId",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/organizations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "status",           "value": "eq.active" },
+            { "name": "crm_config->>location_id", "value": "={{ $json.locationId }}" },
+            { "name": "select",           "value": "id,name,crm_config" },
+            { "name": "limit",            "value": "1" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "n05",
+      "name": "Org Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1080, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+
+    {
+      "id": "n06_stop",
+      "name": "Stop — Org Not Found",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1300, 460],
+      "parameters": {}
+    },
+
+    {
+      "id": "n07",
+      "name": "Merge Org + Contact Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 160],
+      "parameters": {
+        "jsCode": "// Org array'inden ilk kaydı al, parse verisini birleştir.\nconst orgs   = $input.first().json;\nconst org    = Array.isArray(orgs) ? orgs[0] : orgs;\nconst parsed = $('Parse GHL Payload').first().json;\n\nif (!org?.id) return [];\n\nreturn [{ json: {\n  ...parsed,\n  orgId:   org.id,\n  orgName: org.name,\n} }];"
+      }
+    },
+
+    {
+      "id": "n08",
+      "name": "Find Existing Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 160],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/contacts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "organization_id",                 "value": "={{ $json.orgId }}" },
+            { "name": "channel_identifiers->>ghl_contact_id", "value": "={{ $json.ghlContactId }}" },
+            { "name": "select",                          "value": "id" },
+            { "name": "limit",                           "value": "1" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "n09",
+      "name": "Contact Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1740, 160],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+
+    {
+      "id": "n10_create_contact",
+      "name": "Create Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1960, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/contacts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"organization_id\": \"{{ $('Merge Org + Contact Data').first().json.orgId }}\",\n  \"phone\":           {{ $('Merge Org + Contact Data').first().json.phone ? '\"' + $('Merge Org + Contact Data').first().json.phone + '\"' : 'null' }},\n  \"source_channel\":  \"whatsapp\",\n  \"status\":          \"new\",\n  \"channel_identifiers\": {\n    \"ghl_contact_id\": \"{{ $('Merge Org + Contact Data').first().json.ghlContactId }}\"\n  }\n}"
+      }
+    },
+
+    {
+      "id": "n11_extract_contact",
+      "name": "Extract Contact ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2180, 220],
+      "parameters": {
+        "jsCode": "// Her iki yoldan (mevcut veya yeni oluşturulan) contact ID'yi normalize et.\nconst input   = $input.first().json;\nconst parsed  = $('Merge Org + Contact Data').first().json;\n\n// Yeni oluşturulmuşsa array döner, mevcutsa da array.\nconst contact = Array.isArray(input) ? input[0] : input;\nconst contactId = contact?.id;\n\nif (!contactId) return [];\n\nreturn [{ json: {\n  ...parsed,\n  contactId,\n} }];"
+      }
+    },
+
+    {
+      "id": "n12",
+      "name": "Find Existing Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2400, 220],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "organization_id", "value": "={{ $json.orgId }}" },
+            { "name": "contact_id",      "value": "={{ $json.contactId }}" },
+            { "name": "select",          "value": "id,status" },
+            { "name": "limit",           "value": "1" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "n13",
+      "name": "Lead Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2620, 220],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+
+    {
+      "id": "n14_create_lead",
+      "name": "Create Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2840, 360],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"organization_id\":    \"{{ $('Extract Contact ID').first().json.orgId }}\",\n  \"contact_id\":         \"{{ $('Extract Contact ID').first().json.contactId }}\",\n  \"status\":             \"new\",\n  \"qualification_score\": 5,\n  \"source_channel\":     \"whatsapp\",\n  \"collected_data\":     {{ $('Extract Contact ID').first().json.fullName ? '{\"full_name\": \"' + $('Extract Contact ID').first().json.fullName + '\"}' : '{}' }}\n}"
+      }
+    },
+
+    {
+      "id": "n15_extract_lead",
+      "name": "Extract Lead ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3060, 280],
+      "parameters": {
+        "jsCode": "// Lead array'ini normalize et (mevcut veya yeni oluşturulan).\nconst input   = $input.first().json;\nconst base    = $('Extract Contact ID').first().json;\n\nconst leadArr = Array.isArray(input) ? input : [input];\nconst lead    = leadArr[0];\n\n// Lead zaten converted/won/lost ise re-engagement yapma\nconst skipStatuses = ['converted', 'won', 'lost', 'appointment_booked'];\nif (lead?.status && skipStatuses.includes(lead.status)) {\n  return [];  // bu lead zaten aktif değil, atla\n}\n\nreturn [{ json: {\n  ...base,\n  leadId: lead?.id,\n} }];"
+      }
+    },
+
+    {
+      "id": "n16",
+      "name": "Check Existing Re-contact Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3280, 280],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/follow_up_tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "organization_id", "value": "={{ $json.orgId }}" },
+            { "name": "contact_id",      "value": "={{ $json.contactId }}" },
+            { "name": "sequence_stage",  "value": "like.re_contact_%" },
+            { "name": "status",          "value": "eq.pending" },
+            { "name": "select",          "value": "id" },
+            { "name": "limit",           "value": "1" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "n17",
+      "name": "Already Has Re-contact?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [3500, 280],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+
+    {
+      "id": "n18",
+      "name": "Create re_contact_1 Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3720, 160],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/follow_up_tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"organization_id\": \"{{ $('Extract Lead ID').first().json.orgId }}\",\n  \"lead_id\":         \"{{ $('Extract Lead ID').first().json.leadId }}\",\n  \"contact_id\":      \"{{ $('Extract Lead ID').first().json.contactId }}\",\n  \"task_type\":       \"whatsapp_followup\",\n  \"sequence_stage\":  \"re_contact_1\",\n  \"channel\":         \"whatsapp\",\n  \"scheduled_at\":    \"{{ $('Extract Lead ID').first().json.scheduledAt }}\",\n  \"status\":          \"pending\"\n}"
+      }
+    }
+
+  ],
+
+  "connections": {
+    "GHL Webhook": {
+      "main": [[{ "node": "Config", "type": "main", "index": 0 }]]
+    },
+    "Config": {
+      "main": [[{ "node": "Parse GHL Payload", "type": "main", "index": 0 }]]
+    },
+    "Parse GHL Payload": {
+      "main": [[{ "node": "Find Org by locationId", "type": "main", "index": 0 }]]
+    },
+    "Find Org by locationId": {
+      "main": [[{ "node": "Org Found?", "type": "main", "index": 0 }]]
+    },
+    "Org Found?": {
+      "main": [
+        [{ "node": "Merge Org + Contact Data", "type": "main", "index": 0 }],
+        [{ "node": "Stop — Org Not Found",     "type": "main", "index": 0 }]
+      ]
+    },
+    "Merge Org + Contact Data": {
+      "main": [[{ "node": "Find Existing Contact", "type": "main", "index": 0 }]]
+    },
+    "Find Existing Contact": {
+      "main": [[{ "node": "Contact Exists?", "type": "main", "index": 0 }]]
+    },
+    "Contact Exists?": {
+      "main": [
+        [{ "node": "Extract Contact ID", "type": "main", "index": 0 }],
+        [{ "node": "Create Contact",     "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Contact": {
+      "main": [[{ "node": "Extract Contact ID", "type": "main", "index": 0 }]]
+    },
+    "Extract Contact ID": {
+      "main": [[{ "node": "Find Existing Lead", "type": "main", "index": 0 }]]
+    },
+    "Find Existing Lead": {
+      "main": [[{ "node": "Lead Exists?", "type": "main", "index": 0 }]]
+    },
+    "Lead Exists?": {
+      "main": [
+        [{ "node": "Extract Lead ID", "type": "main", "index": 0 }],
+        [{ "node": "Create Lead",     "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Lead": {
+      "main": [[{ "node": "Extract Lead ID", "type": "main", "index": 0 }]]
+    },
+    "Extract Lead ID": {
+      "main": [[{ "node": "Check Existing Re-contact Task", "type": "main", "index": 0 }]]
+    },
+    "Check Existing Re-contact Task": {
+      "main": [[{ "node": "Already Has Re-contact?", "type": "main", "index": 0 }]]
+    },
+    "Already Has Re-contact?": {
+      "main": [
+        [{ "node": "Create re_contact_1 Task", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "meta": { "instanceId": "stoaix-platform" }
+}
