@@ -6,7 +6,7 @@ const LIVEKIT_KEY    = process.env.LIVEKIT_API_KEY!
 const LIVEKIT_SECRET = process.env.LIVEKIT_API_SECRET!
 
 export async function POST(req: NextRequest) {
-  const { orgId } = await req.json()
+  const { orgId, model = 'claude-sonnet-4-6' } = await req.json()
 
   if (!orgId) return NextResponse.json({ error: 'orgId required' }, { status: 400 })
 
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     identity,
     name: 'Test Kullanıcısı',
     ttl: '1h',
-    metadata: JSON.stringify({ organization_id: orgId, test_mode: true }),
+    metadata: JSON.stringify({ organization_id: orgId, test_mode: true, model }),
   })
 
   at.addGrant({
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const httpUrl = LIVEKIT_URL.replace('wss://', 'https://').replace('ws://', 'http://')
     const dispatch = new AgentDispatchClient(httpUrl, LIVEKIT_KEY, LIVEKIT_SECRET)
     await dispatch.createDispatch(roomName, 'stoaix-platform', {
-      metadata: JSON.stringify({ organization_id: orgId, test_mode: true }),
+      metadata: JSON.stringify({ organization_id: orgId, test_mode: true, model }),
     })
   } catch (e) {
     console.warn('Agent dispatch failed (agent may not be running):', e)

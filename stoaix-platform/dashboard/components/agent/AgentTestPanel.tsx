@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Send, Trash2, Loader2, Mic, MicOff, PhoneOff, Phone,
   MessageSquare, Bot, AlertCircle, BookOpen, FileText, Clock,
+  ChevronDown,
 } from 'lucide-react'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -11,6 +12,15 @@ import {
 const MIN_KB_ITEMS   = 3
 const MIN_PROMPT_LEN = 50
 const VOICE_MAX_SECS = 180  // 3 dakika
+
+// ─── Model Config ─────────────────────────────────────────────────────────────
+
+const MODELS = [
+  { id: 'claude-sonnet-4-6',         label: 'Claude Sonnet 4.6',  costPerMin: 0.0082 },
+  { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5',   costPerMin: 0.0056 },
+  { id: 'gpt-4o-mini',               label: 'GPT-4o Mini',         costPerMin: 0.0045 },
+  { id: 'gpt-4o',                    label: 'GPT-4o',              costPerMin: 0.0070 },
+]
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,18 +38,50 @@ interface AgentTestPanelProps {
   promptLength: number
 }
 
+// ─── Model Selector ───────────────────────────────────────────────────────────
+
+function ModelSelector({ model, onChange }: { model: string; onChange: (m: string) => void }) {
+  const current = MODELS.find(m => m.id === model) ?? MODELS[0]
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <span className="text-xs text-slate-500 shrink-0">Model:</span>
+      <div className="relative">
+        <select
+          value={model}
+          onChange={e => onChange(e.target.value)}
+          className="appearance-none text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 pl-2.5 pr-7 py-1.5 rounded-lg border-0 outline-none cursor-pointer transition-colors"
+        >
+          {MODELS.map(m => (
+            <option key={m.id} value={m.id}>{m.label}</option>
+          ))}
+        </select>
+        <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+      </div>
+      <span className="text-xs text-slate-400">${current.costPerMin.toFixed(4)}/dk</span>
+    </div>
+  )
+}
+
 // ─── Chat Test ────────────────────────────────────────────────────────────────
 
-function ChatTest({ orgId, channel }: { orgId: string; channel: 'voice' | 'whatsapp' }) {
+function ChatTest({ orgId, channel, model }: { orgId: string; channel: 'voice' | 'whatsapp'; model: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [totalCost, setTotalCost] = useState(0)
+  const [totalTokens, setTotalTokens] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Reset cost when model changes
+  useEffect(() => {
+    setTotalCost(0)
+    setTotalTokens(0)
+  }, [model])
 
   async function send() {
     if (!input.trim() || loading) return
@@ -60,11 +102,16 @@ function ChatTest({ orgId, channel }: { orgId: string; channel: 'voice' | 'whats
           history: messages.map(m => ({ role: m.role, content: m.content })),
           channel,
           orgId,
+          model,
         }),
       })
       if (!res.ok) throw new Error('API hatası')
-      const { reply } = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }])
+      const data = await res.json()
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+      if (data.usage) {
+        setTotalCost(prev => prev + (data.usage.cost ?? 0))
+        setTotalTokens(prev => prev + (data.usage.inputTokens ?? 0) + (data.usage.outputTokens ?? 0))
+      }
     } catch {
       setError('Yanıt alınamadı. Asistan ayarlarını kontrol edin.')
     } finally {
@@ -126,6 +173,15 @@ function ChatTest({ orgId, channel }: { orgId: string; channel: 'voice' | 'whats
         </div>
       )}
 
+      {/* Maliyet göstergesi */}
+      {totalTokens > 0 && (
+        <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-2 px-1">
+          <span>Toplam: ${totalCost.toFixed(4)}</span>
+          <span className="text-slate-200">·</span>
+          <span>{totalTokens.toLocaleString()} token</span>
+        </div>
+      )}
+
       {/* Input */}
       <div className="flex gap-2 mt-3">
         <input
@@ -148,7 +204,7 @@ function ChatTest({ orgId, channel }: { orgId: string; channel: 'voice' | 'whats
       {/* Clear */}
       {messages.length > 0 && (
         <button
-          onClick={() => setMessages([])}
+          onClick={() => { setMessages([]); setTotalCost(0); setTotalTokens(0) }}
           className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 mt-2 self-start transition-colors"
         >
           <Trash2 size={12} />
@@ -161,13 +217,15 @@ function ChatTest({ orgId, channel }: { orgId: string; channel: 'voice' | 'whats
 
 // ─── Voice Test ───────────────────────────────────────────────────────────────
 
-function VoiceTest({ orgId }: { orgId: string }) {
+function VoiceTest({ orgId, model }: { orgId: string; model: string }) {
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   const [error, setError]     = useState('')
   const [roomName, setRoomName] = useState('')
+  const [elapsed, setElapsed] = useState(0)
   const [remaining, setRemaining] = useState(VOICE_MAX_SECS)
-  const roomRef    = useRef<any>(null)
-  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null)
+  const roomRef        = useRef<any>(null)
+  const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null)
+  const audioElemsRef  = useRef<HTMLAudioElement[]>([])
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
@@ -175,6 +233,8 @@ function VoiceTest({ orgId }: { orgId: string }) {
 
   const endCall = useCallback(async () => {
     stopTimer()
+    audioElemsRef.current.forEach(el => { el.pause(); el.remove() })
+    audioElemsRef.current = []
     if (roomRef.current) {
       await roomRef.current.disconnect()
       roomRef.current = null
@@ -182,24 +242,26 @@ function VoiceTest({ orgId }: { orgId: string }) {
     setStatus('idle')
     setRoomName('')
     setRemaining(VOICE_MAX_SECS)
+    setElapsed(0)
   }, [stopTimer])
 
   const startCall = useCallback(async () => {
     setStatus('connecting')
     setError('')
     setRemaining(VOICE_MAX_SECS)
+    setElapsed(0)
 
     try {
       const res = await fetch('/api/agent/voice-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId }),
+        body: JSON.stringify({ orgId, model }),
       })
       if (!res.ok) throw new Error('Token alınamadı')
       const { token, url, roomName: rn } = await res.json()
       setRoomName(rn)
 
-      const { Room, RoomEvent } = await import('livekit-client')
+      const { Room, RoomEvent, Track } = await import('livekit-client')
 
       const room = new Room({
         audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true },
@@ -208,13 +270,24 @@ function VoiceTest({ orgId }: { orgId: string }) {
       })
       roomRef.current = room
 
+      room.on(RoomEvent.TrackSubscribed, (track: any) => {
+        if (track.kind === Track.Kind.Audio) {
+          const el: HTMLAudioElement = track.attach()
+          document.body.appendChild(el)
+          audioElemsRef.current.push(el)
+          el.play().catch(() => {})
+        }
+      })
+
       room.on(RoomEvent.Connected, () => {
         setStatus('connected')
-        // 3 dakika geri sayım
         let secs = VOICE_MAX_SECS
+        let elapsedSecs = 0
         timerRef.current = setInterval(() => {
           secs -= 1
+          elapsedSecs += 1
           setRemaining(secs)
+          setElapsed(elapsedSecs)
           if (secs <= 0) endCall()
         }, 1000)
       })
@@ -223,6 +296,7 @@ function VoiceTest({ orgId }: { orgId: string }) {
         setStatus('idle')
         roomRef.current = null
         setRemaining(VOICE_MAX_SECS)
+        setElapsed(0)
       })
 
       await room.connect(url, token)
@@ -231,13 +305,16 @@ function VoiceTest({ orgId }: { orgId: string }) {
       setStatus('error')
       setError(e?.message || 'Bağlantı hatası')
     }
-  }, [orgId, endCall, stopTimer])
+  }, [orgId, model, endCall, stopTimer])
 
   useEffect(() => { return () => { endCall() } }, [endCall])
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
   const pct        = ((VOICE_MAX_SECS - remaining) / VOICE_MAX_SECS) * 100
   const isLow      = remaining <= 30
+
+  const modelConfig = MODELS.find(m => m.id === model) ?? MODELS[0]
+  const estimatedCost = (elapsed / 60) * modelConfig.costPerMin
 
   return (
     <div className="flex flex-col items-center justify-center h-[520px] gap-6">
@@ -303,6 +380,11 @@ function VoiceTest({ orgId }: { orgId: string }) {
             <p className="text-xs text-slate-400 mt-1">
               Test süresi: maks. {VOICE_MAX_SECS / 60} dakika
             </p>
+            {elapsed > 0 && (
+              <p className="text-xs text-slate-400 mt-0.5">
+                ~${modelConfig.costPerMin.toFixed(4)}/dk · {formatTime(elapsed)} · Tahmini: ${estimatedCost.toFixed(4)}
+              </p>
+            )}
           </>
         )}
         {status === 'error' && (
@@ -417,6 +499,8 @@ function ReadinessGate({
 export default function AgentTestPanel({
   orgId, activeChannel, hasVoice, hasChat, kbCount, promptLength,
 }: AgentTestPanelProps) {
+  const [model, setModel] = useState('claude-sonnet-4-6')
+
   const showVoice = activeChannel === 'voice' && hasVoice
   const showChat  = activeChannel === 'whatsapp' && hasChat
 
@@ -434,8 +518,9 @@ export default function AgentTestPanel({
 
   return (
     <ReadinessGate kbCount={kbCount} promptLength={promptLength}>
-      {showChat  && <ChatTest  orgId={orgId} channel="whatsapp" />}
-      {showVoice && <VoiceTest orgId={orgId} />}
+      <ModelSelector model={model} onChange={setModel} />
+      {showChat  && <ChatTest  orgId={orgId} channel="whatsapp" model={model} />}
+      {showVoice && <VoiceTest orgId={orgId} model={model} />}
     </ReadinessGate>
   )
 }

@@ -1,6 +1,6 @@
 """
 stoaix Platform Voice Agent — Multi-Tenant Inbound
-LiveKit Cloud + Deepgram STT + GPT-4o Mini + Cartesia TTS
+LiveKit Cloud + Deepgram STT + Claude Sonnet 4.6 (default, metadata override ile değiştirilebilir) + Cartesia TTS
 
 Her işletme aynı agent kodu — davranış DB config'inden gelir.
 
@@ -21,14 +21,17 @@ from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
     AgentSession,
+    AudioConfig,
     AutoSubscribe,
+    BackgroundAudioPlayer,
+    BuiltinAudioClip,
     JobContext,
     RoomInputOptions,
     WorkerOptions,
     cli,
     llm,
 )
-from livekit.plugins import cartesia, deepgram, openai, silero
+from livekit.plugins import cartesia, deepgram, openai, anthropic, silero
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -246,6 +249,8 @@ def build_system_prompt(
     )
 
     routing = playbook.get("routing_rules", []) if playbook else []
+    if isinstance(routing, dict):
+        routing = routing.get("rules", [])
     routing_text = ""
     for r in routing:
         routing_text += f"\n- {r.get('description','')}: {r.get('response_template','')}"
@@ -264,10 +269,14 @@ def build_system_prompt(
     return f"""{base_prompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-KONUŞMA KURALLARI:
+KONUŞMA KURALLARI (KATI — İSTİSNASIZ UYGULANIR):
+- Her turda yalnızca 1 soru sor. Aynı anda iki soru sormak YASAK.
+- Yanıtların maksimum 2 cümle olsun. Monolog yapma.
 - Sayıları HER ZAMAN yazıyla söyle: "1500" yerine "bin beş yüz", "05321234567" yerine "sıfır beş üç iki bir iki üç dört beş altı yedi"
 - Fiyatları yazıyla söyle: "2.500 TL" yerine "iki bin beş yüz lira"
 - Tarihleri yazıyla söyle: "15.03.2026" yerine "on beş Mart iki bin yirmi altı"
+- 1.000 rakamı "bin"dir, "bir bin" YANLIŞ. Örnek: 1.400 → "bin dört yüz", 1.000 → "bin"
+- "Harika!", "Bunu düşünmenize bayıldım", "Mükemmel tercih!" gibi abartılı ifadeler YASAK. Doğal ve sade konuş.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BİLGİ TABANI (RAG — bu konuşma için ilgili içerik):
@@ -278,10 +287,11 @@ TOPLANMASI GEREKEN BİLGİLER (zorunlu):
 {must_prompts}
 
 VERİ TOPLAMA TARZI (ÇOK ÖNEMLİ):
-- Bu bilgileri SORMADAN ÖNCE kullanıcının sorusunu cevapla.
-- Bilgileri tek seferde sormak YASAK. Konuşma akışına göre, birer birer doğal şekilde sor.
-- Örnek: Kullanıcı ülke sorarsa önce ülkeyi anlat, ardından "Sizi daha iyi yönlendirebilmem için hangi şehirden arıyorsunuz?" şeklinde sadece 1 soru sor.
-- Kullanıcı zaten bir bilgiyi paylaştıysa (yaş, şehir vb.) tekrar sorma.
+- Arayan konusunu belirtince konuyu 1 cümleyle onayla, hemen ilk soruya geç.
+- Detaylı program açıklaması yapma — sadece doğrudan sorulursa, 1-2 cümle ile kısa yanıt ver.
+- Bilgileri tek seferde sormak YASAK. Birer birer, sırayla sor.
+- Kullanıcı zaten bir bilgiyi paylaştıysa tekrar sorma.
+- Tüm zorunlu bilgiler toplandığında: "Bilgilerinizi not aldım, bir danışmanımız sizi en kısa sürede arayacak." de ve görüşmeyi nazikçe sonlandır.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 YÖNLENDİRME KURALLARI:{routing_text if routing_text else " (tanımlı kural yok)"}
@@ -695,6 +705,13 @@ async def entrypoint(ctx: JobContext):
     if not org_id:
         raise ValueError("organization_id missing in room metadata and PLATFORM_ORG_ID env not set")
 
+    # metadata'dan model oku, default Claude Sonnet 4.6
+    llm_model = meta.get("model", "claude-sonnet-4-6")
+    if llm_model.startswith("claude-"):
+        llm_instance = anthropic.LLM(model=llm_model)
+    else:
+        llm_instance = openai.LLM(model=llm_model)
+
     org      = await load_org(org_id)
     playbook = await load_playbook(org_id, channel="voice")
     intake   = await load_intake_schema(org_id, channel="voice")
@@ -722,9 +739,9 @@ async def entrypoint(ctx: JobContext):
 
     # ── İnbound ───────────────────────────────────────────────────────────────
     if not scenario:
-        initial_kb = await vector_search_kb(org_id, "genel bilgi hizmetler")
+        initial_kb = ""  # Başlangıçta KB yükleme — şehir/ofis varsayımını önler, sorular gelince dinamik yüklenir
         system_prompt = build_system_prompt(org, playbook, intake, initial_kb, calendar_enabled)
-        opening    = f"Merhaba, {org['name']}, ben {persona_name} — buyurun, sizi dinliyorum."
+        opening    = (playbook or {}).get("opening_message") or f"Merhaba, {org['name']}."
         direction  = "inbound"
         phone_from = _get_sip_caller_number(ctx) or meta.get("phone_from", "")
         phone_to   = os.environ.get("PLATFORM_INBOUND_NUMBER", "")
@@ -806,7 +823,7 @@ KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
 
     session = AgentSession(
         stt=deepgram.STT(model="nova-2", language=tts_lang),
-        llm=openai.LLM(model="gpt-4o-mini"),
+        llm=llm_instance,
         tts=cartesia.TTS(
             model="sonic-3",
             voice=VOICE_IDS[tts_lang],
@@ -844,6 +861,15 @@ KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
         room=ctx.room,
         room_input_options=RoomInputOptions(noise_cancellation=True),
     )
+
+    background_audio = BackgroundAudioPlayer(
+        ambient_sound=AudioConfig(BuiltinAudioClip.OFFICE_AMBIENCE, volume=0.7),
+        thinking_sound=[
+            AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=0.6),
+            AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.6),
+        ],
+    )
+    await background_audio.start(room=ctx.room, agent_session=session)
 
     await session.generate_reply(instructions=opening)
 

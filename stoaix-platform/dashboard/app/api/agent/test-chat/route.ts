@@ -2,21 +2,40 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
 
-const service = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function getServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+function getOpenAI() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+}
+
+// USD per 1M tokens
+const MODEL_COSTS: Record<string, { input: number; output: number }> = {
+  'claude-sonnet-4-6':         { input: 3.00,  output: 15.00 },
+  'claude-haiku-4-5-20251001': { input: 1.00,  output: 5.00  },
+  'gpt-4o-mini':               { input: 0.15,  output: 0.60  },
+  'gpt-4o':                    { input: 2.50,  output: 10.00 },
+}
 
 export async function POST(req: NextRequest) {
-  const { message, history = [], channel = 'whatsapp', orgId } = await req.json()
+  const service = getServiceClient()
+  const {
+    message,
+    history = [],
+    channel = 'whatsapp',
+    orgId,
+    model = 'claude-sonnet-4-6',
+  } = await req.json()
 
   if (!message || !orgId) {
     return NextResponse.json({ error: 'message and orgId required' }, { status: 400 })
   }
 
-  // Playbook'u çek (channel-specific önce, sonra 'all' fallback)
+  // Playbook'u çek
   const { data: playbooks } = await service
     .from('agent_playbooks')
     .select('system_prompt_template, hard_blocks, routing_rules')
@@ -26,11 +45,12 @@ export async function POST(req: NextRequest) {
     .order('version', { ascending: false })
     .limit(2)
 
-  const pb = playbooks?.find(p => p) // first result
+  const pb = playbooks?.find(p => p)
 
-  // KB vector search
+  // KB vector search (OpenAI embedding)
   let kbContext = ''
   try {
+    const openai = getOpenAI()
     const embedRes = await openai.embeddings.create({
       model: 'text-embedding-3-small',
       input: message,
@@ -64,19 +84,52 @@ export async function POST(req: NextRequest) {
     .filter(Boolean)
     .join('')
 
-  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: systemPrompt },
-    ...(history as OpenAI.Chat.ChatCompletionMessageParam[]),
-    { role: 'user', content: message },
-  ]
+  let reply: string
+  let inputTokens = 0
+  let outputTokens = 0
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages,
-    max_tokens: 600,
-    temperature: 0.7,
-  })
+  if (model.startsWith('claude-')) {
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
-  const reply = completion.choices[0].message.content || ''
-  return NextResponse.json({ reply })
+    const anthropicMessages = (history as { role: string; content: string }[]).map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }))
+    anthropicMessages.push({ role: 'user', content: message })
+
+    const response = await anthropic.messages.create({
+      model,
+      system: systemPrompt,
+      messages: anthropicMessages,
+      max_tokens: 600,
+    })
+
+    reply = response.content[0].type === 'text' ? response.content[0].text : ''
+    inputTokens = response.usage.input_tokens
+    outputTokens = response.usage.output_tokens
+  } else {
+    const openai = getOpenAI()
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...(history as OpenAI.Chat.ChatCompletionMessageParam[]),
+      { role: 'user', content: message },
+    ]
+
+    const completion = await openai.chat.completions.create({
+      model,
+      messages,
+      max_tokens: 600,
+      temperature: 0.7,
+    })
+
+    reply = completion.choices[0].message.content || ''
+    inputTokens = completion.usage?.prompt_tokens ?? 0
+    outputTokens = completion.usage?.completion_tokens ?? 0
+  }
+
+  const costs = MODEL_COSTS[model] ?? MODEL_COSTS['claude-sonnet-4-6']
+  const cost = (inputTokens / 1_000_000) * costs.input + (outputTokens / 1_000_000) * costs.output
+
+  return NextResponse.json({ reply, usage: { inputTokens, outputTokens, cost } })
 }
