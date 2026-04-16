@@ -5,12 +5,14 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Phone, MessageSquare, Flame, Target, Loader2, LayoutGrid, List,
   ChevronLeft, ChevronRight, FileText, Wallet, Send, Clock, AlertCircle,
-  CalendarDays, Plus,
+  CalendarDays, Plus, X, Check,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import KanbanBoard from '../leads/KanbanBoard'
+import PipelineSelector from '@/components/crm/PipelineSelector'
 import StatCard from '@/components/StatCard'
+import type { Pipeline } from '@/lib/types'
 import ManualTasksPanel from '@/components/followup/ManualTasksPanel'
 import FollowupTabs from '@/components/followup/FollowupTabs'
 
@@ -25,6 +27,7 @@ interface Lead {
   source_channel: string
   collected_data: Record<string, any>
   updated_at: string
+  created_at: string
   contact_id: string
   contacts: { phone: string | null; full_name: string | null; source_channel: string } | null
 }
@@ -62,7 +65,16 @@ const REENGAGEMENT_STAGES = ['re_contact_1','re_contact_2','re_contact_3']
 // ─── Leads Tab ────────────────────────────────────────────────────────────────
 
 type FilterStatus = 'all' | 'handed_off' | 'in_progress' | 'new'
-const PAGE_SIZE = 100
+type DateRange = 'all' | '7d' | '30d' | 'this_month'
+type DateField = 'updated_at' | 'created_at'
+
+function getDateFrom(range: DateRange): string | null {
+  const now = new Date()
+  if (range === '7d')         return new Date(now.getTime() - 7 * 86400000).toISOString()
+  if (range === '30d')        return new Date(now.getTime() - 30 * 86400000).toISOString()
+  if (range === 'this_month') return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  return null
+}
 
 function ScoreBadge({ score }: { score: number }) {
   const color =
@@ -86,6 +98,21 @@ function LeadsTab({ orgId }: { orgId: string }) {
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
   const [statusCounts, setStatusCounts] = useState({ all: 0, new: 0, handed_off: 0, in_progress: 0 })
+  const [pipelines, setPipelines] = useState<Pipeline[]>([])
+  const [activePipelineId, setActivePipelineId] = useState<string>('')
+
+  // Pagination
+  const [pageSize, setPageSize] = useState<20 | 50>(20)
+
+  // Date filter
+  const [dateRange, setDateRange] = useState<DateRange>('all')
+  const [dateField, setDateField] = useState<DateField>('updated_at')
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkPipelineId, setBulkPipelineId] = useState('')
+  const [bulkStageId, setBulkStageId] = useState('')
+  const [bulkLoading, setBulkLoading] = useState(false)
 
   useEffect(() => {
     async function loadCounts() {
@@ -101,36 +128,83 @@ function LeadsTab({ orgId }: { orgId: string }) {
     loadCounts()
   }, [orgId])
 
+  useEffect(() => {
+    fetch('/api/pipelines')
+      .then(r => r.json())
+      .then(data => {
+        const list: Pipeline[] = data.pipelines ?? []
+        setPipelines(list)
+        const defaultP = list.find(p => p.is_default)
+        setActivePipelineId(defaultP?.id ?? list[0]?.id ?? '')
+      })
+      .catch(() => {})
+  }, [])
+
   const loadLeads = useCallback(async (filter: FilterStatus, page: number) => {
     setLoading(true)
+    setSelectedIds(new Set())
     const supabase = createClient()
-    const from = page * PAGE_SIZE
-    const to = from + PAGE_SIZE - 1
+    const from = page * pageSize
+    const to = from + pageSize - 1
     let query = supabase
       .from('leads')
-      .select('id,qualification_score,status,source_channel,collected_data,updated_at,contact_id,contacts(phone,full_name,source_channel)', { count: 'exact' })
+      .select('id,qualification_score,status,source_channel,collected_data,updated_at,created_at,contact_id,contacts(phone,full_name,source_channel)', { count: 'exact' })
       .eq('organization_id', orgId)
       .order('qualification_score', { ascending: false })
       .order('updated_at', { ascending: false })
       .range(from, to)
     if (filter !== 'all') query = query.eq('status', filter)
+    const dateFrom = getDateFrom(dateRange)
+    if (dateFrom) query = query.gte(dateField, dateFrom)
     const { data, count } = await query
     setLeads((data as unknown as Lead[]) ?? [])
     setTotal(count ?? 0)
     setLoading(false)
-  }, [orgId])
+  }, [orgId, pageSize, dateRange, dateField])
 
   useEffect(() => { loadLeads(filter, page) }, [filter, page, loadLeads])
 
-  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const totalPages = Math.ceil(total / pageSize)
 
   function handleFilter(f: FilterStatus) { setFilter(f); setPage(0) }
+  function handleDateRange(r: DateRange) { setDateRange(r); setPage(0) }
+  function handleDateField(f: DateField) { setDateField(f); setPage(0) }
+  function handlePageSize(s: 20 | 50) { setPageSize(s); setPage(0) }
+
+  const customPipelines = pipelines.filter(p => !p.is_default)
+  const bulkPipeline = customPipelines.find(p => p.id === bulkPipelineId)
+
+  async function handleBulkAssign() {
+    if (!bulkPipelineId || !bulkStageId || selectedIds.size === 0) return
+    setBulkLoading(true)
+    try {
+      const res = await fetch(`/api/pipelines/${bulkPipelineId}/bulk-assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage_id: bulkStageId, lead_ids: [...selectedIds] }),
+      })
+      if (res.ok) {
+        setSelectedIds(new Set())
+        setBulkPipelineId('')
+        setBulkStageId('')
+      }
+    } finally {
+      setBulkLoading(false)
+    }
+  }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <p className="text-sm text-slate-500">{statusCounts.all} kayıt</p>
         <div className="flex items-center gap-2">
+          {viewMode === 'kanban' && pipelines.length > 0 && (
+            <PipelineSelector
+              pipelines={pipelines}
+              activePipelineId={activePipelineId}
+              onChange={setActivePipelineId}
+            />
+          )}
           <Link
             href="/dashboard/admin/import"
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors"
@@ -156,9 +230,38 @@ function LeadsTab({ orgId }: { orgId: string }) {
       </div>
 
       {viewMode === 'kanban' ? (
-        <KanbanBoard orgId={orgId} />
+        <KanbanBoard
+          orgId={orgId}
+          pipeline={pipelines.find(p => p.id === activePipelineId) ?? null}
+        />
       ) : (
         <>
+          {/* Date filter row */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <select
+              value={dateField}
+              onChange={e => handleDateField(e.target.value as DateField)}
+              className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white text-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="updated_at">Son Aktivite</option>
+              <option value="created_at">Eklenme Tarihi</option>
+            </select>
+            <div className="flex items-center gap-1">
+              {([['all', 'Tümü'], ['7d', 'Son 7 Gün'], ['30d', 'Son 30 Gün'], ['this_month', 'Bu Ay']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => handleDateRange(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    dateRange === key ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Status filter row */}
           <div className="flex gap-2 mb-5 flex-wrap">
             {([['all','Tümü'],['new','Yeni'],['handed_off','Temsilci Talep'],['in_progress','Aktif']] as const).map(([key, label]) => (
               <button
@@ -176,6 +279,52 @@ function LeadsTab({ orgId }: { orgId: string }) {
             ))}
           </div>
 
+          {/* Bulk action bar */}
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-3 mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl flex-wrap">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-amber-800">
+                <Check size={14} /> {selectedIds.size} lead seçildi
+              </span>
+              <div className="flex items-center gap-2 ml-2 flex-wrap">
+                <select
+                  value={bulkPipelineId}
+                  onChange={e => { setBulkPipelineId(e.target.value); setBulkStageId('') }}
+                  className="px-2 py-1 text-xs border border-amber-300 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                >
+                  <option value="">Pipeline seç</option>
+                  {customPipelines.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={bulkStageId}
+                  onChange={e => setBulkStageId(e.target.value)}
+                  disabled={!bulkPipelineId}
+                  className="px-2 py-1 text-xs border border-amber-300 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+                >
+                  <option value="">Aşama seç</option>
+                  {(bulkPipeline?.stages ?? []).map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleBulkAssign}
+                  disabled={!bulkPipelineId || !bulkStageId || bulkLoading}
+                  className="flex items-center gap-1 px-3 py-1 bg-brand-600 text-white rounded-lg text-xs font-medium hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {bulkLoading ? <Loader2 size={12} className="animate-spin" /> : null}
+                  Uygula
+                </button>
+              </div>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="ml-auto p-1 text-amber-600 hover:text-amber-800 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           {loading ? (
             <div className="flex items-center gap-2 text-slate-400 py-12 justify-center">
               <Loader2 size={16} className="animate-spin" /> Yükleniyor...
@@ -191,6 +340,15 @@ function LeadsTab({ orgId }: { orgId: string }) {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      <th className="px-4 py-3 w-8">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.size === leads.length && leads.length > 0}
+                          ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < leads.length }}
+                          onChange={e => setSelectedIds(e.target.checked ? new Set(leads.map(l => l.id)) : new Set())}
+                          className="rounded border-slate-300"
+                        />
+                      </th>
                       <th className="text-left px-4 py-3">Kişi</th>
                       <th className="text-left px-4 py-3">Telefon</th>
                       <th className="text-left px-4 py-3">Skor</th>
@@ -206,7 +364,19 @@ function LeadsTab({ orgId }: { orgId: string }) {
                       const phone = lead.contacts?.phone || (lead.collected_data?.phone as string)
                       const updatedAt = new Date(lead.updated_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
                       return (
-                        <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
+                        <tr key={lead.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.has(lead.id) ? 'bg-blue-50/40' : ''}`}>
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(lead.id)}
+                              onChange={e => setSelectedIds(prev => {
+                                const s = new Set(prev)
+                                e.target.checked ? s.add(lead.id) : s.delete(lead.id)
+                                return s
+                              })}
+                              className="rounded border-slate-300"
+                            />
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${channel === 'whatsapp' ? 'bg-green-100 text-green-600' : channel === 'instagram' ? 'bg-pink-100 text-pink-600' : 'bg-slate-100 text-slate-500'}`}>
@@ -247,20 +417,35 @@ function LeadsTab({ orgId }: { orgId: string }) {
                   </tbody>
                 </table>
               </div>
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-slate-500">{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} / {total} kayıt</p>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                      <ChevronLeft size={14} /> Önceki
-                    </button>
-                    <span className="text-sm text-slate-500 px-2">{page + 1} / {totalPages}</span>
-                    <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                      Sonraki <ChevronRight size={14} />
-                    </button>
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-sm text-slate-500">
+                  {total === 0 ? '0 kayıt' : `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} / ${total} kayıt`}
+                </p>
+                <div className="flex items-center gap-3">
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        <ChevronLeft size={14} /> Önceki
+                      </button>
+                      <span className="text-sm text-slate-500 px-2">{page + 1} / {totalPages}</span>
+                      <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        Sonraki <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 text-sm text-slate-500">
+                    <span>Sayfa başına:</span>
+                    <select
+                      value={pageSize}
+                      onChange={e => handlePageSize(Number(e.target.value) as 20 | 50)}
+                      className="px-2 py-1 text-xs border border-slate-200 rounded-lg bg-white text-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    >
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                    </select>
                   </div>
                 </div>
-              )}
+              </div>
             </>
           )}
         </>
