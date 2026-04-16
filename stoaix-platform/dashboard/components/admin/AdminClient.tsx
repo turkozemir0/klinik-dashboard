@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Building2, Users, Settings, BookOpen, AlertTriangle, UserPlus, Upload } from 'lucide-react'
+import { Plus, Building2, Users, Settings, BookOpen, AlertTriangle, UserPlus, Upload, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useT } from '@/lib/lang-context'
 import NewOrgModal from './NewOrgModal'
 import OrgSettingsModal from './OrgSettingsModal'
 import InviteUserModal from './InviteUserModal'
+import DeleteOrgModal from './DeleteOrgModal'
 import N8nStatusWidget from './N8nStatusWidget'
 
 interface Org {
@@ -44,6 +45,7 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsBy
   const [showNewModal, setShowNewModal] = useState(false)
   const [settingsOrg, setSettingsOrg] = useState<{ id: string; name: string } | null>(null)
   const [inviteOrg, setInviteOrg] = useState<{ id: string; name: string } | null>(null)
+  const [deleteOrg, setDeleteOrg] = useState<{ id: string; name: string } | null>(null)
 
   return (
     <div className="p-6">
@@ -175,6 +177,13 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsBy
                     >
                       <UserPlus size={15} />
                     </button>
+                    <button
+                      onClick={() => setDeleteOrg({ id: org.id, name: org.name })}
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Organizasyonu Sil"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -203,6 +212,15 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsBy
           orgId={inviteOrg.id}
           orgName={inviteOrg.name}
           onClose={() => setInviteOrg(null)}
+        />
+      )}
+
+      {deleteOrg && (
+        <DeleteOrgModal
+          orgId={deleteOrg.id}
+          orgName={deleteOrg.name}
+          onClose={() => setDeleteOrg(null)}
+          onDeleted={(orgId) => setOrgs(prev => prev.filter(o => o.id !== orgId))}
         />
       )}
     </div>

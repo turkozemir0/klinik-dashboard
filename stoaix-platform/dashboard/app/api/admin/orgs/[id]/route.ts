@@ -65,3 +65,76 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
+
+// DELETE — organizasyonu ve ilişkili tüm kayıtları sil
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!await isSuperAdmin(user.id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const orgId = params.id
+  const service = getServiceClient()
+
+  // Org var mı kontrol et
+  const { data: org } = await service.from('organizations').select('id').eq('id', orgId).maybeSingle()
+  if (!org) return NextResponse.json({ error: 'Org bulunamadı' }, { status: 404 })
+
+  // Konuşma id'lerini al (messages için gerekli)
+  const { data: convRows } = await service.from('conversations').select('id').eq('organization_id', orgId)
+  const convIds = (convRows ?? []).map(r => r.id)
+
+  // Lead id'lerini al (follow_up_tasks, handoff_logs için)
+  const { data: leadRows } = await service.from('leads').select('id').eq('organization_id', orgId)
+  const leadIds = (leadRows ?? []).map(r => r.id)
+
+  // Workflow id'lerini al (workflow_runs için)
+  const { data: wfRows } = await service.from('org_workflows').select('id').eq('organization_id', orgId)
+  const wfIds = (wfRows ?? []).map(r => r.id)
+
+  // Silme sırası: bağımlı tablolardan başla
+  if (convIds.length > 0) {
+    await service.from('messages').delete().in('conversation_id', convIds)
+  }
+  if (leadIds.length > 0) {
+    await service.from('handoff_logs').delete().in('lead_id', leadIds)
+    await service.from('follow_up_tasks').delete().in('lead_id', leadIds)
+  }
+  if (wfIds.length > 0) {
+    await service.from('workflow_runs').delete().in('workflow_id', wfIds)
+  }
+
+  // Direkt organization_id'li tablolar
+  const directTables = [
+    'satisfaction_surveys',
+    'appointments',
+    'call_queue',
+    'org_workflows',
+    'crm_sync_logs',
+    'voice_calls',
+    'conversations',
+    'leads',
+    'contacts',
+    'knowledge_items',
+    'intake_schemas',
+    'agent_playbooks',
+    'billing_events',
+    'billing_subscriptions',
+    'usage_records',
+    'org_users',
+    'invite_tokens',
+  ]
+
+  for (const table of directTables) {
+    const { error } = await service.from(table as any).delete().eq('organization_id', orgId)
+    if (error && !error.message.includes('does not exist')) {
+      console.error(`[DELETE org] ${table} hatası:`, error.message)
+    }
+  }
+
+  // Son olarak organizasyonu sil
+  const { error: orgError } = await service.from('organizations').delete().eq('id', orgId)
+  if (orgError) return NextResponse.json({ error: orgError.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true })
+}
