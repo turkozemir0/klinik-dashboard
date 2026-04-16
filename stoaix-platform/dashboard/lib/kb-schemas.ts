@@ -29,7 +29,7 @@ export const KB_SCHEMAS: Record<string, KBSchema> = {
     label: 'Hizmet',
     sectors: 'all',
     fields: [
-      { name: 'name', label: 'Hizmet Adı', type: 'text', required: true, placeholder: 'Dil Okulu Yerleştirme' },
+      { name: 'name', label: 'Hizmet Adı', type: 'text', required: true, placeholder: 'ör. Botoks Uygulaması, Diş Muayenesi...' },
       { name: 'description', label: 'Açıklama', type: 'textarea', required: true, placeholder: 'Hizmet açıklaması...' },
       { name: 'price', label: 'Fiyat (opsiyonel)', type: 'text', placeholder: '1500 TRY' },
       { name: 'duration', label: 'Süre (opsiyonel)', type: 'text', placeholder: '45 dakika' },

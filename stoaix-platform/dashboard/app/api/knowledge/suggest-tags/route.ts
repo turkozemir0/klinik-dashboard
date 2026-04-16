@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+function getOpenAI() { return new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) }
 
 export async function POST(request: NextRequest) {
   const supabase = createClient()
@@ -39,7 +39,7 @@ Alan: ${field_label || field_name}
 Sadece değerleri virgülle ayırarak yaz, başka hiçbir şey ekleme.`
   }
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     max_tokens: 100,
     messages: [{ role: 'user', content: prompt }],

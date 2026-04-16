@@ -27,5 +27,20 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Supabase temp
+supabase/.temp/
+
+# Repomix output
+repomix-output*.xml
+
+# n8n configured workflows (contains real credentials)
+n8n-workflows/configured/
+n8n-workflows/.env.n8n
+
+# Temp / scratch
+.tmp-ata-review/
+Export_Contacts_*.csv
+
 # Logs
 *.log
+.vercel

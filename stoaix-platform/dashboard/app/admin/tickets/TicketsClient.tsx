@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { t } from '@/lib/i18n'
+import { useT } from '@/lib/lang-context'
 import type { SupportTicket, TicketStatus } from '@/lib/types'
 import { ChevronDown } from 'lucide-react'
 
@@ -24,6 +24,7 @@ const priorityColors: Record<string, string> = {
 }
 
 export default function TicketsClient({ tickets: initialTickets }: Props) {
+  const t = useT()
   const [tickets, setTickets] = useState(initialTickets)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)

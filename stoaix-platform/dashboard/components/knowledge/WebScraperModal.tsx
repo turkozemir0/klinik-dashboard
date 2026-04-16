@@ -210,6 +210,7 @@ export default function WebScraperModal({ orgId, onClose, onSaved }: Props) {
               className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
               disabled={scraping}
             />
+
             <button
               onClick={handleScrape}
               disabled={scraping || !url.trim()}
@@ -219,6 +220,9 @@ export default function WebScraperModal({ orgId, onClose, onSaved }: Props) {
               {scraping ? 'Taranıyor...' : 'Tara'}
             </button>
           </div>
+          <p className="mt-1.5 text-xs text-slate-400">
+            Örnek: <span className="font-medium">https://klinigim.com</span> — https:// ile başlamalı, ana sayfa veya hizmetler sayfası önerilir
+          </p>
           {scrapeError && (
             <p className="mt-2 text-sm text-red-500">{scrapeError}</p>
           )}
@@ -402,6 +406,10 @@ export default function WebScraperModal({ orgId, onClose, onSaved }: Props) {
         {/* Loading skeleton */}
         {scraping && (
           <div className="flex-1 px-6 py-4 space-y-3">
+            <div className="flex items-center gap-2 mb-4">
+              <Loader2 size={15} className="animate-spin text-brand-500" />
+              <p className="text-sm text-slate-500">Websitenizden bilgiler toplanıyor, lütfen bekleyin...</p>
+            </div>
             {[...Array(5)].map((_, i) => (
               <div key={i} className="rounded-xl border border-slate-100 p-3 animate-pulse">
                 <div className="flex gap-2 items-center mb-2">

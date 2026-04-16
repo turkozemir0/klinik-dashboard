@@ -1,0 +1,79 @@
+{
+  "name": "stoaix Platform - Meta Ads Daily Report",
+  "nodes": [
+    {
+      "id": "n01",
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+        }
+      }
+    },
+    {
+      "id": "n02",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [420, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg_supabase_url",
+              "name": "SUPABASE_URL",
+              "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "cfg_supabase_key",
+              "name": "SUPABASE_SERVICE_KEY",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",
+              "type": "string"
+            },
+            {
+              "id": "cfg_resend_key",
+              "name": "RESEND_API_KEY",
+              "value": "YOUR_RESEND_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "cfg_from_email",
+              "name": "DEFAULT_FROM_EMAIL",
+              "value": "reports@yourdomain.com",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n03",
+      "name": "Process Reports",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst SUPABASE_URL = cfg.SUPABASE_URL;\nconst SUPABASE_SERVICE_KEY = cfg.SUPABASE_SERVICE_KEY;\nconst RESEND_API_KEY = cfg.RESEND_API_KEY;\nconst DEFAULT_FROM_EMAIL = cfg.DEFAULT_FROM_EMAIL;\n\nconst headers = {\n  apikey: SUPABASE_SERVICE_KEY,\n  Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,\n};\n\nconst jsonHeaders = {\n  ...headers,\n  'Content-Type': 'application/json',\n};\n\nconst now = new Date();\n\nconst formatDateInTimezone = (date, timezone) => {\n  const parts = new Intl.DateTimeFormat('en-CA', {\n    timeZone: timezone,\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit',\n  }).formatToParts(date);\n  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));\n  return `${map.year}-${map.month}-${map.day}`;\n};\n\nconst getLocalHourMinute = (date, timezone) => {\n  const parts = new Intl.DateTimeFormat('en-GB', {\n    timeZone: timezone,\n    hour: '2-digit',\n    minute: '2-digit',\n    hour12: false,\n  }).formatToParts(date);\n  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));\n  return { hour: Number(map.hour), minute: Number(map.minute) };\n};\n\nconst addDays = (yyyyMmDd, days) => {\n  const dt = new Date(`${yyyyMmDd}T12:00:00Z`);\n  dt.setUTCDate(dt.getUTCDate() + days);\n  return dt.toISOString().slice(0, 10);\n};\n\nconst deltaPct = (curr, prev) => {\n  if (prev === null || prev === undefined || Number(prev) === 0) return null;\n  return ((Number(curr) - Number(prev)) / Number(prev)) * 100;\n};\n\nconst fmtPct = (value) => {\n  if (value === null || value === undefined) return '-';\n  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;\n};\n\nconst escapeHtml = (value) => String(value ?? '')\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;')\n  .replace(/'/g, '&#39;');\n\nconst fetchJson = async (url, options = {}) => {\n  const res = await fetch(url, options);\n  if (!res.ok) {\n    const text = await res.text();\n    throw new Error(`${res.status} ${res.statusText} :: ${text}`);\n  }\n  return res.json();\n};\n\nconst configsUrl = `${SUPABASE_URL}/rest/v1/ad_report_configs?select=id,organization_id,meta_ad_account_id,is_enabled,send_time_local,report_timezone,from_email,from_name,subject_template,recipient_emails,organizations!organization_id(id,name),meta_ad_accounts!meta_ad_account_id(id,account_name,meta_ad_account_id,access_token_ref,report_timezone,is_active)&is_enabled=eq.true&is_active=eq.true`;\nconst configs = await fetchJson(configsUrl, { headers });\n\nif (!Array.isArray(configs) || configs.length === 0) {\n  return [{ json: { processed: 0, result: 'no_active_configs' } }];\n}\n\nconst results = [];\n\nfor (const config of configs) {\n  const timezone = config.report_timezone || config.meta_ad_accounts?.report_timezone || 'Europe/Istanbul';\n  const localTime = getLocalHourMinute(now, timezone);\n  const targetTime = String(config.send_time_local || '00:15').slice(0, 5);\n  const [targetHour, targetMinute] = targetTime.split(':').map(Number);\n\n  if (localTime.hour !== targetHour || localTime.minute !== targetMinute) {\n    results.push({\n      organization_id: config.organization_id,\n      account_row_id: config.meta_ad_accounts?.id,\n      skipped: `waiting_for_schedule_${targetTime}`,\n    });\n    continue;\n  }\n\n  try {\n    const todayLocal = formatDateInTimezone(now, timezone);\n    const reportDate = addDays(todayLocal, -1);\n    const periodStart = `${reportDate}T00:00:00`;\n    const periodEnd = `${reportDate}T23:59:59`;\n    const accountNumericId = String(config.meta_ad_accounts.meta_ad_account_id || '').replace(/^act_/, '');\n    const metaApiAccountId = `act_${accountNumericId}`;\n    const accessToken = config.meta_ad_accounts.access_token_ref;\n\n    const existingRunUrl = `${SUPABASE_URL}/rest/v1/ad_report_runs?select=id,status&period_label=eq.${reportDate}&meta_ad_account_id=eq.${config.meta_ad_accounts.id}&limit=1`;\n    const existingRun = await fetchJson(existingRunUrl, { headers });\n    if (Array.isArray(existingRun) && existingRun.length > 0) {\n      results.push({\n        organization_id: config.organization_id,\n        account_row_id: config.meta_ad_accounts.id,\n        skipped: `already_processed_${reportDate}`,\n      });\n      continue;\n    }\n\n    const metaUrl = `https://graph.facebook.com/v23.0/${metaApiAccountId}/insights?level=campaign&fields=campaign_name,spend,impressions,clicks,ctr,cpc,cpm,actions,action_values,purchase_roas&time_range=${encodeURIComponent(JSON.stringify({ since: reportDate, until: reportDate }))}&access_token=${encodeURIComponent(accessToken)}`;\n    const metaData = await fetchJson(metaUrl);\n    const rows = Array.isArray(metaData.data) ? metaData.data : [];\n\n    const totals = rows.reduce((acc, row) => ({\n      spend: acc.spend + Number(row.spend || 0),\n      impressions: acc.impressions + Number(row.impressions || 0),\n      clicks: acc.clicks + Number(row.clicks || 0),\n    }), { spend: 0, impressions: 0, clicks: 0 });\n\n    const ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0;\n    const cpc = totals.clicks ? totals.spend / totals.clicks : 0;\n    const metrics = { ...totals, ctr, cpc };\n    const topCampaign = [...rows].sort((a, b) => Number(b.spend || 0) - Number(a.spend || 0))[0] || null;\n\n    const previousRunUrl = `${SUPABASE_URL}/rest/v1/ad_report_runs?select=id,metrics,period_label,status&meta_ad_account_id=eq.${config.meta_ad_accounts.id}&status=eq.sent&order=period_start.desc&limit=1`;\n    const previousRuns = await fetchJson(previousRunUrl, { headers });\n    const previousRun = Array.isArray(previousRuns) && previousRuns.length ? previousRuns[0] : null;\n    const prevMetrics = previousRun?.metrics || null;\n\n    const comparison = prevMetrics ? {\n      spend_pct: deltaPct(metrics.spend, prevMetrics.spend),\n      impressions_pct: deltaPct(metrics.impressions, prevMetrics.impressions),\n      clicks_pct: deltaPct(metrics.clicks, prevMetrics.clicks),\n      ctr_pct: deltaPct(metrics.ctr, prevMetrics.ctr),\n      cpc_pct: deltaPct(metrics.cpc, prevMetrics.cpc),\n    } : null;\n\n    const reportHtml = `\n      <div style=\"font-family:Arial,sans-serif;line-height:1.5;color:#111\">\n        <h2>${escapeHtml(config.organizations?.name || 'Organization')} - Meta Ads Gunluk Rapor</h2>\n        <p>Tarih: ${escapeHtml(reportDate)}</p>\n        <ul>\n          <li>Harcama: ${metrics.spend.toFixed(2)}</li>\n          <li>Gosterim: ${metrics.impressions}</li>\n          <li>Tiklama: ${metrics.clicks}</li>\n          <li>CTR: ${metrics.ctr.toFixed(2)}%</li>\n          <li>CPC: ${metrics.cpc.toFixed(2)}</li>\n        </ul>\n        ${topCampaign ? `<p>En cok harcama yapan kampanya: <strong>${escapeHtml(topCampaign.campaign_name)}</strong></p>` : '<p>Kampanya verisi yok.</p>'}\n        ${comparison ? `\n          <h3>Onceki Raporla Kiyas</h3>\n          <ul>\n            <li>Harcama: ${fmtPct(comparison.spend_pct)}</li>\n            <li>Gosterim: ${fmtPct(comparison.impressions_pct)}</li>\n            <li>Tiklama: ${fmtPct(comparison.clicks_pct)}</li>\n            <li>CTR: ${fmtPct(comparison.ctr_pct)}</li>\n            <li>CPC: ${fmtPct(comparison.cpc_pct)}</li>\n          </ul>\n        ` : '<p>Ilk rapor oldugu icin onceki veriyle kiyas yapilmadi.</p>'}\n      </div>\n    `;\n\n    const insertPayload = {\n      organization_id: config.organization_id,\n      meta_ad_account_id: config.meta_ad_accounts.id,\n      config_id: config.id,\n      provider: 'meta_ads',\n      period_start: periodStart,\n      period_end: periodEnd,\n      period_label: reportDate,\n      status: 'processing',\n      metrics,\n      summary: {\n        top_campaign: topCampaign,\n        comparison,\n        previous_run_id: previousRun?.id || null,\n      },\n      report_html: reportHtml,\n    };\n\n    await fetchJson(`${SUPABASE_URL}/rest/v1/ad_report_runs`, {\n      method: 'POST',\n      headers: {\n        ...jsonHeaders,\n        Prefer: 'resolution=merge-duplicates,return=minimal',\n      },\n      body: JSON.stringify(insertPayload),\n    });\n\n    const resendPayload = {\n      from: `${config.from_name || 'stoaix Reports'} <${config.from_email || DEFAULT_FROM_EMAIL}>`,\n      to: config.recipient_emails,\n      subject: `${config.organizations?.name || 'Organization'} - Meta Ads gunluk raporu (${reportDate})`,\n      html: reportHtml,\n    };\n\n    const resendRes = await fetch('https://api.resend.com/emails', {\n      method: 'POST',\n      headers: {\n        Authorization: `Bearer ${RESEND_API_KEY}`,\n        'Content-Type': 'application/json',\n      },\n      body: JSON.stringify(resendPayload),\n    });\n\n    const resendText = await resendRes.text();\n    if (!resendRes.ok) {\n      await fetch(`${SUPABASE_URL}/rest/v1/ad_report_runs?meta_ad_account_id=eq.${config.meta_ad_accounts.id}&period_label=eq.${reportDate}`, {\n        method: 'PATCH',\n        headers: jsonHeaders,\n        body: JSON.stringify({ status: 'failed', error_message: resendText }),\n      });\n      throw new Error(`Resend failed: ${resendText}`);\n    }\n\n    let resendJson = {};\n    try { resendJson = JSON.parse(resendText); } catch {}\n\n    await fetch(`${SUPABASE_URL}/rest/v1/ad_report_runs?meta_ad_account_id=eq.${config.meta_ad_accounts.id}&period_label=eq.${reportDate}`, {\n      method: 'PATCH',\n      headers: jsonHeaders,\n      body: JSON.stringify({\n        status: 'sent',\n        email_provider: 'resend',\n        email_id: resendJson.id || null,\n        sent_at: new Date().toISOString(),\n      }),\n    });\n\n    results.push({\n      organization_id: config.organization_id,\n      account_row_id: config.meta_ad_accounts.id,\n      report_date: reportDate,\n      status: 'sent',\n    });\n  } catch (error) {\n    results.push({\n      organization_id: config.organization_id,\n      account_row_id: config.meta_ad_accounts?.id,\n      status: 'error',\n      error: error.message,\n    });\n  }\n}\n\nreturn [{ json: { processed: results.length, results } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Process Reports", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "stoaix-platform"
+  }
+}

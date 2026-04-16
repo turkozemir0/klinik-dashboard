@@ -58,8 +58,7 @@ export async function POST(req: NextRequest) {
     const embedding = embedRes.data[0].embedding
 
     const { data: kbResults } = await service.rpc('match_knowledge_items', {
-      query_embedding: embedding,
-      match_threshold: 0.45,
+      query_vector: embedding,
       match_count: 5,
       org_id: orgId,
     })

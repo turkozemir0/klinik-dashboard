@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AccessToken, AgentDispatchClient } from 'livekit-server-sdk'
+import { checkEntitlement } from '@/lib/entitlements'
 
 const LIVEKIT_URL    = process.env.LIVEKIT_URL!
 const LIVEKIT_KEY    = process.env.LIVEKIT_API_KEY!
@@ -9,6 +10,9 @@ export async function POST(req: NextRequest) {
   const { orgId, model = 'claude-sonnet-4-6' } = await req.json()
 
   if (!orgId) return NextResponse.json({ error: 'orgId required' }, { status: 400 })
+
+  const ent = await checkEntitlement(orgId, 'voice_agent_inbound')
+  if (!ent.enabled) return NextResponse.json({ error: 'upgrade_required', feature: 'voice_agent_inbound' }, { status: 403 })
 
   const roomName = `test-${orgId.slice(0, 8)}-${Date.now()}`
   const identity = `test-user-${Date.now()}`

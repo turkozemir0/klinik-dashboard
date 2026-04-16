@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Plus, Edit2, Trash2, ToggleLeft, ToggleRight, ChevronLeft, Search } from 'lucide-react'
 import Link from 'next/link'
 import type { KnowledgeItem } from '@/lib/types'
-import { t } from '@/lib/i18n'
+import { useT } from '@/lib/lang-context'
 import KBItemModal from './KBItemModal'
 
 interface Org {
@@ -46,6 +46,7 @@ const sectorColors: Record<string, string> = {
 type ModalMode = { mode: 'add' } | { mode: 'edit'; item: KnowledgeItem }
 
 export default function AdminKBClient({ org, items: initialItems }: Props) {
+  const t = useT()
   const [items, setItems] = useState<KnowledgeItem[]>(initialItems)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')

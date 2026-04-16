@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   if (!superAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { name, slug, sector } = await request.json()
+  const { name, slug, sector, clinic_type, role } = await request.json()
   if (!name || !slug || !sector) return NextResponse.json({ error: 'name, slug ve sector zorunlu' }, { status: 400 })
 
   const normalizedSlug = String(slug).trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
@@ -49,7 +49,14 @@ export async function POST(request: NextRequest) {
 
   const { error: tokenError } = await service
     .from('invite_tokens')
-    .insert({ token, organization_id: org.id, expires_at: expiresAt, is_used: false })
+    .insert({
+      token,
+      organization_id: org.id,
+      expires_at: expiresAt,
+      is_used: false,
+      clinic_type: clinic_type ?? 'other',
+      role: role ?? 'admin',
+    })
 
   if (tokenError) return NextResponse.json({ error: tokenError.message }, { status: 500 })
 

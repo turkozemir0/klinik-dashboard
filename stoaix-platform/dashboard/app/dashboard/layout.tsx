@@ -1,6 +1,11 @@
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import Sidebar from '@/components/Sidebar'
+import BillingStatusBanner from '@/components/billing/BillingStatusBanner'
+import ConsentGuard from '@/components/ConsentGuard'
+import { LangProvider } from '@/lib/lang-context'
+import type { Lang } from '@/lib/i18n'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
@@ -8,7 +13,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!user) redirect('/login')
 
-  // Get org info
   const { data: orgUser } = await supabase
     .from('org_users')
     .select('organization_id, role, organization:organizations(id, name, slug, sector)')
@@ -21,15 +25,28 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .eq('user_id', user.id)
     .maybeSingle()
 
-  // For super admin without an org, show a default
   const orgName = (orgUser?.organization as any)?.name ?? (superAdmin ? 'stoaix Admin' : '')
+  const orgId = (orgUser?.organization as any)?.id ?? null
+  const userRole = orgUser?.role ?? null
+
+  const cookieLang = cookies().get('lang')?.value as Lang | undefined
+  const initialLang: Lang = cookieLang === 'en' ? 'en' : 'tr'
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <Sidebar orgName={orgName} isSuperAdmin={!!superAdmin} />
-      <main className="flex-1 min-w-0 overflow-auto">
-        {children}
-      </main>
-    </div>
+    <LangProvider initialLang={initialLang}>
+      <div className="relative flex min-h-screen [min-height:100dvh] bg-transparent">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute left-[-12rem] top-[-10rem] h-[24rem] w-[24rem] rounded-full bg-sky-200/30 blur-3xl" />
+          <div className="absolute right-[-10rem] top-[8rem] h-[22rem] w-[22rem] rounded-full bg-teal-200/25 blur-3xl" />
+        </div>
+        <Sidebar orgName={orgName} isSuperAdmin={!!superAdmin} userRole={userRole} userId={user.id} orgId={orgId} />
+        <main className="relative flex-1 min-w-0 overflow-auto pt-16 md:pt-0">
+          <BillingStatusBanner />
+          <ConsentGuard>
+            {children}
+          </ConsentGuard>
+        </main>
+      </div>
+    </LangProvider>
   )
 }

@@ -3,6 +3,17 @@
 import { useState } from 'react'
 import { X, Copy, Check } from 'lucide-react'
 
+const CLINIC_TYPES = [
+  { id: 'hair_transplant',     label: 'Saç Ekimi Kliniği' },
+  { id: 'dental',              label: 'Diş Kliniği' },
+  { id: 'medical_aesthetics',  label: 'Medikal Estetik' },
+  { id: 'surgical_aesthetics', label: 'Cerrahi Estetik' },
+  { id: 'physiotherapy',       label: 'Fizyoterapi / Rehabilitasyon' },
+  { id: 'ophthalmology',       label: 'Göz Hastalıkları' },
+  { id: 'general_practice',    label: 'Genel Pratisyen / Aile Hekimi' },
+  { id: 'other',               label: 'Diğer' },
+]
+
 interface Props {
   onClose: () => void
 }
@@ -11,6 +22,8 @@ export default function NewOrgModal({ onClose }: Props) {
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [sector, setSector] = useState('education')
+  const [clinicType, setClinicType] = useState('hair_transplant')
+  const [inviteRole, setInviteRole] = useState('yönetici')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [inviteUrl, setInviteUrl] = useState('')
@@ -30,7 +43,13 @@ export default function NewOrgModal({ onClose }: Props) {
     const res = await fetch('/api/orgs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), slug: slug.trim(), sector }),
+      body: JSON.stringify({
+        name: name.trim(),
+        slug: slug.trim(),
+        sector,
+        clinic_type: sector === 'clinic' ? clinicType : 'other',
+        role: inviteRole,
+      }),
     })
 
     const data = await res.json()
@@ -100,6 +119,37 @@ export default function NewOrgModal({ onClose }: Props) {
                 <option value="construction">İnşaat & Mimarlık</option>
                 <option value="finance">Finans & Sigorta</option>
                 <option value="other">Diğer</option>
+              </select>
+            </div>
+
+            {sector === 'clinic' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Klinik Branşı</label>
+                <select
+                  value={clinicType}
+                  onChange={e => setClinicType(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"
+                >
+                  {CLINIC_TYPES.map(ct => (
+                    <option key={ct.id} value={ct.id}>{ct.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">Müşteri onboarding'de branşa özel hazır içerikler otomatik yüklenir.</p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Davet Rolü</label>
+              <select
+                value={inviteRole}
+                onChange={e => setInviteRole(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"
+              >
+                <option value="admin">Admin — tam erişim</option>
+                <option value="yönetici">Yönetici — tam erişim (billing hariç)</option>
+                <option value="satisci">Satışçı — leads + teklifler</option>
+                <option value="muhasebe">Muhasebe — ödemeler</option>
+                <option value="viewer">Viewer — salt okunur</option>
               </select>
             </div>
 

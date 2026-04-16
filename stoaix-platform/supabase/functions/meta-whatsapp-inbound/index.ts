@@ -1,15 +1,17 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { handleInboundMessage, getSupabase } from '../_shared/chat-engine.ts'
+import { handleInboundMessage, updateLeadWithVision, getSupabase } from '../_shared/chat-engine.ts'
 
 // ─── Meta Cloud API webhook types ─────────────────────────────────────────────
 // Docs: https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks
 
-interface MetaTextMessage {
+interface MetaMessage {
   from:      string   // wa_id — phone without '+', e.g. "905551234567"
-  id:        string   // message ID (used to avoid duplicate processing)
-  type:      string   // 'text' | 'image' | 'audio' | 'document' | 'sticker' | ...
+  to?:       string   // present in SMB echo (outbound), value = wa_id of the recipient
+  id:        string   // wamid — used for idempotency
+  type:      string   // 'text' | 'image' | 'audio' | 'document' | ...
   timestamp: string
   text?:     { body: string }
+  image?:    { id: string; mime_type?: string; caption?: string }
 }
 
 interface MetaWebhookPayload {
@@ -27,12 +29,35 @@ interface MetaWebhookPayload {
           profile: { name: string }
           wa_id: string
         }>
-        messages?: MetaTextMessage[]
-        statuses?: unknown[]  // delivery/read receipts — ignored
+        messages?: MetaMessage[]
+        statuses?: Array<{
+          id:     string
+          status: 'sent' | 'delivered' | 'read' | 'failed'
+          recipient_id?: string
+        }>
+        // Template status update events
+        message_template?: {
+          name:             string
+          status:           'APPROVED' | 'REJECTED' | 'PENDING' | 'PAUSED' | 'DISABLED'
+          id?:              string
+          rejection_reason?: string
+          category?:        string
+          language?:        string
+        }
+        waba_id?: string
       }
-      field: string  // 'messages'
+      field: string  // 'messages' | 'message_template_status_update'
     }>
   }>
+}
+
+// ─── Sector-aware vision prompts ──────────────────────────────────────────────
+
+const VISION_PROMPTS: Record<string, string> = {
+  dental:     'Hangi diş bölgesi? Kırık, renk bozukluğu, eksik diş, dolgu, protez var mı? Kısa, klinik.',
+  hair:       'Dökülme alanı, yoğunluk, bölge? Norwood skalasına göre tahmin.',
+  aesthetics: 'Hangi bölge, ne tür endikasyon? Botoks, filler, ameliyat?',
+  default:    'Klinik açıdan önemli bir bilgi var mı? Kısa tut.',
 }
 
 // ─── Meta Graph API helpers ───────────────────────────────────────────────────
@@ -62,29 +87,168 @@ async function sendMetaMessage(
   if (!res.ok) console.error(`Meta send failed ${res.status}: ${await res.text()}`)
 }
 
-// ─── Main handler ─────────────────────────────────────────────────────────────
+// ─── GPT-4o Vision call ───────────────────────────────────────────────────────
+
+async function callGPTVision(imageUrl: string, prompt: string): Promise<string> {
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')!}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        max_tokens: 200,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text',      text: prompt },
+            { type: 'image_url', image_url: { url: imageUrl, detail: 'low' } },
+          ],
+        }],
+      }),
+    })
+    if (!res.ok) {
+      console.error(`GPT-4o Vision failed ${res.status}`)
+      return ''
+    }
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content ?? ''
+  } catch (err) {
+    console.error('Vision error:', err)
+    return ''
+  }
+}
+
+// ─── SMB Echo: human agent sent a message from the mobile/web app ─────────────
+// In coexistence mode, messages sent by the sales rep appear as echo webhooks.
+// message.from === phoneNumberId → outbound echo from our number.
+
+async function handleHumanEcho(
+  supabase:      ReturnType<typeof getSupabase>,
+  orgId:         string,
+  message:       MetaMessage
+): Promise<void> {
+  // 'to' in an echo = the customer's wa_id
+  const customerWaId = message.to
+  if (!customerWaId) return
+
+  const customerPhone = '+' + customerWaId
+
+  const { data: contact } = await supabase
+    .from('contacts')
+    .select('id')
+    .eq('organization_id', orgId)
+    .filter("channel_identifiers->>'wa_id'", 'eq', customerWaId)
+    .maybeSingle()
+
+  if (!contact?.id) return
+
+  const { data: convo } = await supabase
+    .from('conversations')
+    .select('id, mode')
+    .eq('organization_id', orgId)
+    .eq('contact_id', contact.id)
+    .eq('channel', 'whatsapp')
+    .eq('status', 'active')
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!convo?.id) return
+
+  if (convo.mode !== 'human') {
+    await supabase
+      .from('conversations')
+      .update({ mode: 'human' })
+      .eq('id', convo.id)
+  }
+
+  await supabase
+    .from('follow_up_tasks')
+    .update({ status: 'cancelled' })
+    .eq('organization_id', orgId)
+    .eq('contact_id', contact.id)
+    .eq('status', 'pending')
+    .like('sequence_stage', 're_contact_%')
+
+  await supabase.from('notifications').insert({
+    organization_id: orgId,
+    type:            'human_echo_detected',
+    conversation_id: convo.id,
+    title:           'Satışçı konuşmayı devraldı',
+    body:            `Mobil/web üzerinden mesaj gönderildi (${customerPhone}). AI modu kapatıldı.`,
+  })
+}
+
+// ─── Image message handler (Vision Pipeline) ─────────────────────────────────
+
+async function handleImageMessage(
+  phoneNumberId: string,
+  message:       MetaMessage,
+  org:           { id: string; sector?: string | null },
+  accessToken:   string,
+  waId:          string
+): Promise<void> {
+  const mediaId = message.image?.id
+  if (!mediaId) return
+
+  // Step 1: Resolve media URL from Meta Graph API
+  const infoRes = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`, {
+    headers: { 'Authorization': `Bearer ${accessToken}` },
+  })
+  if (!infoRes.ok) {
+    console.error(`Meta media info failed ${infoRes.status}`)
+    await sendMetaMessage(accessToken, phoneNumberId, waId,
+      'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.')
+    return
+  }
+  const infoData = await infoRes.json()
+  const mediaUrl = infoData.url
+  if (!mediaUrl) {
+    await sendMetaMessage(accessToken, phoneNumberId, waId,
+      'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.')
+    return
+  }
+
+  // Step 2: Download the actual image bytes (Meta media URLs require Bearer auth)
+  const imgRes = await fetch(mediaUrl, {
+    headers: { 'Authorization': `Bearer ${accessToken}` },
+  })
+  if (!imgRes.ok) {
+    console.error(`Meta media download failed ${imgRes.status}`)
+    await sendMetaMessage(accessToken, phoneNumberId, waId,
+      'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.')
+    return
+  }
+
+  // Convert to base64 data URL for GPT-4o Vision
+  const blob    = await imgRes.arrayBuffer()
+  const mime    = infoData.mime_type ?? 'image/jpeg'
+  const dataUrl = `data:${mime};base64,${toBase64(blob)}`
+
+  const sector  = (org as any).sector ?? 'default'
+  const prompt  = VISION_PROMPTS[sector] ?? VISION_PROMPTS.default
+  const analysis = await callGPTVision(dataUrl, prompt)
+
+  const supabase = getSupabase()
+  if (analysis) {
+    await updateLeadWithVision(supabase, org.id, waId, analysis, message.id)
+  }
+
+  await sendMetaMessage(accessToken, phoneNumberId, waId,
+    'Fotoğrafınızı aldım, uzman ekibimiz inceleyecek. ✅')
+}
+
+// ─── Main inbound handler ─────────────────────────────────────────────────────
 
 async function handleInbound(
   phoneNumberId: string,
-  message:       MetaTextMessage
+  message:       MetaMessage,
+  orgs:          any[]
 ): Promise<void> {
-  // Only process text messages — skip images, audio, stickers, etc. for now
-  if (message.type !== 'text' || !message.text?.body?.trim()) return
-
-  const supabase    = getSupabase()
-  const waId        = message.from              // e.g. "905551234567"
-  const phone       = '+' + waId               // E.164: "+905551234567"
-  const messageText = message.text.body.trim()
-
-  // Find org by Meta phone_number_id.
-  // Supports two storage paths:
-  //   1. Legacy:  crm_config.provider === 'meta'      + crm_config.phone_number_id
-  //   2. Current: channel_config.whatsapp.provider === 'whatsapp_cloud' + channel_config.whatsapp.credentials.phone_number_id
-  const { data: orgs } = await supabase
-    .from('organizations')
-    .select('id, crm_config, channel_config')
-    .eq('status', 'active')
-
+  // Find org — supports both legacy crm_config.provider==='meta' and channel_config.whatsapp.provider==='whatsapp_cloud'
   const org = orgs?.find((o: any) => {
     const crm = o.crm_config as Record<string, string>
     if (crm?.provider === 'meta' && crm?.phone_number_id === phoneNumberId) return true
@@ -97,28 +261,146 @@ async function handleInbound(
     return
   }
 
-  // Resolve access token — prefer channel_config.whatsapp.credentials, fall back to crm_config
-  const waCreds   = (org.channel_config as any)?.whatsapp?.credentials ?? {}
-  const crm       = org.crm_config as Record<string, string>
+  const waCreds     = (org.channel_config as any)?.whatsapp?.credentials ?? {}
+  const crm         = org.crm_config as Record<string, string>
   const accessToken = waCreds.access_token ?? crm.access_token
 
-  await handleInboundMessage({
-    supabase,
-    orgId: org.id,
-    phone,
-    providerContactId:    waId,
-    channelIdentifierKey: 'wa_id',
-    channel:              'whatsapp',
-    messageText,
-    channelMetadata: {
-      wa_id:           waId,
-      phone_number_id: phoneNumberId,
-    },
-    // Meta Graph API — send reply back to the same wa_id
-    sendReply: (msg) => sendMetaMessage(accessToken, phoneNumberId, waId, msg),
-    // Meta doesn't have a built-in CRM pipeline — onNewLead is omitted.
-    // If the customer also uses a CRM, add integration here.
-  })
+  if (!accessToken) {
+    console.error(`Missing access_token for org: ${org.id}`)
+    return
+  }
+
+  const supabase = getSupabase()
+  const waId     = message.from
+  const phone    = '+' + waId
+
+  switch (message.type) {
+    case 'text': {
+      const messageText = message.text?.body?.trim() ?? ''
+      if (!messageText) return
+      await handleInboundMessage({
+        supabase,
+        orgId:                org.id,
+        phone,
+        providerContactId:    waId,
+        channelIdentifierKey: 'wa_id',
+        channel:              'whatsapp',
+        messageText,
+        externalId:           message.id,
+        channelMetadata: {
+          wa_id:           waId,
+          phone_number_id: phoneNumberId,
+          provider:        'whatsapp_cloud',
+        },
+        sendReply: (msg) => sendMetaMessage(accessToken, phoneNumberId, waId, msg),
+      })
+      break
+    }
+
+    case 'image': {
+      await handleImageMessage(phoneNumberId, message, org, accessToken, waId)
+      break
+    }
+
+    default: {
+      // Audio, document, sticker, location, etc.
+      await sendMetaMessage(accessToken, phoneNumberId, waId,
+        'Üzgünüm, şu an yalnızca metin ve görsel mesajları anlayabiliyorum. Lütfen yazmak istediğinizi metin olarak iletin.')
+      break
+    }
+  }
+}
+
+// ─── Template status update handler ──────────────────────────────────────────
+// Called when Meta approves or rejects a submitted template.
+
+async function handleTemplateStatusUpdate(
+  supabase:        ReturnType<typeof getSupabase>,
+  templateEvent:   NonNullable<MetaWebhookPayload['entry'][0]['changes'][0]['value']['message_template']>,
+  wabaId?:         string
+): Promise<void> {
+  const { name, status, id: metaTemplateId, rejection_reason } = templateEvent
+
+  // Map Meta status to our DB status
+  const statusMap: Record<string, string> = {
+    APPROVED: 'approved',
+    REJECTED: 'rejected',
+    PENDING:  'pending',
+    PAUSED:   'rejected',
+    DISABLED: 'rejected',
+  }
+  const dbStatus = statusMap[status]
+  if (!dbStatus) return
+
+  // Find the template in DB — match by name + waba_id (via org's channel_config)
+  // First try to find the org by waba_id, then find the template
+  let orgId: string | null = null
+  if (wabaId) {
+    const { data: orgs } = await supabase
+      .from('organizations')
+      .select('id, channel_config')
+      .eq('status', 'active')
+    const matchOrg = orgs?.find((o: any) => {
+      const waCreds = (o.channel_config as any)?.whatsapp?.credentials
+      return waCreds?.waba_id === wabaId
+    })
+    orgId = matchOrg?.id ?? null
+  }
+
+  const query = supabase
+    .from('message_templates')
+    .update({
+      status:           dbStatus,
+      meta_template_id: metaTemplateId ?? null,
+      rejection_reason: rejection_reason ?? null,
+      updated_at:       new Date().toISOString(),
+    })
+    .eq('name', name)
+
+  if (orgId) {
+    query.eq('organization_id', orgId)
+  }
+
+  const { error } = await query
+  if (error) {
+    console.error(`Template status update failed for "${name}":`, error.message)
+  } else {
+    console.log(`Template "${name}" status updated → ${dbStatus}`)
+  }
+}
+
+// ─── HMAC-SHA256 signature verification ───────────────────────────────────────
+// Meta signs every webhook POST with X-Hub-Signature-256: sha256=<hmac>
+// using the Meta App Secret as the key.
+
+async function verifyMetaSignature(rawBody: Uint8Array, signatureHeader: string | null): Promise<boolean> {
+  const appSecret = Deno.env.get('META_APP_SECRET')
+  if (!appSecret) {
+    console.error('META_APP_SECRET not set — skipping signature verification')
+    return true  // fail-open only if secret is not configured (should be set in production)
+  }
+  if (!signatureHeader?.startsWith('sha256=')) return false
+
+  const expected = signatureHeader.slice(7)
+  const keyData  = new TextEncoder().encode(appSecret)
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  )
+  const sig    = await crypto.subtle.sign('HMAC', cryptoKey, rawBody)
+  const actual = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return actual === expected
+}
+
+// ─── Safe base64 encoding (avoids spread stack overflow on large images) ──────
+
+function toBase64(buffer: ArrayBuffer): string {
+  const bytes  = new Uint8Array(buffer)
+  const CHUNK  = 8192
+  let binary   = ''
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(binary)
 }
 
 // ─── HTTP handler ─────────────────────────────────────────────────────────────
@@ -127,7 +409,6 @@ serve(async (req) => {
   const url = new URL(req.url)
 
   // ── Meta webhook verification (one-time GET during app setup) ──
-  // Meta sends: GET ?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...
   if (req.method === 'GET') {
     const mode      = url.searchParams.get('hub.mode')
     const token     = url.searchParams.get('hub.verify_token')
@@ -141,29 +422,74 @@ serve(async (req) => {
 
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
 
+  // ── Verify Meta signature before parsing ──
+  const rawBody = new Uint8Array(await req.arrayBuffer())
+  const sigHeader = req.headers.get('x-hub-signature-256')
+  if (!await verifyMetaSignature(rawBody, sigHeader)) {
+    console.error('Meta webhook signature mismatch — rejecting request')
+    return new Response('Forbidden', { status: 403 })
+  }
+
   let payload: MetaWebhookPayload
   try {
-    payload = await req.json()
+    payload = JSON.parse(new TextDecoder().decode(rawBody))
   } catch {
     return new Response('Bad Request', { status: 400 })
   }
 
-  // Only handle WhatsApp Business Account events
   if (payload.object !== 'whatsapp_business_account') {
     return new Response('OK', { status: 200 })
   }
 
-  // Collect all message-handling tasks across all entries/changes
+  // Load all active orgs once — shared across all messages in this batch
+  const supabase = getSupabase()
+  const { data: orgs } = await supabase
+    .from('organizations')
+    .select('id, sector, crm_config, channel_config')
+    .eq('status', 'active')
+
   const tasks: Promise<void>[] = []
 
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
+      // ── Template approval/rejection events ──
+      if (change.field === 'message_template_status_update') {
+        const { message_template, waba_id } = change.value as any
+        if (message_template) {
+          tasks.push(handleTemplateStatusUpdate(supabase, message_template, waba_id))
+        }
+        continue
+      }
+
       if (change.field !== 'messages') continue
 
-      const phoneNumberId = change.value.metadata.phone_number_id
+      const { metadata, messages: msgs, statuses } = change.value
+      const phoneNumberId = metadata.phone_number_id
 
-      for (const message of change.value.messages ?? []) {
-        tasks.push(handleInbound(phoneNumberId, message))
+      // ── Delivery/read receipts — log failures only ──
+      if (statuses?.length) {
+        for (const s of statuses) {
+          if (s.status === 'failed') {
+            console.error(`Meta WA delivery failed for wamid: ${s.id}`)
+          }
+        }
+        continue
+      }
+
+      for (const message of msgs ?? []) {
+        // SMB Echo: message.from === phoneNumberId → outbound echo from our number
+        if (message.from === phoneNumberId) {
+          const echoOrg = orgs?.find((o: any) => {
+            const crm = o.crm_config as Record<string, string>
+            if (crm?.provider === 'meta' && crm?.phone_number_id === phoneNumberId) return true
+            const wa = (o.channel_config as any)?.whatsapp
+            return wa?.provider === 'whatsapp_cloud' && wa?.credentials?.phone_number_id === phoneNumberId
+          })
+          if (echoOrg) tasks.push(handleHumanEcho(supabase, echoOrg.id, message))
+          continue
+        }
+
+        tasks.push(handleInbound(phoneNumberId, message, orgs ?? []))
       }
     }
   }

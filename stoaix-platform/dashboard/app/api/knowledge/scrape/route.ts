@@ -6,6 +6,21 @@ function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 }
 
+const rateLimitMap = new Map<string, { count: number; date: string }>()
+const DAILY_LIMIT = 5
+
+function checkRateLimit(orgId: string): boolean {
+  const today = new Date().toISOString().slice(0, 10)
+  const entry = rateLimitMap.get(orgId)
+  if (!entry || entry.date !== today) {
+    rateLimitMap.set(orgId, { count: 1, date: today })
+    return true
+  }
+  if (entry.count >= DAILY_LIMIT) return false
+  entry.count++
+  return true
+}
+
 const SCRAPE_SYSTEM_PROMPT = `Sen bir işletme için knowledge base içeriği çıkaran uzmansın.
 Sana verilen web sitesi içeriğinden, bir AI asistanının müşterilere cevap vermesi için kullanabileceği bilgi maddelerini çıkar.
 
@@ -39,6 +54,10 @@ export async function POST(request: NextRequest) {
 
   if (!url || !organization_id) {
     return NextResponse.json({ error: 'url ve organization_id zorunlu' }, { status: 400 })
+  }
+
+  if (!checkRateLimit(organization_id)) {
+    return NextResponse.json({ error: 'Günlük tarama limitine ulaştınız (5/gün). Yarın tekrar deneyin.' }, { status: 429 })
   }
 
   // URL validation

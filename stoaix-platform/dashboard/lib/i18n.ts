@@ -120,5 +120,13 @@ const tr = {
   updateStatus: 'Durumu Güncelle',
 }
 
-export type I18nKeys = keyof typeof tr
+export type I18nKeys    = keyof typeof tr
+export type Translations = typeof tr
+export type Lang         = 'tr' | 'en'
+
 export const t = tr
+
+// EN translations not yet implemented — falls back to TR
+export function getT(_lang: Lang): Translations {
+  return tr
+}

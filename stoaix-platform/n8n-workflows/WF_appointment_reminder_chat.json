@@ -1,0 +1,186 @@
+{
+  "name": "stoaix — C4 Appointment Reminder Chat",
+  "nodes": [
+
+    {
+      "id": "n01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "parameters": {
+        "path": "appointment-reminder-chat",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "webhookId": "c4-appointment-reminder-chat"
+    },
+
+    {
+      "id": "n02",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [420, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "cfg_sb_url", "name": "SUPABASE_URL",         "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co", "type": "string" },
+            { "id": "cfg_sb_key", "name": "SUPABASE_SERVICE_KEY", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",           "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "n03",
+      "name": "Fetch Org WA Credentials",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/organizations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "id",     "value": "={{ 'eq.' + $('Webhook').first().json.body.org_id }}" },
+            { "name": "select", "value": "id,name,channel_config,ai_persona" },
+            { "name": "limit",  "value": "1" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "n04",
+      "name": "Build Reminder Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 300],
+      "parameters": {
+        "jsCode": "const orgArr  = $('Fetch Org WA Credentials').all();\nconst org     = orgArr[0]?.json ?? {};\nconst payload = $('Webhook').first().json.body;\n\nconst wa    = org.channel_config?.whatsapp;\nconst creds = wa?.credentials;\n\nif (!wa?.active || !creds?.phone_number_id || !creds?.access_token) {\n  return [{ json: {\n    skip: true,\n    run_id:       payload.run_id,\n    callback_url: payload.callback_url,\n  } }];\n}\n\nconst lang        = org.ai_persona?.language || 'tr';\nconst contactName = payload.contact_data?.name || '';\nconst apptTime    = payload.contact_data?.appointment_time || payload.config?.appointment_time || '';\nconst orgName     = org.name || '';\n\n// T-2h reminder — use approved template if outside 24h window\n// Default: use re_engagement_v1 template (approved)\nconst templateName = payload.config?.message_template || 're_engagement_v1';\nconst templateLang = lang === 'en' ? 'en_US' : 'tr';\n\nreturn [{ json: {\n  skip:             false,\n  phone_number_id:  creds.phone_number_id,\n  access_token:     creds.access_token,\n  to_phone:         payload.phone.replace(/^\\+/, ''),\n  template_name:    templateName,\n  template_lang:    templateLang,\n  run_id:           payload.run_id,\n  callback_url:     payload.callback_url,\n} }];"
+      }
+    },
+
+    {
+      "id": "n05",
+      "name": "WA Configured?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1080, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue":  "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+
+    {
+      "id": "n06",
+      "name": "Send WA Template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v19.0/{{ $json.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $json.access_token }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.to_phone }}\",\n  \"type\": \"template\",\n  \"template\": {\n    \"name\": \"{{ $json.template_name }}\",\n    \"language\": { \"code\": \"{{ $json.template_lang }}\" }\n  }\n}"
+      }
+    },
+
+    {
+      "id": "n07",
+      "name": "Callback — Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Build Reminder Message').item.json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"run_id\": \"{{ $('Build Reminder Message').item.json.run_id }}\",\n  \"status\": \"success\",\n  \"result\": { \"notes\": \"Appointment T-2h reminder WA template sent\" }\n}"
+      }
+    },
+
+    {
+      "id": "n08",
+      "name": "Callback — WA Not Configured",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 420],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"status\": \"failed\",\n  \"result\": { \"notes\": \"WhatsApp not configured for this org\" }\n}"
+      }
+    }
+
+  ],
+
+  "connections": {
+    "Webhook":                  { "main": [[{ "node": "Config",                      "type": "main", "index": 0 }]] },
+    "Config":                   { "main": [[{ "node": "Fetch Org WA Credentials",    "type": "main", "index": 0 }]] },
+    "Fetch Org WA Credentials": { "main": [[{ "node": "Build Reminder Message",      "type": "main", "index": 0 }]] },
+    "Build Reminder Message":   { "main": [[{ "node": "WA Configured?",              "type": "main", "index": 0 }]] },
+    "WA Configured?": {
+      "main": [
+        [{ "node": "Send WA Template",               "type": "main", "index": 0 }],
+        [{ "node": "Callback — WA Not Configured",   "type": "main", "index": 0 }]
+      ]
+    },
+    "Send WA Template": { "main": [[{ "node": "Callback — Success", "type": "main", "index": 0 }]] }
+  },
+
+  "active": false,
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "pinData": {},
+  "meta": { "instanceId": "stoaix-platform" },
+  "notes": "C4 Appointment Reminder Chat (T-2h). Sends approved WA template. Triggered by n8n schedule polling appointments table. No Wait node — schedule fires when appointment is 2h away."
+}

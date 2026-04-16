@@ -1,0 +1,255 @@
+{
+  "name": "stoaix — SCHED Appointment Trigger Poller",
+  "nodes": [
+
+    {
+      "id": "n01",
+      "name": "Schedule — Every 15min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+        }
+      }
+    },
+
+    {
+      "id": "n02",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [420, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "cfg_sb_url",  "name": "SUPABASE_URL",         "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co",   "type": "string" },
+            { "id": "cfg_sb_key",  "name": "SUPABASE_SERVICE_KEY", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",             "type": "string" },
+            { "id": "cfg_dash",    "name": "DASHBOARD_URL",        "value": "https://platform.stoaix.com",                "type": "string" },
+            { "id": "cfg_secret",  "name": "INTERNAL_SECRET",      "value": "YOUR_WORKFLOW_INTERNAL_SECRET",              "type": "string" },
+            { "id": "cfg_tz",      "name": "TZ_OFFSET_HOURS",      "value": "3",                                          "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "n03",
+      "name": "Fetch Appointments to Confirm (T-24h)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 180],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/appointments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "select",       "value": "id,organization_id,contact_id,lead_id,scheduled_at,metadata" },
+            { "name": "status",       "value": "=in.(scheduled,confirmed)" },
+            { "name": "scheduled_at", "value": "={{ 'gte.' + new Date(Date.now() + (24*3600 - 900)*1000).toISOString() }}" },
+            { "name": "scheduled_at", "value": "={{ 'lte.' + new Date(Date.now() + (24*3600 + 900)*1000).toISOString() }}" },
+            { "name": "limit",        "value": "50" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "n04",
+      "name": "Fetch Appointments to Remind (T-2h)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/appointments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "select",       "value": "id,organization_id,contact_id,lead_id,scheduled_at,metadata" },
+            { "name": "status",       "value": "=in.(scheduled,confirmed)" },
+            { "name": "scheduled_at", "value": "={{ 'gte.' + new Date(Date.now() + (2*3600 - 900)*1000).toISOString() }}" },
+            { "name": "scheduled_at", "value": "={{ 'lte.' + new Date(Date.now() + (2*3600 + 900)*1000).toISOString() }}" },
+            { "name": "limit",        "value": "50" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "n05",
+      "name": "Fetch No-Show Candidates (T+30m)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 420],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/appointments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "select",       "value": "id,organization_id,contact_id,lead_id,scheduled_at,metadata" },
+            { "name": "status",       "value": "=in.(scheduled,confirmed)" },
+            { "name": "scheduled_at", "value": "={{ 'gte.' + new Date(Date.now() - (60*3600)*1000).toISOString() }}" },
+            { "name": "scheduled_at", "value": "={{ 'lte.' + new Date(Date.now() - (30*60)*1000).toISOString() }}" },
+            { "name": "limit",        "value": "50" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "n06",
+      "name": "Dispatch Confirm Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 180],
+      "parameters": {
+        "jsCode": "const cfg   = $('Config').first().json;\nconst items = $('Fetch Appointments to Confirm (T-24h)').all();\n\nconst results = [];\nfor (const item of items) {\n  const appt = item.json;\n  if (!appt?.id) continue;\n\n  const apptDate = new Date(appt.scheduled_at);\n  const apptLabel = apptDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', hour12: false });\n\n  // POST to process-trigger — it will dispatch V5 + C3 if active\n  const body = JSON.stringify({\n    event:  'appointment_created',  // reuse — process-trigger maps to correct templates\n    org_id: appt.organization_id,\n    ref_id: appt.id,\n    data:   {\n      ...appt,\n      appointment_time: apptLabel,\n      _schedule_source: 't_minus_24h',\n    },\n  });\n\n  results.push({ json: { body, appt_id: appt.id, org_id: appt.organization_id } });\n}\n\nreturn results.length ? results : [{ json: { skip: true } }];"
+      }
+    },
+
+    {
+      "id": "n07",
+      "name": "Dispatch Reminder Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "jsCode": "const cfg   = $('Config').first().json;\nconst items = $('Fetch Appointments to Remind (T-2h)').all();\n\nconst results = [];\nfor (const item of items) {\n  const appt = item.json;\n  if (!appt?.id) continue;\n\n  const apptDate = new Date(appt.scheduled_at);\n  const apptLabel = apptDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', hour12: false });\n\n  const body = JSON.stringify({\n    event:  'appointment_reminder',\n    org_id: appt.organization_id,\n    ref_id: appt.id,\n    data:   {\n      ...appt,\n      appointment_time: apptLabel,\n      _schedule_source: 't_minus_2h',\n    },\n  });\n\n  results.push({ json: { body, appt_id: appt.id, org_id: appt.organization_id } });\n}\n\nreturn results.length ? results : [{ json: { skip: true } }];"
+      }
+    },
+
+    {
+      "id": "n08",
+      "name": "Dispatch No-Show Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 420],
+      "parameters": {
+        "jsCode": "const cfg   = $('Config').first().json;\nconst items = $('Fetch No-Show Candidates (T+30m)').all();\n\nconst results = [];\nfor (const item of items) {\n  const appt = item.json;\n  if (!appt?.id) continue;\n\n  const body = JSON.stringify({\n    event:  'appointment_noshow',\n    org_id: appt.organization_id,\n    ref_id: appt.id,\n    data:   {\n      ...appt,\n      _schedule_source: 'no_show_detection',\n    },\n  });\n\n  results.push({ json: { body, appt_id: appt.id, org_id: appt.organization_id } });\n}\n\nreturn results.length ? results : [{ json: { skip: true } }];"
+      }
+    },
+
+    {
+      "id": "n09",
+      "name": "Post Confirm to Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 180],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.DASHBOARD_URL }}/api/workflows/process-trigger",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type",       "value": "application/json" },
+            { "name": "x-internal-secret",  "value": "={{ $('Config').first().json.INTERNAL_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}"
+      }
+    },
+
+    {
+      "id": "n10",
+      "name": "Post Reminder to Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.DASHBOARD_URL }}/api/workflows/process-trigger",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type",       "value": "application/json" },
+            { "name": "x-internal-secret",  "value": "={{ $('Config').first().json.INTERNAL_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}"
+      }
+    },
+
+    {
+      "id": "n11",
+      "name": "Post No-Show to Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 420],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.DASHBOARD_URL }}/api/workflows/process-trigger",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type",       "value": "application/json" },
+            { "name": "x-internal-secret",  "value": "={{ $('Config').first().json.INTERNAL_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}"
+      }
+    }
+
+  ],
+
+  "connections": {
+    "Schedule — Every 15min": {
+      "main": [[
+        { "node": "Config", "type": "main", "index": 0 }
+      ]]
+    },
+    "Config": {
+      "main": [[
+        { "node": "Fetch Appointments to Confirm (T-24h)", "type": "main", "index": 0 },
+        { "node": "Fetch Appointments to Remind (T-2h)",  "type": "main", "index": 0 },
+        { "node": "Fetch No-Show Candidates (T+30m)",     "type": "main", "index": 0 }
+      ]]
+    },
+    "Fetch Appointments to Confirm (T-24h)": { "main": [[{ "node": "Dispatch Confirm Events",  "type": "main", "index": 0 }]] },
+    "Fetch Appointments to Remind (T-2h)":   { "main": [[{ "node": "Dispatch Reminder Events", "type": "main", "index": 0 }]] },
+    "Fetch No-Show Candidates (T+30m)":      { "main": [[{ "node": "Dispatch No-Show Events",  "type": "main", "index": 0 }]] },
+    "Dispatch Confirm Events":  { "main": [[{ "node": "Post Confirm to Dashboard",  "type": "main", "index": 0 }]] },
+    "Dispatch Reminder Events": { "main": [[{ "node": "Post Reminder to Dashboard", "type": "main", "index": 0 }]] },
+    "Dispatch No-Show Events":  { "main": [[{ "node": "Post No-Show to Dashboard",  "type": "main", "index": 0 }]] }
+  },
+
+  "active": false,
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "pinData": {},
+  "meta": { "instanceId": "stoaix-platform" },
+  "notes": "SCHED: Runs every 15 minutes. Detects T-24h, T-2h, and no-show (T+30m) appointments. POSTs to /api/workflows/process-trigger → fans out to V5/V6/V7/C3/C4 workflows as configured per org. IMPORTANT: Set active=true when going live."
+}

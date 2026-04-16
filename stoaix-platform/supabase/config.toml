@@ -26,3 +26,12 @@ file_size_limit = "50MiB"
 
 [analytics]
 enabled = false
+
+[functions.instagram-inbound]
+verify_jwt = false
+
+[functions.dialog-inbound]
+verify_jwt = false
+
+[functions.meta-whatsapp-inbound]
+verify_jwt = false

@@ -50,43 +50,38 @@ function RegisterForm() {
     setLoading(true)
     setError('')
 
-    try {
-      const supabase = createClient()
-      await supabase.auth.signOut()
-      const { data, error: signUpError } = await supabase.auth.signUp({ email, password })
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    const { data, error: signUpError } = await supabase.auth.signUp({ email, password })
 
-      if (signUpError) {
-        setError(signUpError.message)
-        setLoading(false)
-        return
-      }
-
-      const userId = data.user?.id
-      if (!userId) {
-        setError('Kayıt tamamlanamadı.')
-        setLoading(false)
-        return
-      }
-
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, user_id: userId }),
-      })
-
-      if (!res.ok) {
-        const d = await res.json()
-        setError(d.error || 'Kayıt tamamlanamadı.')
-        setLoading(false)
-        return
-      }
-
-      const d = await res.json()
-      router.push(d.redirect ?? '/onboarding')
-    } catch (err) {
-      setError('Bağlantı hatası. Lütfen tekrar deneyin.')
+    if (signUpError) {
+      setError(signUpError.message)
       setLoading(false)
+      return
     }
+
+    const userId = data.user?.id
+    if (!userId) {
+      setError('Kayıt tamamlanamadı.')
+      setLoading(false)
+      return
+    }
+
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, user_id: userId }),
+    })
+
+    if (!res.ok) {
+      const d = await res.json()
+      setError(d.error || 'Kayıt tamamlanamadı.')
+      setLoading(false)
+      return
+    }
+
+    const d = await res.json()
+    router.push(d.redirect ?? '/onboarding')
   }
 
   if (!tokenChecked) {

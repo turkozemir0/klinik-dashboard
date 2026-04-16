@@ -75,7 +75,7 @@
         "headerParameters": {
           "parameters": [
             { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
           ]
         },
         "sendQuery": true,
@@ -145,7 +145,7 @@
         "headerParameters": {
           "parameters": [
             { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
           ]
         },
         "sendQuery": true,
@@ -195,13 +195,14 @@
         "headerParameters": {
           "parameters": [
             { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
             { "name": "Content-Type",  "value": "application/json" },
             { "name": "Prefer",        "value": "return=representation" }
           ]
         },
         "sendBody": true,
         "contentType": "json",
+        "specifyBody": "json",
         "jsonBody": "={\n  \"organization_id\": \"{{ $('Merge Org + Contact Data').first().json.orgId }}\",\n  \"phone\":           {{ $('Merge Org + Contact Data').first().json.phone ? '\"' + $('Merge Org + Contact Data').first().json.phone + '\"' : 'null' }},\n  \"source_channel\":  \"whatsapp\",\n  \"status\":          \"new\",\n  \"channel_identifiers\": {\n    \"ghl_contact_id\": \"{{ $('Merge Org + Contact Data').first().json.ghlContactId }}\"\n  }\n}"
       }
     },
@@ -230,7 +231,7 @@
         "headerParameters": {
           "parameters": [
             { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
           ]
         },
         "sendQuery": true,
@@ -280,13 +281,14 @@
         "headerParameters": {
           "parameters": [
             { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
             { "name": "Content-Type",  "value": "application/json" },
             { "name": "Prefer",        "value": "return=representation" }
           ]
         },
         "sendBody": true,
         "contentType": "json",
+        "specifyBody": "json",
         "jsonBody": "={\n  \"organization_id\":    \"{{ $('Extract Contact ID').first().json.orgId }}\",\n  \"contact_id\":         \"{{ $('Extract Contact ID').first().json.contactId }}\",\n  \"status\":             \"new\",\n  \"qualification_score\": 5,\n  \"source_channel\":     \"whatsapp\",\n  \"collected_data\":     {{ $('Extract Contact ID').first().json.fullName ? '{\"full_name\": \"' + $('Extract Contact ID').first().json.fullName + '\"}' : '{}' }}\n}"
       }
     },
@@ -315,7 +317,7 @@
         "headerParameters": {
           "parameters": [
             { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
           ]
         },
         "sendQuery": true,
@@ -367,13 +369,20 @@
         "headerParameters": {
           "parameters": [
             { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
             { "name": "Content-Type",  "value": "application/json" },
-            { "name": "Prefer",        "value": "return=minimal" }
+            { "name": "Prefer",        "value": "resolution=ignore-duplicates,return=minimal" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "on_conflict", "value": "organization_id,contact_id,sequence_stage" }
           ]
         },
         "sendBody": true,
         "contentType": "json",
+        "specifyBody": "json",
         "jsonBody": "={\n  \"organization_id\": \"{{ $('Extract Lead ID').first().json.orgId }}\",\n  \"lead_id\":         \"{{ $('Extract Lead ID').first().json.leadId }}\",\n  \"contact_id\":      \"{{ $('Extract Lead ID').first().json.contactId }}\",\n  \"task_type\":       \"whatsapp_followup\",\n  \"sequence_stage\":  \"re_contact_1\",\n  \"channel\":         \"whatsapp\",\n  \"scheduled_at\":    \"{{ $('Extract Lead ID').first().json.scheduledAt }}\",\n  \"status\":          \"pending\"\n}"
       }
     }

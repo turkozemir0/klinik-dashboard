@@ -1,23 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Save, Loader2, Phone, MessageSquare, Instagram } from 'lucide-react'
+import { X, Save, Loader2, Send, CheckCircle2, Calendar } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface VoiceInboundConfig {
   active: boolean
-  inbound_number?: string          // arayanların çevirdiği numara (DID)
+  inbound_number?: string
   connection_type?: 'direct_sip' | 'twilio_bridge' | 'vonage_bridge' | 'other'
-  // direct_sip
-  sip_provider?: string            // 'netgsm' | 'verimor' | 'other'
-  sip_provider_note?: string       // serbest not
-  // twilio / vonage bridge
-  bridge_number?: string           // köprü numarası (Twilio'dan alınan)
+  sip_provider?: string
+  sip_provider_note?: string
+  bridge_number?: string
   bridge_account_sid?: string
   bridge_auth_token?: string
   bridge_twiml_url?: string
-  // LiveKit
   livekit_dispatch_rule_id?: string
   livekit_sip_trunk_id?: string
 }
@@ -25,7 +22,7 @@ interface VoiceInboundConfig {
 interface VoiceOutboundConfig {
   active: boolean
   connection_type?: 'twilio' | 'vonage' | 'livekit_sip' | 'other'
-  from_number?: string             // giden aramalar için kaynak numara
+  from_number?: string
   account_sid?: string
   auth_token?: string
   livekit_sip_outbound_trunk_id?: string
@@ -38,24 +35,33 @@ interface WhatsAppChannelConfig {
   credentials?: Record<string, string>
 }
 
+interface CalendarConfig {
+  provider: 'none' | 'google' | 'dentsoft'
+  calendar_id?: string
+  access_token?: string
+  refresh_token?: string
+  token_expiry?: string
+  api_url?: string
+  api_key?: string
+  clinic_id?: string
+}
+
 interface ChannelConfig {
   voice_inbound:  VoiceInboundConfig
   voice_outbound: VoiceOutboundConfig
   whatsapp:       WhatsAppChannelConfig
   instagram:      { active: boolean; provider?: string; credentials?: Record<string, string> }
+  calendar?:      CalendarConfig
 }
 
 interface CrmConfig {
-  provider: string
-  location_id?: string
-  pit_token?: string
-  pipeline_id?: string
-  calendar_id?: string
-  stage_mapping?: Record<string, string>
-  access_token?: string
-  hubspot_pipeline_id?: string
+  provider: 'none' | 'webhook' | 'dentsoft'
   webhook_url?: string
   webhook_secret?: string
+  events?: string[]
+  api_url?: string
+  api_key?: string
+  clinic_id?: string
 }
 
 interface OrgDetail {
@@ -75,47 +81,49 @@ interface Props {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WA_PROVIDERS = [
-  { value: 'ghl',            label: 'GoHighLevel (WAGHL)',    desc: 'CRM sekmesindeki credentials kullanılır' },
-  { value: 'whatsapp_cloud', label: 'WhatsApp Cloud API',     desc: 'Meta resmi API' },
+  { value: '360dialog',      label: '360dialog (Meta BSP)',   desc: 'Meta resmi BSP — doğrudan WhatsApp Business API' },
+  { value: 'whatsapp_cloud', label: 'WhatsApp Cloud API',     desc: 'Meta resmi API (self-managed)' },
   { value: 'wati',           label: 'WATI',                   desc: 'WATI Business API' },
   { value: 'twilio',         label: 'Twilio WhatsApp',        desc: 'Twilio Messaging' },
 ]
 
 const CRM_PROVIDERS = [
-  { value: 'none',           label: 'Yok (Platform mini-CRM)', desc: 'Sadece stoaix dashboard' },
-  { value: 'ghl',            label: 'GoHighLevel',              desc: 'Pipeline + contact sync' },
-  { value: 'hubspot',        label: 'HubSpot',                  desc: 'Deal pipeline + contact sync' },
-  { value: 'custom_webhook', label: 'Custom Webhook',           desc: 'Kendi CRM\'ine webhook' },
+  { value: 'none',     label: 'Yok (Sadece stoaix CRM)', desc: 'Dış CRM entegrasyonu yok' },
+  { value: 'webhook',  label: 'Outbound Webhook',         desc: 'Her event\'te kendi CRM\'ine JSON gönder' },
+  { value: 'dentsoft', label: 'Dentsoft',                  desc: 'Dentsoft klinik yönetim sistemi — native adapter' },
 ]
 
-const CRM_STAGES = [
-  { key: 'new_lead',           label: 'New Lead' },
-  { key: 'ai_qualifying',      label: 'AI Qualifying' },
-  { key: 'hot_lead',           label: '🔥 Hot Lead / Handoff' },
-  { key: 'nurturing',          label: '⏳ Nurturing' },
-  { key: 'appointment_booked', label: '📅 Appointment Booked' },
-  { key: 'won',                label: '✅ Won' },
-  { key: 'lost',               label: '❌ Lost / Archive' },
-] as const
+const CRM_EVENTS = [
+  { key: 'new_lead',           label: 'new_lead — İlk mesaj geldiğinde' },
+  { key: 'lead_status_change', label: 'lead_status_change — Kualifikasyon / handoff' },
+  { key: 'appointment_booked', label: 'appointment_booked — Randevu onaylandığında' },
+]
+
+const CALENDAR_PROVIDERS = [
+  { value: 'none',     label: 'Kapalı',            desc: 'Randevu özelliği pasif' },
+  { value: 'google',   label: 'Google Takvim',      desc: 'OAuth ile bağlan, Google Calendar\'da randevu aç' },
+  { value: 'dentsoft', label: 'Dentsoft Takvim',    desc: 'Dentsoft CRM üzerinden müsaitlik + randevu' },
+]
 
 const INBOUND_CONNECTION_TYPES = [
-  { value: 'direct_sip',    label: 'Direkt SIP',         desc: 'NETGSM/Verimor/başka Sanal Santral → LiveKit doğrudan' },
-  { value: 'twilio_bridge', label: 'Twilio Köprüsü',     desc: 'Twilio numarası üzerinden köprüleme' },
-  { value: 'vonage_bridge', label: 'Vonage Köprüsü',     desc: 'Vonage (Türk numara desteği var)' },
-  { value: 'other',         label: 'Diğer',               desc: 'Başka SIP provider' },
+  { value: 'direct_sip',    label: 'Direkt SIP',     desc: 'NETGSM/Verimor/başka Sanal Santral → LiveKit doğrudan' },
+  { value: 'twilio_bridge', label: 'Twilio Köprüsü', desc: 'Twilio numarası üzerinden köprüleme' },
+  { value: 'vonage_bridge', label: 'Vonage Köprüsü', desc: 'Vonage (Türk numara desteği var)' },
+  { value: 'other',         label: 'Diğer',           desc: 'Başka SIP provider' },
 ]
 
 const OUTBOUND_CONNECTION_TYPES = [
-  { value: 'twilio',          label: 'Twilio',           desc: 'Twilio Programmable Voice' },
-  { value: 'vonage',          label: 'Vonage',           desc: 'Vonage Voice API' },
-  { value: 'livekit_sip',     label: 'LiveKit SIP',      desc: 'LiveKit outbound SIP trunk' },
-  { value: 'other',           label: 'Diğer',            desc: 'Başka provider' },
+  { value: 'twilio',      label: 'Twilio',      desc: 'Twilio Programmable Voice' },
+  { value: 'vonage',      label: 'Vonage',      desc: 'Vonage Voice API' },
+  { value: 'livekit_sip', label: 'LiveKit SIP', desc: 'LiveKit outbound SIP trunk' },
+  { value: 'other',       label: 'Diğer',       desc: 'Başka provider' },
 ]
 
 const TABS = [
-  { key: 'channels', label: 'Kanallar & Mesajlaşma' },
-  { key: 'sip',      label: 'Ses / SIP' },
-  { key: 'crm',      label: 'CRM' },
+  { key: 'channels',  label: 'Kanallar & Mesajlaşma' },
+  { key: 'sip',       label: 'Ses / SIP' },
+  { key: 'crm',       label: 'Dış CRM' },
+  { key: 'calendar',  label: 'Randevu / Takvim' },
 ] as const
 
 // ─── Small components ─────────────────────────────────────────────────────────
@@ -176,49 +184,55 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
-  const [activeTab, setActiveTab] = useState<'channels' | 'sip' | 'crm'>('channels')
+  const [activeTab, setActiveTab] = useState<'channels' | 'sip' | 'crm' | 'calendar'>('channels')
 
   // ── Channels state ──
   const [waActive, setWaActive]       = useState(false)
-  const [waProvider, setWaProvider]   = useState('ghl')
+  const [waProvider, setWaProvider]   = useState('360dialog')
   const [waCreds, setWaCreds]         = useState<Record<string, string>>({})
   const [igActive, setIgActive]       = useState(false)
 
   // ── Inbound SIP state ──
-  const [inbActive, setInbActive]           = useState(false)
-  const [inbNumber, setInbNumber]           = useState('')
-  const [inbConnType, setInbConnType]       = useState<string>('direct_sip')
-  const [inbSipProvider, setInbSipProvider] = useState('')
-  const [inbSipNote, setInbSipNote]         = useState('')
+  const [inbActive, setInbActive]             = useState(false)
+  const [inbNumber, setInbNumber]             = useState('')
+  const [inbConnType, setInbConnType]         = useState<string>('direct_sip')
+  const [inbSipProvider, setInbSipProvider]   = useState('')
+  const [inbSipNote, setInbSipNote]           = useState('')
   const [inbBridgeNumber, setInbBridgeNumber] = useState('')
-  const [inbBridgeSid, setInbBridgeSid]     = useState('')
-  const [inbBridgeToken, setInbBridgeToken] = useState('')
-  const [inbBridgeTwiml, setInbBridgeTwiml] = useState('')
-  const [inbLkDispatch, setInbLkDispatch]   = useState('')
-  const [inbLkTrunk, setInbLkTrunk]         = useState('')
+  const [inbBridgeSid, setInbBridgeSid]       = useState('')
+  const [inbBridgeToken, setInbBridgeToken]   = useState('')
+  const [inbBridgeTwiml, setInbBridgeTwiml]   = useState('')
+  const [inbLkDispatch, setInbLkDispatch]     = useState('')
+  const [inbLkTrunk, setInbLkTrunk]           = useState('')
 
   // ── Outbound SIP state ──
-  const [outActive, setOutActive]           = useState(false)
-  const [outConnType, setOutConnType]       = useState<string>('twilio')
-  const [outFromNumber, setOutFromNumber]   = useState('')
-  const [outSid, setOutSid]                 = useState('')
-  const [outToken, setOutToken]             = useState('')
-  const [outLkTrunk, setOutLkTrunk]         = useState('')
-  const [outProviderNote, setOutProviderNote] = useState('')
+  const [outActive, setOutActive]               = useState(false)
+  const [outConnType, setOutConnType]           = useState<string>('twilio')
+  const [outFromNumber, setOutFromNumber]       = useState('')
+  const [outSid, setOutSid]                     = useState('')
+  const [outToken, setOutToken]                 = useState('')
+  const [outLkTrunk, setOutLkTrunk]             = useState('')
+  const [outProviderNote, setOutProviderNote]   = useState('')
 
   // ── CRM state ──
-  const [crmProvider, setCrmProvider]       = useState('none')
-  const [ghlLocationId, setGhlLocationId]   = useState('')
-  const [ghlPitToken, setGhlPitToken]       = useState('')
-  const [ghlPipelineId, setGhlPipelineId]   = useState('')
-  const [ghlCalendarId, setGhlCalendarId]   = useState('')
-  const [ghlStages, setGhlStages]           = useState<Record<string, string>>(
-    Object.fromEntries(CRM_STAGES.map(s => [s.key, '']))
-  )
-  const [hsToken, setHsToken]               = useState('')
-  const [hsPipeline, setHsPipeline]         = useState('')
-  const [cwUrl, setCwUrl]                   = useState('')
-  const [cwSecret, setCwSecret]             = useState('')
+  const [crmProvider, setCrmProvider]           = useState<CrmConfig['provider']>('none')
+  const [crmWebhookUrl, setCrmWebhookUrl]       = useState('')
+  const [crmWebhookSecret, setCrmWebhookSecret] = useState('')
+  const [crmEvents, setCrmEvents]               = useState<string[]>(['new_lead', 'lead_status_change', 'appointment_booked'])
+  const [dsApiUrl, setDsApiUrl]                 = useState('')
+  const [dsApiKey, setDsApiKey]                 = useState('')
+  const [dsClinicId, setDsClinicId]             = useState('')
+  const [webhookTesting, setWebhookTesting]     = useState(false)
+  const [webhookTestResult, setWebhookTestResult] = useState<'ok' | 'fail' | null>(null)
+
+  // ── Calendar state ──
+  const [calProvider, setCalProvider]     = useState<CalendarConfig['provider']>('none')
+  const [calGoogleConnected, setCalGoogleConnected] = useState(false)
+  const [calGoogleExpiry, setCalGoogleExpiry]       = useState('')
+  const [calCalendarId, setCalCalendarId]           = useState('primary')
+  const [calDsApiUrl, setCalDsApiUrl]               = useState('')
+  const [calDsApiKey, setCalDsApiKey]               = useState('')
+  const [calDsClinicId, setCalDsClinicId]           = useState('')
 
   // ── Load ──
   useEffect(() => {
@@ -227,7 +241,7 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
 
       // channels
       setWaActive(cc.whatsapp?.active ?? false)
-      setWaProvider(cc.whatsapp?.provider ?? 'ghl')
+      setWaProvider(cc.whatsapp?.provider ?? '360dialog')
       setWaCreds(cc.whatsapp?.credentials ?? {})
       setIgActive(cc.instagram?.active ?? false)
 
@@ -255,26 +269,60 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
       setOutLkTrunk(out?.livekit_sip_outbound_trunk_id ?? '')
       setOutProviderNote(out?.provider_note ?? '')
 
+      // calendar
+      const cal = cc.calendar as CalendarConfig | undefined
+      setCalProvider(cal?.provider ?? 'none')
+      setCalGoogleConnected(!!(cal?.access_token))
+      setCalGoogleExpiry(cal?.token_expiry ?? '')
+      setCalCalendarId(cal?.calendar_id ?? 'primary')
+      setCalDsApiUrl(cal?.api_url ?? '')
+      setCalDsApiKey(cal?.api_key ?? '')
+      setCalDsClinicId(cal?.clinic_id ?? '')
+
       // crm
       const crm = (data.crm_config ?? { provider: 'none' }) as CrmConfig
-      setCrmProvider(crm.provider ?? 'none')
-      setGhlLocationId(crm.location_id ?? '')
-      setGhlPitToken(crm.pit_token ?? '')
-      setGhlPipelineId(crm.pipeline_id ?? '')
-      setGhlCalendarId(crm.calendar_id ?? '')
-      setGhlStages(Object.fromEntries(CRM_STAGES.map(s => [s.key, crm.stage_mapping?.[s.key] ?? ''])))
-      setHsToken(crm.access_token ?? '')
-      setHsPipeline(crm.hubspot_pipeline_id ?? '')
-      setCwUrl(crm.webhook_url ?? '')
-      setCwSecret(crm.webhook_secret ?? '')
+      const rawProvider = (crm as any).provider as string
+      const provider = rawProvider === 'ghl' ? 'none' : (rawProvider ?? 'none')
+      setCrmProvider(provider as CrmConfig['provider'])
+      setCrmWebhookUrl(crm.webhook_url ?? '')
+      setCrmWebhookSecret(crm.webhook_secret ?? '')
+      setCrmEvents(crm.events ?? ['new_lead', 'lead_status_change', 'appointment_booked'])
+      setDsApiUrl(crm.api_url ?? '')
+      setDsApiKey(crm.api_key ?? '')
+      setDsClinicId(crm.clinic_id ?? '')
 
       setLoading(false)
     }).catch(() => { setError('Org yüklenemedi'); setLoading(false) })
   }, [orgId])
 
+  // ── Webhook test ──
+  async function handleTestWebhook() {
+    if (!crmWebhookUrl) return
+    setWebhookTesting(true)
+    setWebhookTestResult(null)
+    try {
+      const res = await fetch(`/api/admin/orgs/${orgId}/test-webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhook_url: crmWebhookUrl, webhook_secret: crmWebhookSecret }),
+      })
+      setWebhookTestResult(res.ok ? 'ok' : 'fail')
+    } catch {
+      setWebhookTestResult('fail')
+    } finally {
+      setWebhookTesting(false)
+    }
+  }
+
+  // ── Google OAuth ──
+  function handleGoogleConnect() {
+    window.location.href = `/api/calendar/auth?org_id=${orgId}`
+  }
+
   // ── Save ──
   async function handleSave() {
     setSaving(true); setError('')
+    try {
 
     const voiceInbound: VoiceInboundConfig = {
       active: inbActive,
@@ -312,29 +360,64 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
       }),
     }
 
-    const channelConfig: ChannelConfig = {
-      voice_inbound: voiceInbound,
-      voice_outbound: voiceOutbound,
-      whatsapp: waActive ? { active: true, provider: waProvider, credentials: waCreds } : { active: false },
-      instagram: { active: igActive },
+    // Build calendar config — preserve tokens (don't overwrite from UI, OAuth flow handles them)
+    let calendarConfig: CalendarConfig = { provider: calProvider }
+    if (calProvider === 'google') {
+      calendarConfig = {
+        provider: 'google',
+        calendar_id: calCalendarId.trim() || 'primary',
+      }
+    } else if (calProvider === 'dentsoft') {
+      calendarConfig = {
+        provider: 'dentsoft',
+        api_url: calDsApiUrl.trim(),
+        api_key: calDsApiKey.trim(),
+        clinic_id: calDsClinicId.trim(),
+      }
     }
 
-    let crmConfig: CrmConfig = { provider: crmProvider }
-    if (crmProvider === 'ghl') {
+    // Fetch current channel_config to preserve OAuth tokens (Instagram credentials, Google Calendar tokens)
+    // that are set via separate OAuth flows and not managed by this modal.
+    const currentRes = await fetch(`/api/admin/orgs/${orgId}`)
+    if (!currentRes.ok) {
+      setError('Mevcut ayarlar alınamadı, lütfen tekrar deneyin.')
+      setSaving(false)
+      return
+    }
+    const currentData = await currentRes.json()
+    const existingCC = (currentData.channel_config ?? {}) as any
+
+    const channelConfig: ChannelConfig = {
+      voice_inbound:  voiceInbound,
+      voice_outbound: voiceOutbound,
+      whatsapp: waActive ? { active: true, provider: waProvider, credentials: waCreds } : { active: false },
+      // Preserve Instagram OAuth credentials — only toggle active flag here
+      instagram: { ...existingCC.instagram, active: igActive },
+      // Preserve Google Calendar OAuth tokens — UI only changes provider/calendar_id
+      calendar: calProvider === 'google'
+        ? {
+            ...existingCC.calendar,
+            provider:    'google',
+            calendar_id: calCalendarId.trim() || 'primary',
+          }
+        : calendarConfig,
+    }
+
+    let crmConfig: CrmConfig = { provider: 'none' }
+    if (crmProvider === 'webhook') {
       crmConfig = {
-        provider: 'ghl',
-        location_id: ghlLocationId.trim(),
-        pit_token: ghlPitToken.trim(),
-        pipeline_id: ghlPipelineId.trim(),
-        ...(ghlCalendarId.trim() && { calendar_id: ghlCalendarId.trim() }),
-        stage_mapping: Object.fromEntries(
-          CRM_STAGES.map(s => [s.key, ghlStages[s.key]?.trim()]).filter(([, v]) => v)
-        ),
+        provider: 'webhook',
+        webhook_url: crmWebhookUrl.trim(),
+        webhook_secret: crmWebhookSecret.trim(),
+        events: crmEvents,
       }
-    } else if (crmProvider === 'hubspot') {
-      crmConfig = { provider: 'hubspot', access_token: hsToken.trim(), hubspot_pipeline_id: hsPipeline.trim() }
-    } else if (crmProvider === 'custom_webhook') {
-      crmConfig = { provider: 'custom_webhook', webhook_url: cwUrl.trim(), webhook_secret: cwSecret.trim() }
+    } else if (crmProvider === 'dentsoft') {
+      crmConfig = {
+        provider: 'dentsoft',
+        api_url: dsApiUrl.trim(),
+        api_key: dsApiKey.trim(),
+        clinic_id: dsClinicId.trim(),
+      }
     }
 
     const res = await fetch(`/api/admin/orgs/${orgId}`, {
@@ -343,8 +426,13 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
       body: JSON.stringify({ channel_config: channelConfig, crm_config: crmConfig }),
     })
 
-    if (!res.ok) { const d = await res.json(); setError(d.error || 'Kayıt başarısız'); setSaving(false); return }
-    setSaving(false); onSaved(); onClose()
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Kayıt başarısız'); return }
+      onSaved(); onClose()
+    } catch (e: any) {
+      setError(e.message ?? 'Beklenmeyen hata oluştu')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -403,16 +491,27 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
                             <RadioGroup options={WA_PROVIDERS} value={waProvider}
                               onChange={p => { setWaProvider(p); setWaCreds({}) }} />
                           </div>
-                          {waProvider === 'ghl' && (
-                            <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5 text-xs text-blue-700">
-                              GHL kanalı için kimlik bilgileri <strong>CRM</strong> sekmesindeki GHL ayarlarından alınır.
+                          {waProvider === '360dialog' && (
+                            <div className="space-y-3">
+                              <div className="bg-green-50 border border-green-100 rounded-lg px-3 py-2.5 text-xs text-green-700">
+                                <strong>Webhook URL:</strong>{' '}
+                                <code className="font-mono break-all">https://ablntzdbsrzbqyrnfwpl.supabase.co/functions/v1/dialog-inbound</code>
+                              </div>
+                              <Field label="Client Token (D360-API-KEY)" value={waCreds.client_token ?? ''} onChange={v => setWaCreds(c => ({ ...c, client_token: v }))} placeholder="xxx..." />
+                              <Field label="Phone Number ID" value={waCreds.phone_number_id ?? ''} onChange={v => setWaCreds(c => ({ ...c, phone_number_id: v }))} placeholder="123456789012345" />
+                              <Field label="WABA ID" value={waCreds.waba_id ?? ''} onChange={v => setWaCreds(c => ({ ...c, waba_id: v }))} placeholder="123456789012345" />
+                              <Field label="Webhook Verify Token" value={waCreds.webhook_verify_token ?? ''} onChange={v => setWaCreds(c => ({ ...c, webhook_verify_token: v }))} placeholder="stoaix_verify_xyz" hint="360dialog webhook doğrulaması için — rastgele bir string" />
                             </div>
                           )}
                           {waProvider === 'whatsapp_cloud' && (
                             <div className="space-y-3">
-                              <Field label="Phone Number ID" value={waCreds.phone_number_id ?? ''} onChange={v => setWaCreds(c => ({ ...c, phone_number_id: v }))} placeholder="123456789012345" />
-                              <Field label="Access Token" value={waCreds.access_token ?? ''} onChange={v => setWaCreds(c => ({ ...c, access_token: v }))} placeholder="EAAx..." />
-                              <Field label="Webhook Verify Token" value={waCreds.verify_token ?? ''} onChange={v => setWaCreds(c => ({ ...c, verify_token: v }))} placeholder="stoaix_verify_xyz" />
+                              <div className="bg-green-50 border border-green-100 rounded-lg px-3 py-2.5 text-xs text-green-700">
+                                <strong>Webhook URL:</strong>{' '}
+                                <code className="font-mono break-all">https://ablntzdbsrzbqyrnfwpl.supabase.co/functions/v1/meta-whatsapp-inbound</code>
+                                <p className="mt-1 text-green-600">Meta App Dashboard → WhatsApp → Configuration → Webhook URL olarak girin. Verify Token: Supabase Edge Function env <code>META_WEBHOOK_VERIFY_TOKEN</code> değeri.</p>
+                              </div>
+                              <Field label="Phone Number ID" value={waCreds.phone_number_id ?? ''} onChange={v => setWaCreds(c => ({ ...c, phone_number_id: v }))} placeholder="123456789012345" hint="Meta App → WhatsApp → Phone Numbers'dan alın" />
+                              <Field label="Access Token (System User Token)" value={waCreds.access_token ?? ''} onChange={v => setWaCreds(c => ({ ...c, access_token: v }))} placeholder="EAAx..." hint="Meta Business Suite → System Users → Generate Token" />
                             </div>
                           )}
                           {waProvider === 'wati' && (
@@ -439,13 +538,10 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
                     <div className="flex items-center justify-between p-3.5 border border-slate-100 rounded-xl">
                       <div>
                         <p className="text-sm font-medium text-slate-800">Instagram DM</p>
-                        <p className="text-xs text-slate-400">GHL üzerinden veya Instagram Messaging API</p>
+                        <p className="text-xs text-slate-400">Instagram Messaging API</p>
                       </div>
                       <Toggle active={igActive} onToggle={() => setIgActive(v => !v)} />
                     </div>
-                    {igActive && (
-                      <p className="text-xs text-slate-400 mt-2 px-1">GHL kullanan org'larda Instagram DM otomatik aktif — ayrıca credential gerekmez.</p>
-                    )}
                   </div>
                 </div>
               )}
@@ -557,48 +653,125 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
               {/* ── CRM TAB ── */}
               {activeTab === 'crm' && (
                 <div className="space-y-5">
-                  <div>
-                    <SectionLabel>CRM Provider</SectionLabel>
-                    <RadioGroup options={CRM_PROVIDERS} value={crmProvider} onChange={setCrmProvider} />
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs text-slate-500">
+                    stoaix CRM her zaman aktif. Dış CRM entegrasyonu opsiyoneldir — seçilirse stoaix belirli eventlerde dış sisteme bildirim gönderir.
                   </div>
 
-                  {crmProvider !== 'none' && (
-                    <div className="space-y-3 pt-1 border-t border-slate-100">
-                      <SectionLabel>Pipeline Stage Eşleştirme</SectionLabel>
-                      <p className="text-xs text-slate-400 -mt-2">Stoaix iç aşamalarını CRM'inizdeki ID/değerle eşleştirin.</p>
-                      {CRM_STAGES.map(stage => (
-                        <Field key={stage.key}
-                          label={stage.label}
-                          value={ghlStages[stage.key] ?? ''} onChange={v => setGhlStages(s => ({ ...s, [stage.key]: v }))}
-                          placeholder={crmProvider === 'ghl' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' : 'stage_id veya değer'}
-                        />
-                      ))}
+                  <div>
+                    <SectionLabel>Dış CRM Provider</SectionLabel>
+                    <RadioGroup options={CRM_PROVIDERS} value={crmProvider} onChange={v => setCrmProvider(v as CrmConfig['provider'])} />
+                  </div>
+
+                  {crmProvider === 'webhook' && (
+                    <div className="space-y-4 pt-1 border-t border-slate-100">
+                      <SectionLabel>Webhook Ayarları</SectionLabel>
+
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 mb-2">Tetiklenecek Eventler</p>
+                        <div className="space-y-2">
+                          {CRM_EVENTS.map(ev => (
+                            <label key={ev.key} className="flex items-center gap-2.5 cursor-pointer">
+                              <input type="checkbox"
+                                checked={crmEvents.includes(ev.key)}
+                                onChange={e => setCrmEvents(prev =>
+                                  e.target.checked ? [...prev, ev.key] : prev.filter(k => k !== ev.key)
+                                )}
+                                className="rounded border-slate-300 text-brand-500 focus:ring-brand-500"
+                              />
+                              <span className="text-sm text-slate-700 font-mono text-xs">{ev.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <Field label="Webhook URL" value={crmWebhookUrl} onChange={setCrmWebhookUrl}
+                        placeholder="https://yourcrm.com/webhooks/stoaix" mono={false} />
+                      <Field label="Secret (opsiyonel)" value={crmWebhookSecret} onChange={setCrmWebhookSecret}
+                        placeholder="whsec_..." hint="HMAC-SHA256 imza doğrulaması için. Header: X-Stoaix-Signature" />
+
+                      <div className="flex items-center gap-3">
+                        <button type="button" onClick={handleTestWebhook} disabled={!crmWebhookUrl || webhookTesting}
+                          className="flex items-center gap-2 px-3 py-2 text-xs font-medium border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors">
+                          {webhookTesting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                          Test Gönder
+                        </button>
+                        {webhookTestResult === 'ok' && (
+                          <span className="flex items-center gap-1.5 text-xs text-green-600">
+                            <CheckCircle2 size={13} /> Webhook ulaştı
+                          </span>
+                        )}
+                        {webhookTestResult === 'fail' && (
+                          <span className="text-xs text-red-500">Webhook ulaşamadı — URL ve firewall'ı kontrol edin</span>
+                        )}
+                      </div>
                     </div>
                   )}
 
-                  {crmProvider === 'ghl' && (
+                  {crmProvider === 'dentsoft' && (
                     <div className="space-y-3 pt-1 border-t border-slate-100">
-                      <SectionLabel>GHL Sub-Account Bilgileri</SectionLabel>
-                      <Field label="Location ID"  value={ghlLocationId}  onChange={setGhlLocationId}  placeholder="X3qwbLZZb54GjqpOplS2" />
-                      <Field label="PIT Token"    value={ghlPitToken}    onChange={setGhlPitToken}    placeholder="pit-xxxxxxxx-..." />
-                      <Field label="Pipeline ID"  value={ghlPipelineId}  onChange={setGhlPipelineId}  placeholder="9DI3LIUinUSExbsELlhY" />
-                      <Field label="Calendar ID (opsiyonel)" value={ghlCalendarId} onChange={setGhlCalendarId} placeholder="xxxxxxxxxxxxxxxx" hint="GHL → Calendars → takvim → Settings → Calendar ID — Randevu özelliği için gerekli" />
+                      <SectionLabel>Dentsoft API Bilgileri</SectionLabel>
+                      <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5 text-xs text-amber-700">
+                        Native Dentsoft adapter henüz geliştirme aşamasında. API dökümantasyonu teslim edildiğinde aktif olacak.
+                      </div>
+                      <Field label="API URL" value={dsApiUrl} onChange={setDsApiUrl} placeholder="https://api.dentsoft.com.tr" mono={false} />
+                      <Field label="API Key" value={dsApiKey} onChange={setDsApiKey} placeholder="xxx..." />
+                      <Field label="Klinik ID" value={dsClinicId} onChange={setDsClinicId} placeholder="klinik_id" />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── CALENDAR TAB ── */}
+              {activeTab === 'calendar' && (
+                <div className="space-y-5">
+                  <div>
+                    <SectionLabel>Randevu / Takvim Provider</SectionLabel>
+                    <RadioGroup options={CALENDAR_PROVIDERS} value={calProvider} onChange={v => setCalProvider(v as CalendarConfig['provider'])} />
+                  </div>
+
+                  {calProvider === 'google' && (
+                    <div className="space-y-4 pt-1 border-t border-slate-100">
+                      <SectionLabel>Google Takvim</SectionLabel>
+
+                      {calGoogleConnected ? (
+                        <div className="flex items-center gap-3 bg-green-50 border border-green-100 rounded-xl px-4 py-3">
+                          <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium text-green-800">Google Takvim bağlı</p>
+                            {calGoogleExpiry && (
+                              <p className="text-xs text-green-600 mt-0.5">Token geçerliliği: {new Date(calGoogleExpiry).toLocaleDateString('tr-TR')}</p>
+                            )}
+                          </div>
+                          <button type="button" onClick={handleGoogleConnect}
+                            className="ml-auto text-xs text-green-700 underline hover:text-green-900">
+                            Yeniden bağla
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <p className="text-sm text-slate-500">Google Takvim'i bağlamak için OAuth akışını başlatın.</p>
+                          <button type="button" onClick={handleGoogleConnect}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition-colors">
+                            <Calendar size={15} className="text-brand-500" />
+                            Google Takvim Bağla
+                          </button>
+                        </div>
+                      )}
+
+                      <Field label="Takvim ID (opsiyonel)" value={calCalendarId} onChange={setCalCalendarId}
+                        placeholder="primary" hint="Boş bırakılırsa varsayılan takvim kullanılır" />
                     </div>
                   )}
 
-                  {crmProvider === 'hubspot' && (
+                  {calProvider === 'dentsoft' && (
                     <div className="space-y-3 pt-1 border-t border-slate-100">
-                      <SectionLabel>HubSpot Bilgileri</SectionLabel>
-                      <Field label="Private App Access Token" value={hsToken} onChange={setHsToken} placeholder="pat-eu1-xxx..." />
-                      <Field label="Pipeline ID" value={hsPipeline} onChange={setHsPipeline} placeholder="default" mono={false} />
-                    </div>
-                  )}
-
-                  {crmProvider === 'custom_webhook' && (
-                    <div className="space-y-3 pt-1 border-t border-slate-100">
-                      <SectionLabel>Webhook Bilgileri</SectionLabel>
-                      <Field label="Webhook URL" value={cwUrl} onChange={setCwUrl} placeholder="https://yourcrm.com/webhooks/stoaix" mono={false} />
-                      <Field label="Secret (opsiyonel)" value={cwSecret} onChange={setCwSecret} placeholder="whsec_..." />
+                      <SectionLabel>Dentsoft Takvim Bilgileri</SectionLabel>
+                      <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5 text-xs text-amber-700">
+                        Dentsoft takvim entegrasyonu, CRM sekmesindeki Dentsoft API bilgilerini kullanır. Ayrı credentials gerekmez.
+                      </div>
+                      <Field label="API URL" value={calDsApiUrl} onChange={setCalDsApiUrl} placeholder="https://api.dentsoft.com.tr" mono={false} />
+                      <Field label="API Key" value={calDsApiKey} onChange={setCalDsApiKey} placeholder="xxx..." />
+                      <Field label="Klinik ID" value={calDsClinicId} onChange={setCalDsClinicId} placeholder="klinik_id" />
                     </div>
                   )}
                 </div>

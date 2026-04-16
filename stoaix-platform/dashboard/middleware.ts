@@ -32,7 +32,10 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/login') ||
     pathname.startsWith('/register') ||
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/api/')
+    pathname.startsWith('/api/') ||
+    pathname === '/privacy' ||
+    pathname === '/terms' ||
+    pathname === '/'
   ) {
     return supabaseResponse
   }
@@ -56,13 +59,14 @@ export async function middleware(request: NextRequest) {
   // Check org user with onboarding status
   const { data: orgUser } = await supabase
     .from('org_users')
-    .select('id, organizations(onboarding_status)')
+    .select('id, role, organizations(onboarding_status)')
     .eq('user_id', user.id)
     .maybeSingle()
 
   if (orgUser) {
     const org = orgUser.organizations as unknown as { onboarding_status: string } | null
     const onboardingCompleted = org?.onboarding_status === 'completed'
+    const userRole = orgUser.role
 
     // Org users cannot access /admin
     if (pathname.startsWith('/admin')) {
@@ -82,6 +86,24 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
+    // Role-based route restrictions
+    const restrictedForMuhasebe = [
+      '/dashboard/knowledge', '/dashboard/agent', '/dashboard/settings', '/dashboard/billing',
+      '/dashboard/conversations', '/dashboard/calls', '/dashboard/followup', '/dashboard/support',
+    ]
+    // satisci: billing erişemez, diğer her yere erişebilir
+    const restrictedForSatisci = [
+      '/dashboard/billing',
+    ]
+
+    if (userRole === 'muhasebe') {
+      const isRestricted = restrictedForMuhasebe.some(p => pathname.startsWith(p))
+      if (isRestricted) return NextResponse.redirect(new URL('/dashboard', request.url))
+    } else if (userRole === 'satisci') {
+      const isRestricted = restrictedForSatisci.some(p => pathname.startsWith(p))
+      if (isRestricted) return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+
     return supabaseResponse
   }
 
@@ -90,5 +112,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.svg|.*\\.webp|.*\\.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.svg|.*\\.webp|.*\\.ico|.*\\.html).*)'],
 }

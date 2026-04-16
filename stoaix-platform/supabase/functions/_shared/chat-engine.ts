@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { sendCrmEvent } from './crm-webhooks.ts'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,15 +18,45 @@ export interface InboundMessageOptions {
   channelIdentifierKey:  string          // key stored inside channel_identifiers JSONB
   channel:               Channel
   messageText:           string
-  channelMetadata?:      Record<string, unknown>  // provider-specific extras (location_id, phone_number_id…)
+  externalId?:           string          // wamid / provider message ID for idempotency
+  channelMetadata?:      Record<string, unknown>  // provider-specific extras
   sendReply:             (message: string) => Promise<void>
-  onNewLead?:            () => Promise<void>      // e.g. GHL pipeline stage update
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DEBOUNCE_MS            = 3500
-const MAX_HISTORY            = 8
+
+// ─── Phone normalization ──────────────────────────────────────────────────────
+
+/**
+ * Normalize a phone string to E.164 (e.g. "+905551234567").
+ * Safe conversions only — no country-code guessing for ambiguous local formats.
+ *
+ *   "+905551234567"   → "+905551234567"  (already E.164)
+ *   "905551234567"    → "+905551234567"  (bare international digits)
+ *   "00905551234567"  → "+905551234567"  (00-prefix → +)
+ *   "05551234567"     → null             (local format, ambiguous)
+ */
+function normalizePhoneE164(phone: string): string | null {
+  if (!phone) return null
+  const cleaned = phone.replace(/[\s\-\(\)\.]+/g, '')
+  if (cleaned.startsWith('+')) {
+    const digits = cleaned.replace(/\D/g, '')
+    return digits.length >= 7 && digits.length <= 15 ? `+${digits}` : null
+  }
+  const digits = cleaned.replace(/\D/g, '')
+  if (!digits) return null
+  if (digits.startsWith('00') && digits.length >= 9) {
+    const stripped = digits.slice(2)
+    return stripped.length >= 7 && stripped.length <= 15 ? `+${stripped}` : null
+  }
+  if (/^\d{9,15}$/.test(digits) && !digits.startsWith('0')) {
+    return `+${digits}`
+  }
+  return null
+}
+const MAX_HISTORY            = 6    // reduced from 8 for token efficiency
 const PROCESSING_TIMEOUT_MS  = 120_000  // 2 min — auto-release locks from crashed workers
 
 // ─── Supabase client ──────────────────────────────────────────────────────────
@@ -75,12 +106,6 @@ async function searchKB(
 
 // ─── Debounce lock ────────────────────────────────────────────────────────────
 
-/**
- * Atomically claim processing rights.
- * Succeeds only when:
- *   - pending_process_id still matches our message (no newer message arrived during debounce)
- *   - Nobody else is processing (or the lock is older than 2 minutes → auto-released)
- */
 async function claimProcessing(
   supabase: ReturnType<typeof createClient>,
   conversationId: string,
@@ -113,10 +138,6 @@ async function releaseProcessing(
     .eq('id', conversationId)
 }
 
-/**
- * Returns all user messages since the last assistant reply — i.e. everything
- * that hasn't been responded to yet, regardless of when they were sent.
- */
 async function getPendingUserMessages(
   supabase: ReturnType<typeof createClient>,
   conversationId: string
@@ -144,7 +165,7 @@ async function getPendingUserMessages(
   return data.map((m: any) => m.content).join('\n')
 }
 
-// ─── Calendar helpers ─────────────────────────────────────────────────────────
+// ─── Calendar intent detection ────────────────────────────────────────────────
 
 const CALENDAR_INTENT_KEYWORDS = [
   'randevu', 'toplantı', 'görüşme', 'saat', 'ne zaman', 'müsait',
@@ -156,113 +177,45 @@ function hasCalendarIntent(text: string): boolean {
   return CALENDAR_INTENT_KEYWORDS.some(kw => lower.includes(kw))
 }
 
-async function getCalendarId(
-  supabase: ReturnType<typeof createClient>,
-  orgId: string
-): Promise<string | null> {
-  const { data } = await supabase
-    .from('organizations')
-    .select('crm_config')
-    .eq('id', orgId)
-    .single()
-  return (data?.crm_config as Record<string, string>)?.calendar_id || null
-}
+// ─── Handoff decision ─────────────────────────────────────────────────────────
 
-async function getPitToken(
-  supabase: ReturnType<typeof createClient>,
-  orgId: string
-): Promise<string | null> {
-  const { data } = await supabase
-    .from('organizations')
-    .select('crm_config')
-    .eq('id', orgId)
-    .single()
-  return (data?.crm_config as Record<string, string>)?.pit_token || null
-}
+const HANDOFF_KEYWORDS = [
+  'fiyat', 'teklif', 'uzman', 'aranmak', 'arasın', 'randevu',
+  'price', 'quote', 'appointment', 'call me', 'ulaşmak', 'görüşmek',
+  'ne kadar', 'ücret', 'fee', 'cost',
+]
 
-async function fetchFreeSlots(calendarId: string, pitToken: string): Promise<string> {
-  try {
-    const now      = new Date()
-    const startDate = now.toISOString().split('T')[0]
-    const endDate   = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-
-    const url = `https://services.leadconnectorhq.com/calendars/${calendarId}/free-slots` +
-      `?startDate=${startDate}&endDate=${endDate}&timezone=Europe%2FIstanbul`
-
-    const res = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${pitToken}`,
-        'Version': '2021-04-15',
-        'Accept': 'application/json',
-      },
-    })
-    if (!res.ok) return ''
-
-    const json = await res.json()
-    // GHL free-slots response: { slots: { "2026-03-22": ["10:00","14:00"], ... } }
-    const slots = json.slots as Record<string, string[]> | undefined
-    if (!slots) return ''
-
-    const DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
-    const lines: string[] = []
-    for (const [date, times] of Object.entries(slots)) {
-      if (!times?.length) continue
-      const d = new Date(date + 'T00:00:00')
-      const dayName = DAYS[d.getDay()]
-      lines.push(`${dayName} (${date}): ${times.slice(0, 5).join(', ')}`)
-    }
-    return lines.join('\n')
-  } catch {
-    return ''
-  }
-}
-
-async function createAppointment(
-  calendarId: string,
-  pitToken: string,
-  data: { name: string; phone: string; datetimeStr: string; notes?: string }
-): Promise<boolean> {
-  try {
-    const res = await fetch('https://services.leadconnectorhq.com/calendars/events/appointments', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${pitToken}`,
-        'Version': '2021-04-15',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        calendarId,
-        selectedTimezone: 'Europe/Istanbul',
-        startTime: data.datetimeStr,
-        title: `Randevu — ${data.name}`,
-        appointmentStatus: 'confirmed',
-        address: '',
-        notes: data.notes || '',
-        contactName: data.name,
-        phone: data.phone,
-      }),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
+function shouldHandoff(
+  score:             number,
+  missingMustFields: string[],
+  messageText:       string,
+  kbMissCount:       number
+): boolean {
+  // All must fields collected + minimum qualification score
+  if (missingMustFields.length === 0 && score >= 60) return true
+  // Explicit sales/price/appointment keywords from the customer
+  const lower = messageText.toLowerCase()
+  if (HANDOFF_KEYWORDS.some(kw => lower.includes(kw))) return true
+  // KB couldn't answer the question twice → escalate
+  if (kbMissCount >= 2) return true
+  return false
 }
 
 // ─── Chat engine ──────────────────────────────────────────────────────────────
 
 async function runChatEngine(
-  supabase: ReturnType<typeof createClient>,
-  orgId: string,
-  contactId: string,
-  conversationId: string,
-  messageText: string,
-  channel: Channel,
-  sendReply: (message: string) => Promise<void>
+  supabase:        ReturnType<typeof createClient>,
+  orgId:           string,
+  contactId:       string,
+  conversationId:  string,
+  messageText:     string,
+  channel:         Channel,
+  sendReply:       (message: string) => Promise<void>
 ): Promise<void> {
   // Load channel-specific playbook; fall back to 'whatsapp' if no dedicated one exists
   let { data: playbook } = await supabase
     .from('agent_playbooks')
-    .select('system_prompt_template, fallback_responses, hard_blocks, features')
+    .select('system_prompt_template, fallback_responses, hard_blocks, features, few_shot_examples, handoff_bridge_message')
     .eq('organization_id', orgId)
     .eq('channel', channel)
     .order('version', { ascending: false })
@@ -272,7 +225,7 @@ async function runChatEngine(
   if (!playbook && channel !== 'whatsapp') {
     const { data: fallback } = await supabase
       .from('agent_playbooks')
-      .select('system_prompt_template, fallback_responses, hard_blocks, features')
+      .select('system_prompt_template, fallback_responses, hard_blocks, features, few_shot_examples, handoff_bridge_message')
       .eq('organization_id', orgId)
       .eq('channel', 'whatsapp')
       .order('version', { ascending: false })
@@ -304,6 +257,7 @@ async function runChatEngine(
       await supabase.from('messages').insert({
         conversation_id: conversationId, organization_id: orgId,
         role: 'assistant', content: block.response, content_type: 'text',
+        channel,
       })
       await sendReply(block.response)
       return
@@ -311,9 +265,10 @@ async function runChatEngine(
   }
 
   // KB vector search
-  const kbContext = await searchKB(supabase, orgId, messageText)
+  const kbContext  = await searchKB(supabase, orgId, messageText)
+  const kbMissed   = !kbContext   // track for handoff decision
 
-  // Conversation history — descending ile en yeni MAX_HISTORY*2 mesajı al, sonra kronolojik sıraya çevir
+  // Conversation history
   const { data: historyRows } = await supabase
     .from('messages')
     .select('role, content')
@@ -324,29 +279,11 @@ async function runChatEngine(
 
   const history = ((historyRows ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>).reverse()
 
-  // Calendar slot injection (only if feature is enabled and message has booking intent)
-  let calendarSection = ''
-  const features = (playbook as any).features as Record<string, boolean> | null
-  if (features?.calendar_booking && hasCalendarIntent(messageText)) {
-    const [calId, pitTok] = await Promise.all([
-      getCalendarId(supabase, orgId),
-      getPitToken(supabase, orgId),
-    ])
-    if (calId && pitTok) {
-      const slots = await fetchFreeSlots(calId, pitTok)
-      if (slots) {
-        calendarSection = `\n\n━━━ TAKVİM (anlık müsait saatler) ━━━\n${slots}\nRandevu oluşturmak için müşteriden ad, telefon ve tercih edilen saat iste.\nRandevu onaylanınca "RANDEVU_AL:ad=...,telefon=...,saat=YYYY-MM-DDTHH:MM" formatında yaz.`
-      } else {
-        calendarSection = `\n\n━━━ TAKVİM ━━━\nTakvime şu an erişilemiyor. Müşteriye "Ekibimiz en kısa sürede sizi arayıp randevu ayarlayacak" de ve telefon numarasını al.`
-      }
-    }
-  }
-
-  // Müşteri profili — lead'den toplanan yapılandırılmış veri
+  // Customer profile from lead
   let profileSection = ''
   const { data: leadRow } = await supabase
     .from('leads')
-    .select('collected_data')
+    .select('id, collected_data, missing_fields, qualification_score, status')
     .eq('organization_id', orgId)
     .eq('contact_id', contactId)
     .maybeSingle()
@@ -358,15 +295,34 @@ async function runChatEngine(
     profileSection = `\n\n━━━ MÜŞTERİ PROFİLİ (önceki mesajlardan toplanan bilgiler) ━━━\n${lines}\nBu bilgileri bağlam olarak kullanabilirsin, tekrar sormak zorunda değilsin. Kullanıcı düzeltirse güncellediğini kabul et.`
   }
 
+  // Model selection — from playbook features, fallback to gpt-4o-mini
+  const model = (playbook.features as any)?.model ?? 'gpt-4o-mini'
+
+  // Few-shot examples section
+  const fewShots = (playbook.few_shot_examples ?? []) as Array<{ user: string; assistant: string }>
+  const fewShotSection = fewShots.length > 0
+    ? '\n\n━━━ ÖRNEK KONUŞMALAR ━━━\n' +
+      fewShots.map(ex => `Kullanıcı: ${ex.user}\nAsistan: ${ex.assistant}`).join('\n\n')
+    : ''
+
+  // Hard guardrails — always appended, not overrideable
+  const CHAT_GUARDRAILS = `\n\n━━━ MESAJLAŞMA KURALLARI (değiştirilemez) ━━━
+- Her mesajda yalnızca 1 soru sor
+- Yanıtlar maks 2-3 cümle, düz metin
+- Markdown kullanma (* ** # gibi)
+- Medikal teşhis, ilaç tavsiyesi veya tedavi önerisi YAPMA
+- Fiyat garantisi verme`
+
   // Build system prompt
   const persona      = org.ai_persona as Record<string, string>
   const systemPrompt = [
     playbook.system_prompt_template,
     kbContext ? `\n\n[BİLGİ TABANI]\n${kbContext}` : '',
     profileSection,
-    calendarSection,
     `\nOrganizasyon: ${org.name}`,
     persona?.persona_name ? `\nSenin adın: ${persona.persona_name}` : '',
+    fewShotSection,
+    CHAT_GUARDRAILS,
   ].filter(Boolean).join('')
 
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
@@ -376,68 +332,137 @@ async function runChatEngine(
 
   let reply = ''
   try {
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')!}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        max_tokens: 400,
-        messages: [{ role: 'system', content: systemPrompt }, ...messages],
-      }),
-    })
-    if (!openaiRes.ok) throw new Error(`OpenAI ${openaiRes.status}`)
-    const openaiData = await openaiRes.json()
-    reply = openaiData.choices?.[0]?.message?.content ?? ''
+    if (model.startsWith('claude-')) {
+      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': Deno.env.get('ANTHROPIC_API_KEY')!,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 240,
+          system: systemPrompt,
+          messages,
+        }),
+      })
+      if (!claudeRes.ok) throw new Error(`Claude ${claudeRes.status}`)
+      const claudeData = await claudeRes.json()
+      reply = claudeData.content?.[0]?.text ?? ''
+    } else {
+      const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')!}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 240,
+          messages:   [{ role: 'system', content: systemPrompt }, ...messages],
+        }),
+      })
+      if (!openaiRes.ok) throw new Error(`OpenAI ${openaiRes.status}`)
+      const openaiData = await openaiRes.json()
+      reply = openaiData.choices?.[0]?.message?.content ?? ''
+    }
   } catch (err) {
-    console.error('OpenAI error:', err)
+    console.error('LLM error:', err)
     reply = fallbackResponses['error'] ??
       fallbackResponses['no_kb_match'] ??
       'Şu an bir sorun yaşıyorum. Lütfen birazdan tekrar yazın.'
   }
 
-  // Parse booking intent from AI reply (RANDEVU_AL:ad=...,telefon=...,saat=...)
-  if (features?.calendar_booking && reply.includes('RANDEVU_AL:')) {
-    try {
-      const match = reply.match(/RANDEVU_AL:([^\n]+)/)
-      if (match) {
-        const params = Object.fromEntries(
-          match[1].split(',').map(p => p.split('=').map(s => s.trim()))
-        )
-        const [calId, pitTok] = await Promise.all([
-          getCalendarId(supabase, orgId),
-          getPitToken(supabase, orgId),
-        ])
-        if (calId && pitTok && params.ad && params.saat) {
-          await createAppointment(calId, pitTok, {
-            name: params.ad,
-            phone: params.telefon || '',
-            datetimeStr: params.saat,
-          })
-        }
-        // Strip the booking command from the user-visible reply
-        reply = reply.replace(/RANDEVU_AL:[^\n]*/g, '').trim()
-      }
-    } catch {
-      // Booking parse failed — reply is still sent as-is
+  // ── Handoff decision ──
+  // Read latest lead state after extraction (or use what we loaded above)
+  const missingMustFields = (leadRow?.missing_fields ?? []) as string[]
+  const currentScore      = leadRow?.qualification_score ?? 0
+
+  // Track kb_miss_count in conversation channel_metadata (no schema change needed)
+  const { data: convoMeta } = await supabase
+    .from('conversations')
+    .select('channel_metadata')
+    .eq('id', conversationId)
+    .single()
+
+  const meta = (convoMeta?.channel_metadata ?? {}) as Record<string, any>
+  const newMissCount = (meta.kb_miss_count ?? 0) + (kbMissed ? 1 : 0)
+
+  // Update kb_miss_count in metadata (fire-and-forget, don't await)
+  supabase
+    .from('conversations')
+    .update({ channel_metadata: { ...meta, kb_miss_count: newMissCount } })
+    .eq('id', conversationId)
+    .then(() => {})
+
+  if (shouldHandoff(currentScore, missingMustFields, messageText, newMissCount)) {
+    const bridgeMsg = (playbook as any).handoff_bridge_message
+      ?? 'Bilgilerinizi aldım, uzman ekibimiz en kısa sürede sizinle iletişime geçecek. 👋'
+
+    // Save AI reply first (if any), then bridge message
+    if (reply) {
+      await supabase.from('messages').insert({
+        conversation_id: conversationId, organization_id: orgId,
+        role: 'assistant', content: reply, content_type: 'text', channel,
+      })
+      await sendReply(reply)
     }
+
+    await supabase.from('messages').insert({
+      conversation_id: conversationId, organization_id: orgId,
+      role: 'assistant', content: bridgeMsg, content_type: 'text', channel,
+    })
+    await sendReply(bridgeMsg)
+
+    // Switch to human mode
+    await supabase
+      .from('conversations')
+      .update({ mode: 'human' })
+      .eq('id', conversationId)
+
+    // CRM event
+    if (leadRow?.id) {
+      await sendCrmEvent(supabase, orgId, {
+        event:      'lead_status_change',
+        org_id:     orgId,
+        lead_id:    leadRow.id,
+        contact_id: contactId,
+        old_status: leadRow.status,
+        new_status: 'handed_off',
+        score:      currentScore,
+        timestamp:  new Date().toISOString(),
+      })
+
+      await supabase
+        .from('leads')
+        .update({ status: 'handed_off' })
+        .eq('id', leadRow.id)
+    }
+
+    // Notification for org team
+    await supabase.from('notifications').insert({
+      organization_id: orgId,
+      type:            'handoff',
+      conversation_id: conversationId,
+      lead_id:         leadRow?.id ?? null,
+      title:           'Lead devredildi',
+      body:            `Otomatik handoff: skor ${currentScore}, ${missingMustFields.length === 0 ? 'tüm must alanlar dolu' : 'anahtar kelime tetiklendi'}.`,
+    })
+
+    return
   }
 
+  // ── Normal AI reply ──
   await supabase.from('messages').insert({
     conversation_id: conversationId, organization_id: orgId,
-    role: 'assistant', content: reply, content_type: 'text',
+    role: 'assistant', content: reply, content_type: 'text', channel,
   })
-
   await sendReply(reply)
 }
 
 // ─── Lead data extraction (chat) ─────────────────────────────────────────────
 
-/**
- * Sohbet geçmişinden intake schema alanlarını GPT-4o-mini ile çıkarır.
- */
 async function extractCollectedData(
   history: Array<{ role: string; content: string }>,
   intakeFields: Array<{ key: string; label: string; type?: string }>
@@ -445,7 +470,9 @@ async function extractCollectedData(
   if (!history.length || !intakeFields.length) return {}
 
   const fieldDefs  = intakeFields.map(f => `- ${f.key} (${f.label}): ${f.type ?? 'text'}`).join('\n')
-  const transcript = history.map(m => `[${m.role}] ${m.content}`).join('\n')
+  // Only user messages — assistant messages may contain names (e.g. "Merhaba Emir Bey") that
+  // should not be attributed to the user, causing false positives in extraction.
+  const transcript = history.filter(m => m.role === 'user').map(m => m.content).join('\n')
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -488,10 +515,6 @@ function calculateLeadScore(
   return Math.min(100, Math.round(mustScore + shouldScore))
 }
 
-/**
- * Her AI yanıtından sonra lead'i günceller:
- * collected_data, data_completeness, missing_fields, qualification_score, status
- */
 async function updateLeadFromChat(
   supabase: ReturnType<typeof createClient>,
   orgId: string,
@@ -508,7 +531,6 @@ async function updateLeadFromChat(
       .maybeSingle()
     if (!lead?.id) return
 
-    // Intake schema: önce kanalın kendi şeması, yoksa voice fallback
     let { data: schema } = await supabase
       .from('intake_schemas')
       .select('fields')
@@ -528,7 +550,6 @@ async function updateLeadFromChat(
     const intakeFields = (schema?.fields ?? []) as Array<{ key: string; label: string; type?: string; priority?: string }>
     if (!intakeFields.length) return
 
-    // Konuşma geçmişi
     const { data: historyRows } = await supabase
       .from('messages')
       .select('role, content')
@@ -537,17 +558,14 @@ async function updateLeadFromChat(
       .order('created_at', { ascending: true })
     if (!historyRows?.length) return
 
-    // Yapılandırılmış veri çıkar
     const newData  = await extractCollectedData(historyRows, intakeFields)
     const existing = (lead.collected_data ?? {}) as Record<string, unknown>
 
-    // Mevcut dolu alanları koruyarak birleştir
     const merged: Record<string, unknown> = { ...existing }
     for (const [k, v] of Object.entries(newData)) {
       if (v !== null && v !== undefined && v !== '') merged[k] = v
     }
 
-    // data_completeness ve missing_fields
     const dataCompleteness: Record<string, string> = {}
     for (const f of intakeFields) {
       dataCompleteness[f.key] = merged[f.key] ? 'collected' : 'not_collected'
@@ -572,29 +590,145 @@ async function updateLeadFromChat(
         updated_at:          new Date().toISOString(),
       })
       .eq('id', lead.id)
+
+    // Sync full_name to contacts table so inbox + leads page show real name
+    const extractedName = merged.full_name as string | undefined
+    if (extractedName) {
+      await supabase
+        .from('contacts')
+        .update({ full_name: extractedName })
+        .eq('id', contactId)
+        .is('full_name', null)  // only set if not already manually assigned
+    }
+
+    if (newStatus !== lead.status) {
+      await sendCrmEvent(supabase, orgId, {
+        event:          'lead_status_change',
+        org_id:         orgId,
+        lead_id:        lead.id,
+        contact_id:     contactId,
+        old_status:     lead.status,
+        new_status:     newStatus,
+        score,
+        collected_data: merged,
+        timestamp:      new Date().toISOString(),
+      })
+    }
   } catch (err) {
     console.error('updateLeadFromChat failed:', err)
   }
 }
 
-// ─── Shared inbound handler ───────────────────────────────────────────────────
+// ─── Vision: update lead with image analysis result ───────────────────────────
 
 /**
- * Provider-agnostic message handler.
- * Called by each edge function after normalizing the inbound webhook payload.
- * Handles contact/lead/conversation upsert, debounce locking, and chat engine.
+ * Called after GPT-4o Vision analyzes an inbound image.
+ * Appends analysis to lead.notes, bumps qualification_score by 10,
+ * and saves a system message to the conversation.
  */
+export async function updateLeadWithVision(
+  supabase:      ReturnType<typeof createClient>,
+  orgId:         string,
+  waId:          string,
+  analysisText:  string,
+  wamid:         string
+): Promise<void> {
+  try {
+    // Find contact
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('organization_id', orgId)
+      .filter("channel_identifiers->>'wa_id'", 'eq', waId)
+      .maybeSingle()
+
+    if (!contact?.id) return
+
+    // Find lead
+    const { data: lead } = await supabase
+      .from('leads')
+      .select('id, qualification_score, notes')
+      .eq('organization_id', orgId)
+      .eq('contact_id', contact.id)
+      .maybeSingle()
+
+    if (!lead?.id) return
+
+    // Find active conversation
+    const { data: convo } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('contact_id', contact.id)
+      .eq('channel', 'whatsapp')
+      .eq('status', 'active')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const dateStr = new Date().toLocaleDateString('tr-TR')
+    const noteEntry = `📎 Görsel Analizi ${dateStr}: ${analysisText}`
+
+    // Append to notes (newline-separated)
+    const existingNotes = (lead.notes ?? '') as string
+    const updatedNotes  = existingNotes ? `${existingNotes}\n${noteEntry}` : noteEntry
+
+    const newScore = Math.min(100, (lead.qualification_score ?? 0) + 10)
+
+    await supabase
+      .from('leads')
+      .update({
+        notes:               updatedNotes,
+        qualification_score: newScore,
+        updated_at:          new Date().toISOString(),
+      })
+      .eq('id', lead.id)
+
+    // Save system message to conversation (if one exists)
+    if (convo?.id) {
+      await supabase.from('messages').insert({
+        conversation_id: convo.id,
+        organization_id: orgId,
+        role:            'system',
+        content:         noteEntry,
+        content_type:    'image',
+        external_id:     wamid,
+        channel:         'whatsapp',
+      })
+    }
+  } catch (err) {
+    console.error('updateLeadWithVision failed:', err)
+  }
+}
+
+// ─── Shared inbound handler ───────────────────────────────────────────────────
+
 export async function handleInboundMessage(opts: InboundMessageOptions): Promise<void> {
   const {
     supabase, orgId, phone, providerContactId, channelIdentifierKey,
-    channel, messageText, channelMetadata, sendReply, onNewLead,
+    channel, messageText, externalId, channelMetadata, sendReply,
   } = opts
 
+  // ── Idempotency check — skip duplicate webhooks ──
+  if (externalId) {
+    const { data: dup } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('channel', channel)
+      .eq('external_id', externalId)
+      .maybeSingle()
+    if (dup) {
+      console.log(`Duplicate webhook skipped: ${externalId}`)
+      return
+    }
+  }
+
   // ── Upsert contact ──
-  // Lookup by the provider-specific identifier stored inside channel_identifiers JSONB
   let contactId: string
   let isNewContact = false
 
+  // Step 1: Look up by channel identifier (fast, channel-specific)
   const { data: existingContact } = await supabase
     .from('contacts')
     .select('id')
@@ -605,27 +739,63 @@ export async function handleInboundMessage(opts: InboundMessageOptions): Promise
   if (existingContact?.id) {
     contactId = existingContact.id
   } else {
-    const { data: newContact, error } = await supabase
-      .from('contacts')
-      .insert({
-        organization_id: orgId,
-        phone: phone || null,
-        channel_identifiers: {
-          [channelIdentifierKey]: providerContactId,
-          ...(phone ? { phone } : {}),
-        },
-        source_channel: channel,
-        status: 'new',
-      })
-      .select('id')
-      .single()
+    // Step 2: Phone-first cross-channel dedup
+    // BSUID guard: Meta WA may send Business-Scoped User IDs (contain '.') from June 2026+
+    // BSUIDs are not phone numbers — skip phone dedup for them
+    const isBSUID = providerContactId.includes('.')
+    const normalizedPhone = (phone && !isBSUID) ? normalizePhoneE164(phone) : null
 
-    if (error || !newContact?.id) {
-      console.error('Contact insert failed:', error)
-      return
+    let foundByPhone: { id: string } | null = null
+    if (normalizedPhone) {
+      const { data: byPhone } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('phone', normalizedPhone)
+        .maybeSingle()
+      foundByPhone = byPhone
     }
-    contactId  = newContact.id
-    isNewContact = true
+
+    if (foundByPhone?.id) {
+      // Cross-channel match — reuse existing contact, merge channel_identifiers
+      contactId = foundByPhone.id
+      const { data: contactData } = await supabase
+        .from('contacts')
+        .select('channel_identifiers')
+        .eq('id', contactId)
+        .single()
+      const mergedIdentifiers = {
+        ...((contactData?.channel_identifiers ?? {}) as Record<string, unknown>),
+        [channelIdentifierKey]: providerContactId,
+      }
+      await supabase
+        .from('contacts')
+        .update({ channel_identifiers: mergedIdentifiers })
+        .eq('id', contactId)
+    } else {
+      // Step 3: No match found — create new contact
+      const { data: newContact, error } = await supabase
+        .from('contacts')
+        .insert({
+          organization_id: orgId,
+          phone: normalizedPhone ?? phone ?? null,
+          channel_identifiers: {
+            [channelIdentifierKey]: providerContactId,
+            ...(normalizedPhone ? { phone: normalizedPhone } : phone ? { phone } : {}),
+          },
+          source_channel: channel,
+          status: 'new',
+        })
+        .select('id')
+        .single()
+
+      if (error || !newContact?.id) {
+        console.error('Contact insert failed:', error)
+        return
+      }
+      contactId    = newContact.id
+      isNewContact = true
+    }
   }
 
   // ── Upsert lead ──
@@ -643,20 +813,21 @@ export async function handleInboundMessage(opts: InboundMessageOptions): Promise
   if (isNewLead) {
     await supabase.from('leads').insert({
       organization_id: orgId,
-      contact_id: contactId,
-      status: 'new',
+      contact_id:      contactId,
+      status:          'new',
       qualification_score: 5,
-      source_channel: channel,
-      collected_data: {},
+      source_channel:  channel,
+      collected_data:  {},
     })
   }
 
   // ── Find or create active conversation ──
   let conversationId: string
+  let conversationMode: string = 'ai'
 
   const { data: existingConvo } = await supabase
     .from('conversations')
-    .select('id')
+    .select('id, mode')
     .eq('organization_id', orgId)
     .eq('contact_id', contactId)
     .eq('channel', channel)
@@ -666,15 +837,16 @@ export async function handleInboundMessage(opts: InboundMessageOptions): Promise
     .maybeSingle()
 
   if (existingConvo?.id) {
-    conversationId = existingConvo.id
+    conversationId   = existingConvo.id
+    conversationMode = existingConvo.mode ?? 'ai'
   } else {
     const { data: newConvo, error } = await supabase
       .from('conversations')
       .insert({
         organization_id: orgId,
-        contact_id: contactId,
+        contact_id:      contactId,
         channel,
-        status: 'active',
+        status:          'active',
         channel_metadata: channelMetadata ?? {},
       })
       .select('id')
@@ -693,9 +865,11 @@ export async function handleInboundMessage(opts: InboundMessageOptions): Promise
     .insert({
       conversation_id: conversationId,
       organization_id: orgId,
-      role: 'user',
-      content: messageText,
-      content_type: 'text',
+      role:            'user',
+      content:         messageText,
+      content_type:    'text',
+      external_id:     externalId ?? null,
+      channel,
     })
     .select('id')
     .single()
@@ -705,7 +879,20 @@ export async function handleInboundMessage(opts: InboundMessageOptions): Promise
     return
   }
 
-  // ── Re-engagement: lead cevap verdi → kalan re_contact task'larını iptal et ──
+  // ── Human mode: customer replied while salesperson is handling ──
+  if (conversationMode === 'human') {
+    // Message saved so the salesperson can see it — no AI response
+    await supabase.from('notifications').insert({
+      organization_id: orgId,
+      type:            'human_reply_received',
+      conversation_id: conversationId,
+      title:           'İnsan modunda müşteri mesajı',
+      body:            'Müşteri, satışçı aktifken mesaj gönderdi.',
+    })
+    return
+  }
+
+  // ── Re-engagement: customer responded — cancel pending re_contact tasks ──
   await supabase
     .from('follow_up_tasks')
     .update({ status: 'cancelled' })
@@ -714,18 +901,16 @@ export async function handleInboundMessage(opts: InboundMessageOptions): Promise
     .eq('status', 'pending')
     .like('sequence_stage', 're_contact_%')
 
-  // ── Debounce: mark this message as the pending processor (latest always wins) ──
+  // ── Debounce: mark this message as the pending processor ──
   await supabase
     .from('conversations')
     .update({ pending_process_id: savedMsg.id })
     .eq('id', conversationId)
 
-  // Wait for any follow-up messages from the same user
   await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS))
 
-  // Atomically claim exclusive processing rights
   const claimed = await claimProcessing(supabase, conversationId, savedMsg.id)
-  if (!claimed) return  // a newer message took over, or another worker is already processing
+  if (!claimed) return
 
   try {
     const aggregated = await getPendingUserMessages(supabase, conversationId)
@@ -733,14 +918,51 @@ export async function handleInboundMessage(opts: InboundMessageOptions): Promise
 
     await runChatEngine(supabase, orgId, contactId, conversationId, aggregated, channel, sendReply)
 
-    // Lead'i güncel konuşmadan çıkarılan yapılandırılmış veriyle güncelle
     await updateLeadFromChat(supabase, orgId, contactId, conversationId, channel)
 
-    if (isNewLead && onNewLead) {
-      await onNewLead()
+    // ── Auto-create re_contact follow-up task (only if conversation is still in AI mode) ──
+    const { data: convoCheck } = await supabase
+      .from('conversations')
+      .select('mode')
+      .eq('id', conversationId)
+      .single()
+
+    if (convoCheck?.mode === 'ai') {
+      // Get lead_id for the follow_up_tasks FK
+      const { data: leadForTask } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('contact_id', contactId)
+        .maybeSingle()
+
+      // Upsert: if re_contact_1 already pending for this contact, leave it (ignoreDuplicates)
+      await supabase.from('follow_up_tasks').upsert({
+        organization_id:   orgId,
+        contact_id:        contactId,
+        lead_id:           leadForTask?.id ?? null,
+        conversation_id:   conversationId,
+        task_type:         're_contact',
+        sequence_stage:    're_contact_1',
+        status:            'pending',
+        channel,
+        scheduled_at:      new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+        window_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        template_name:     're_engagement_v1',
+      }, { onConflict: 'organization_id,contact_id,sequence_stage', ignoreDuplicates: true })
+    }
+
+    if (isNewLead) {
+      await sendCrmEvent(supabase, orgId, {
+        event:      'new_lead',
+        org_id:     orgId,
+        contact_id: contactId,
+        phone:      phone ?? null,
+        channel,
+        timestamp:  new Date().toISOString(),
+      })
     }
   } finally {
-    // Always release the lock — even if an error is thrown above
     await releaseProcessing(supabase, conversationId)
   }
 }

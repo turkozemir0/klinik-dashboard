@@ -1,0 +1,5 @@
+export { checkEntitlement, hasFeature } from './check'
+export { incrementUsage, decrementUsage, getUsage, currentBillingPeriod } from './usage'
+export { invalidateCache } from './cache'
+export { withFeatureGuard } from './guard'
+export type { EntitlementResult } from './types'

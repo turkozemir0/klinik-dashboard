@@ -4,7 +4,9 @@ import { Users, Flame, TrendingUp, ArrowRight, Star, CalendarDays } from 'lucide
 import StatCard from '@/components/StatCard'
 import TrendChart from '@/components/TrendChart'
 import LeadBadge from '@/components/LeadBadge'
-import { t } from '@/lib/i18n'
+import SetupBanner from '@/components/setup/SetupBanner'
+import { getT } from '@/lib/i18n'
+import { cookies } from 'next/headers'
 import { formatDuration } from '@/lib/types'
 import type { DailyTrend } from '@/lib/types'
 import Link from 'next/link'
@@ -37,6 +39,8 @@ async function getOrgId(supabase: any, userId: string) {
 }
 
 export default async function DashboardPage() {
+  const lang = cookies().get('lang')?.value === 'en' ? 'en' : 'tr'
+  const t = getT(lang)
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -52,7 +56,7 @@ export default async function DashboardPage() {
   const [leadsResult, handoffResult, todayResult, trendResult, recentLeadsResult, recentCallsResult] = await Promise.all([
     supabase
       .from('leads')
-      .select('id, qualification_score, status, created_at')
+      .select('id, qualification_score, status, created_at', { count: 'exact' })
       .eq('organization_id', orgId),
     supabase
       .from('handoff_logs')
@@ -82,7 +86,7 @@ export default async function DashboardPage() {
   ])
 
   const leads = leadsResult.data ?? []
-  const totalLeads = leads.length
+  const totalLeads = leadsResult.count ?? leads.length
   const hotLeads = leads.filter(l => l.qualification_score >= 70).length
   const warmLeads = leads.filter(l => l.qualification_score >= 40 && l.qualification_score < 70).length
   const coldLeads = leads.filter(l => l.qualification_score < 40).length
@@ -119,6 +123,10 @@ export default async function DashboardPage() {
         <h1 className="text-xl font-bold text-slate-900">{t.dashboardTitle}</h1>
         <p className="text-sm text-slate-500 mt-0.5">Genel performans özeti</p>
       </div>
+
+      <SetupBanner />
+
+      <div id="dashboard-main-content" className="space-y-6 transition-all duration-300">
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -233,6 +241,8 @@ export default async function DashboardPage() {
           </div>
         </div>
       </div>
+
+      </div> {/* dashboard-main-content */}
     </div>
   )
 }

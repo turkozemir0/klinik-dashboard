@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Building2, Users, Settings, BookOpen, AlertTriangle } from 'lucide-react'
+import { Plus, Building2, Users, Settings, BookOpen, AlertTriangle, UserPlus, Upload } from 'lucide-react'
 import Link from 'next/link'
-import { t } from '@/lib/i18n'
+import { useT } from '@/lib/lang-context'
 import NewOrgModal from './NewOrgModal'
 import OrgSettingsModal from './OrgSettingsModal'
+import InviteUserModal from './InviteUserModal'
+import N8nStatusWidget from './N8nStatusWidget'
 
 interface Org {
   id: string
@@ -37,9 +39,11 @@ const statusColors: Record<string, string> = {
 }
 
 export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsByOrg }: Props) {
+  const t = useT()
   const [orgs, setOrgs] = useState(initialOrgs)
   const [showNewModal, setShowNewModal] = useState(false)
   const [settingsOrg, setSettingsOrg] = useState<{ id: string; name: string } | null>(null)
+  const [inviteOrg, setInviteOrg] = useState<{ id: string; name: string } | null>(null)
 
   return (
     <div className="p-6">
@@ -48,13 +52,22 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsBy
           <h1 className="text-xl font-bold text-slate-900">{t.adminTitle}</h1>
           <p className="text-sm text-slate-500 mt-0.5">{t.allOrgs}</p>
         </div>
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-        >
-          <Plus size={16} />
-          Yeni Müşteri Ekle
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/admin/import"
+            className="flex items-center gap-2 border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-800 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <Upload size={16} />
+            Lead İçe Aktar
+          </Link>
+          <button
+            onClick={() => setShowNewModal(true)}
+            className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <Plus size={16} />
+            Yeni Müşteri Ekle
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -77,6 +90,12 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsBy
             <p className="text-2xl font-bold text-slate-900">{Object.values(countsByOrg).reduce((a, b) => a + b, 0)}</p>
           </div>
         </div>
+      </div>
+
+      {/* Sistem Durumu */}
+      <div className="mb-6">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Sistem Durumu</p>
+        <N8nStatusWidget />
       </div>
 
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
@@ -149,6 +168,13 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsBy
                     >
                       <Settings size={15} />
                     </button>
+                    <button
+                      onClick={() => setInviteOrg({ id: org.id, name: org.name })}
+                      className="p-1.5 text-slate-400 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                      title="Kullanıcı Davet Et"
+                    >
+                      <UserPlus size={15} />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -169,6 +195,14 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsBy
           orgName={settingsOrg.name}
           onClose={() => setSettingsOrg(null)}
           onSaved={() => setSettingsOrg(null)}
+        />
+      )}
+
+      {inviteOrg && (
+        <InviteUserModal
+          orgId={inviteOrg.id}
+          orgName={inviteOrg.name}
+          onClose={() => setInviteOrg(null)}
         />
       )}
     </div>

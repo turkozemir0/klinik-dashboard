@@ -148,6 +148,65 @@ export interface SupportTicket {
   organization?: Organization
 }
 
+export interface MetaAdAccount {
+  id: string
+  organization_id: string
+  account_name: string | null
+  meta_ad_account_id: string
+  meta_business_id: string | null
+  meta_business_name: string | null
+  access_token_ref: string | null
+  currency: string | null
+  account_status: string | null
+  timezone_name: string | null
+  report_timezone: string
+  is_active: boolean
+  metadata: Record<string, any>
+  created_at: string
+  updated_at: string
+}
+
+export interface AdReportConfig {
+  id: string
+  organization_id: string
+  meta_ad_account_id: string
+  is_enabled: boolean
+  schedule_type: 'daily' | 'weekly'
+  send_time_local: string
+  report_timezone: string
+  period_type: 'yesterday' | 'last_24h'
+  from_email: string | null
+  from_name: string | null
+  subject_template: string
+  recipient_emails: string[]
+  include_campaign_breakdown: boolean
+  include_ai_summary: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AdReportRun {
+  id: string
+  organization_id: string
+  meta_ad_account_id: string
+  config_id: string | null
+  provider: 'meta_ads'
+  period_start: string
+  period_end: string
+  period_label: string | null
+  status: 'pending' | 'processing' | 'sent' | 'failed' | 'skipped'
+  email_provider: string | null
+  email_id: string | null
+  metrics: Record<string, any>
+  summary: Record<string, any>
+  report_html: string | null
+  error_message: string | null
+  sent_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Aggregated types for dashboard
 export interface DashboardStats {
   totalLeads: number

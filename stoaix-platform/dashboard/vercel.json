@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/billing/dunning",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/health/n8n-alert",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
