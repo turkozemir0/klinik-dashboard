@@ -12,6 +12,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/lang-context'
 import DunningBanner from '@/components/billing/DunningBanner'
 import TrialBanner from '@/components/billing/TrialBanner'
+import PipelineSettings from '@/components/settings/PipelineSettings'
 
 // ─── Module labels ────────────────────────────────────────────────────────────
 
@@ -704,19 +705,20 @@ function SupportSection() {
 
 // ─── Main Settings Page ───────────────────────────────────────────────────────
 
-type SettingsTab = 'moduller' | 'billing' | 'support'
+type SettingsTab = 'moduller' | 'billing' | 'pipelinelar' | 'support'
 
 function SettingsPageInner() {
   const searchParams = useSearchParams()
   const initialTab = (searchParams.get('tab') as SettingsTab) ?? 'moduller'
   const [activeTab, setActiveTab] = useState<SettingsTab>(
-    ['moduller', 'billing', 'support'].includes(initialTab) ? initialTab : 'moduller'
+    ['moduller', 'billing', 'pipelinelar', 'support'].includes(initialTab) ? initialTab : 'moduller'
   )
 
   const tabs: { key: SettingsTab; label: string }[] = [
-    { key: 'moduller', label: 'Modüller' },
-    { key: 'billing',  label: 'Plan & Fatura' },
-    { key: 'support',  label: 'Destek Talebi' },
+    { key: 'moduller',    label: 'Modüller' },
+    { key: 'billing',     label: 'Plan & Fatura' },
+    { key: 'pipelinelar', label: 'Pipelinelar' },
+    { key: 'support',     label: 'Destek Talebi' },
   ]
 
   return (
@@ -743,9 +745,10 @@ function SettingsPageInner() {
         ))}
       </div>
 
-      {activeTab === 'moduller' && <ModulesSection />}
-      {activeTab === 'billing'  && <BillingSection />}
-      {activeTab === 'support'  && <SupportSection />}
+      {activeTab === 'moduller'    && <ModulesSection />}
+      {activeTab === 'billing'     && <BillingSection />}
+      {activeTab === 'pipelinelar' && <PipelineSettings />}
+      {activeTab === 'support'     && <SupportSection />}
     </div>
   )
 }

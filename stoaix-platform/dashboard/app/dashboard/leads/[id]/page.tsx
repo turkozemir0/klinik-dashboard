@@ -6,6 +6,7 @@ import { t } from '@/lib/i18n'
 import { ArrowLeft } from 'lucide-react'
 import LeadDetailClient from './LeadDetailClient'
 import LeadAppointmentsClient from './LeadAppointmentsClient'
+import LeadPipelinesClient from './LeadPipelinesClient'
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const supabase = createClient()
@@ -161,6 +162,9 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           </div>
         </div>
       )}
+
+      {/* Pipeline Atamaları */}
+      <LeadPipelinesClient leadId={lead.id} />
 
       {/* Randevular */}
       <LeadAppointmentsClient leadId={lead.id} />

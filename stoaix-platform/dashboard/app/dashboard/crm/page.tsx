@@ -181,7 +181,7 @@ function LeadsTab({ orgId }: { orgId: string }) {
       const res = await fetch(`/api/pipelines/${bulkPipelineId}/bulk-assign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage_id: bulkStageId, lead_ids: [...selectedIds] }),
+        body: JSON.stringify({ stage_id: bulkStageId, lead_ids: Array.from(selectedIds) }),
       })
       if (res.ok) {
         setSelectedIds(new Set())

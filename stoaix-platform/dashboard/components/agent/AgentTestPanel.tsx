@@ -2,10 +2,21 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  Send, Trash2, Loader2, Mic, MicOff, PhoneOff, Phone,
+  Send, Trash2, PhoneOff, Phone,
   MessageSquare, Bot, AlertCircle, BookOpen, FileText, Clock,
   ChevronDown,
 } from 'lucide-react'
+import {
+  LiveKitRoom,
+  RoomAudioRenderer,
+  useAgent,
+  useConnectionState,
+} from '@livekit/components-react'
+import { ConnectionState } from 'livekit-client'
+import {
+  AgentAudioVisualizerGrid,
+  type GridVisualState,
+} from '@/components/agents-ui/agent-audio-visualizer-grid'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -217,40 +228,171 @@ function ChatTest({ orgId, channel, model }: { orgId: string; channel: 'voice' |
 
 // ─── Voice Test ───────────────────────────────────────────────────────────────
 
+// Agent state → grid visual state mapping
+function toGridState(
+  lkConnected: boolean,
+  agentState: string,
+): GridVisualState {
+  if (!lkConnected) return 'initializing'
+  if (agentState === 'speaking')  return 'speaking'
+  if (agentState === 'thinking')  return 'thinking'
+  if (agentState === 'listening' || agentState === 'idle') return 'listening'
+  return 'initializing'
+}
+
+// Agent state labels (Turkish)
+const AGENT_STATE_LABELS: Record<string, string> = {
+  initializing:          'Başlatılıyor...',
+  idle:                  'Hazır',
+  listening:             'Dinliyor',
+  thinking:              'Düşünüyor...',
+  speaking:              'Konuşuyor',
+  connecting:            'Bağlanıyor...',
+  'pre-connect-buffering': 'Hazırlanıyor...',
+  failed:                'Bağlantı hatası',
+  disconnected:          'Bağlantı kesildi',
+}
+
+// Inner component — uses LiveKit React hooks (must be inside LiveKitRoom)
+function VoiceTestInner({
+  onEnd,
+  onConnected,
+  elapsed,
+  remaining,
+  modelConfig,
+}: {
+  onEnd: () => void
+  onConnected: () => void
+  elapsed: number
+  remaining: number
+  modelConfig: (typeof MODELS)[0]
+}) {
+  const agent           = useAgent()
+  const connectionState = useConnectionState()
+  const lkConnected     = connectionState === ConnectionState.Connected
+
+  const agentState   = (agent as any).state as string
+  const audioTrack   = (agent as any).audioTrack
+  const gridState    = toGridState(lkConnected, agentState)
+  const isLow        = remaining <= 30
+  const formatTime   = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  const estimatedCost = (elapsed / 60) * modelConfig.costPerMin
+
+  // Start timer once LK room is connected
+  const connectedRef = useRef(false)
+  useEffect(() => {
+    if (lkConnected && !connectedRef.current) {
+      connectedRef.current = true
+      onConnected()
+    }
+  }, [lkConnected, onConnected])
+
+  const stateLabel = AGENT_STATE_LABELS[agentState] ?? 'Bağlandı'
+
+  // Color based on state
+  const gridColor =
+    gridState === 'speaking'  ? '#6366f1' :
+    gridState === 'thinking'  ? '#f59e0b' :
+    gridState === 'listening' ? '#22c55e' :
+    '#94a3b8'
+
+  return (
+    <>
+      {/* Grid Visualizer */}
+      <div className="flex flex-col items-center gap-3">
+        <AgentAudioVisualizerGrid
+          state={gridState}
+          audioTrack={audioTrack}
+          size="lg"
+          color={gridColor}
+        />
+
+        {/* State label */}
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${
+            gridState === 'speaking'  ? 'bg-brand-500 animate-pulse' :
+            gridState === 'thinking'  ? 'bg-amber-400 animate-pulse' :
+            gridState === 'listening' ? 'bg-green-500' :
+            'bg-slate-300 animate-pulse'
+          }`} />
+          <span className={`text-xs font-medium ${
+            gridState === 'speaking'  ? 'text-brand-600' :
+            gridState === 'thinking'  ? 'text-amber-600' :
+            gridState === 'listening' ? 'text-green-700' :
+            'text-slate-500'
+          }`}>
+            {stateLabel}
+          </span>
+        </div>
+      </div>
+
+      {/* Timer & cost */}
+      <div className="text-center">
+        {isLow ? (
+          <p className="text-sm font-semibold text-red-600">
+            ⚠ {formatTime(remaining)} kaldı
+          </p>
+        ) : (
+          <p className="text-sm font-medium text-slate-600">
+            {formatTime(remaining)} kalan
+          </p>
+        )}
+        {elapsed > 0 && (
+          <p className="text-xs text-slate-400 mt-0.5">
+            ~${modelConfig.costPerMin.toFixed(4)}/dk · {formatTime(elapsed)} geçti · ~${estimatedCost.toFixed(4)}
+          </p>
+        )}
+      </div>
+
+      {/* End call button */}
+      <button
+        onClick={onEnd}
+        className="flex items-center gap-2 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors shadow-sm"
+      >
+        <PhoneOff size={16} />
+        Aramayı Sonlandır
+      </button>
+    </>
+  )
+}
+
 function VoiceTest({ orgId, model }: { orgId: string; model: string }) {
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
-  const [error, setError]     = useState('')
-  const [roomName, setRoomName] = useState('')
-  const [elapsed, setElapsed] = useState(0)
+  const [phase, setPhase] = useState<'idle' | 'connecting' | 'active' | 'error'>('idle')
+  const [error, setError]   = useState('')
+  const [connDetails, setConnDetails] = useState<{ token: string; url: string } | null>(null)
+  const [elapsed, setElapsed]     = useState(0)
   const [remaining, setRemaining] = useState(VOICE_MAX_SECS)
-  const roomRef        = useRef<any>(null)
-  const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null)
-  const audioElemsRef  = useRef<HTMLAudioElement[]>([])
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
   }, [])
 
-  const endCall = useCallback(async () => {
+  const endCall = useCallback(() => {
     stopTimer()
-    audioElemsRef.current.forEach(el => { el.pause(); el.remove() })
-    audioElemsRef.current = []
-    if (roomRef.current) {
-      await roomRef.current.disconnect()
-      roomRef.current = null
-    }
-    setStatus('idle')
-    setRoomName('')
-    setRemaining(VOICE_MAX_SECS)
+    setConnDetails(null)
+    setPhase('idle')
     setElapsed(0)
+    setRemaining(VOICE_MAX_SECS)
   }, [stopTimer])
 
-  const startCall = useCallback(async () => {
-    setStatus('connecting')
-    setError('')
-    setRemaining(VOICE_MAX_SECS)
-    setElapsed(0)
+  const handleConnected = useCallback(() => {
+    stopTimer()
+    let secs = VOICE_MAX_SECS
+    let elapsed = 0
+    timerRef.current = setInterval(() => {
+      secs--; elapsed++
+      setRemaining(secs)
+      setElapsed(elapsed)
+      if (secs <= 0) endCall()
+    }, 1000)
+  }, [stopTimer, endCall])
 
+  const startCall = useCallback(async () => {
+    setPhase('connecting')
+    setError('')
+    setElapsed(0)
+    setRemaining(VOICE_MAX_SECS)
     try {
       const res = await fetch('/api/agent/voice-token', {
         method: 'POST',
@@ -258,145 +400,79 @@ function VoiceTest({ orgId, model }: { orgId: string; model: string }) {
         body: JSON.stringify({ orgId, model }),
       })
       if (!res.ok) throw new Error('Token alınamadı')
-      const { token, url, roomName: rn } = await res.json()
-      setRoomName(rn)
-
-      const { Room, RoomEvent, Track } = await import('livekit-client')
-
-      const room = new Room({
-        audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true },
-        adaptiveStream: true,
-        dynacast: true,
-      })
-      roomRef.current = room
-
-      room.on(RoomEvent.TrackSubscribed, (track: any) => {
-        if (track.kind === Track.Kind.Audio) {
-          const el: HTMLAudioElement = track.attach()
-          document.body.appendChild(el)
-          audioElemsRef.current.push(el)
-          el.play().catch(() => {})
-        }
-      })
-
-      room.on(RoomEvent.Connected, () => {
-        setStatus('connected')
-        let secs = VOICE_MAX_SECS
-        let elapsedSecs = 0
-        timerRef.current = setInterval(() => {
-          secs -= 1
-          elapsedSecs += 1
-          setRemaining(secs)
-          setElapsed(elapsedSecs)
-          if (secs <= 0) endCall()
-        }, 1000)
-      })
-      room.on(RoomEvent.Disconnected, () => {
-        stopTimer()
-        setStatus('idle')
-        roomRef.current = null
-        setRemaining(VOICE_MAX_SECS)
-        setElapsed(0)
-      })
-
-      await room.connect(url, token)
-      await room.localParticipant.setMicrophoneEnabled(true)
+      const { token, url } = await res.json()
+      setConnDetails({ token, url })
+      setPhase('active')
     } catch (e: any) {
-      setStatus('error')
+      setPhase('error')
       setError(e?.message || 'Bağlantı hatası')
     }
-  }, [orgId, model, endCall, stopTimer])
+  }, [orgId, model])
 
-  useEffect(() => { return () => { endCall() } }, [endCall])
-
-  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-  const pct        = ((VOICE_MAX_SECS - remaining) / VOICE_MAX_SECS) * 100
-  const isLow      = remaining <= 30
+  useEffect(() => () => stopTimer(), [stopTimer])
 
   const modelConfig = MODELS.find(m => m.id === model) ?? MODELS[0]
-  const estimatedCost = (elapsed / 60) * modelConfig.costPerMin
+
+  // ── Active: LiveKitRoom wrapper ──────────────────────────────────────────────
+  if (phase === 'active' && connDetails) {
+    return (
+      <LiveKitRoom
+        serverUrl={connDetails.url}
+        token={connDetails.token}
+        audio={true}
+        video={false}
+        onDisconnected={endCall}
+        options={{ audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true } }}
+        className="flex flex-col items-center justify-center h-[520px] gap-6"
+      >
+        <RoomAudioRenderer />
+        <VoiceTestInner
+          onEnd={endCall}
+          onConnected={handleConnected}
+          elapsed={elapsed}
+          remaining={remaining}
+          modelConfig={modelConfig}
+        />
+      </LiveKitRoom>
+    )
+  }
+
+  // ── Idle / Connecting / Error ────────────────────────────────────────────────
+  const gridState: GridVisualState =
+    phase === 'connecting' ? 'initializing' : 'idle'
 
   return (
     <div className="flex flex-col items-center justify-center h-[520px] gap-6">
-      {/* Durum göstergesi */}
-      <div className="relative">
-        {status === 'connected' && (
-          <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 128 128">
-            <circle cx="64" cy="64" r="58" fill="none" stroke="#e2e8f0" strokeWidth="6" />
-            <circle
-              cx="64" cy="64" r="58" fill="none"
-              stroke={isLow ? '#ef4444' : '#22c55e'}
-              strokeWidth="6"
-              strokeDasharray={`${2 * Math.PI * 58}`}
-              strokeDashoffset={`${2 * Math.PI * 58 * (1 - pct / 100)}`}
-              strokeLinecap="round"
-              className="transition-all duration-1000"
-            />
-          </svg>
-        )}
-        <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 ${
-          status === 'connected'
-            ? isLow ? 'bg-red-50' : 'bg-green-100'
-            : status === 'connecting' ? 'bg-brand-100'
-            : status === 'error'    ? 'bg-red-100'
-            : 'bg-slate-100'
-        }`}>
-          {status === 'connecting' ? (
-            <Loader2 size={40} className="text-brand-500 animate-spin" />
-          ) : status === 'connected' ? (
-            <div className="flex flex-col items-center gap-1">
-              <Mic size={28} className={isLow ? 'text-red-500' : 'text-green-600'} />
-              <span className={`text-sm font-mono font-bold ${isLow ? 'text-red-500' : 'text-green-700'}`}>
-                {formatTime(remaining)}
-              </span>
-            </div>
-          ) : status === 'error' ? (
-            <MicOff size={40} className="text-red-500" />
-          ) : (
-            <Phone size={40} className="text-slate-400" />
-          )}
-        </div>
-      </div>
+      {/* Grid visualizer (static for idle/connecting) */}
+      <AgentAudioVisualizerGrid
+        state={gridState}
+        size="lg"
+        color="#94a3b8"
+      />
 
-      {/* Durum metni */}
+      {/* Status text */}
       <div className="text-center">
-        {status === 'idle' && (
+        {phase === 'connecting' ? (
+          <>
+            <p className="text-sm font-medium text-slate-700">Bağlanıyor...</p>
+            <p className="text-xs text-slate-400 mt-1">Agent odaya katılıyor</p>
+          </>
+        ) : (
           <>
             <p className="text-sm font-medium text-slate-700">Sesli Test</p>
             <p className="text-xs text-slate-400 mt-1">Asistanınızla gerçek sesli görüşme yapın</p>
           </>
         )}
-        {status === 'connecting' && (
-          <>
-            <p className="text-sm font-medium text-slate-700">Bağlanıyor...</p>
-            <p className="text-xs text-slate-400 mt-1">Agent odaya katılıyor</p>
-          </>
-        )}
-        {status === 'connected' && (
-          <>
-            <p className={`text-sm font-medium ${isLow ? 'text-red-600' : 'text-green-700'}`}>
-              {isLow ? `⚠ ${formatTime(remaining)} kaldı` : 'Bağlandı — Konuşabilirsiniz'}
-            </p>
-            <p className="text-xs text-slate-400 mt-1">
-              Test süresi: maks. {VOICE_MAX_SECS / 60} dakika
-            </p>
-            {elapsed > 0 && (
-              <p className="text-xs text-slate-400 mt-0.5">
-                ~${modelConfig.costPerMin.toFixed(4)}/dk · {formatTime(elapsed)} · Tahmini: ${estimatedCost.toFixed(4)}
-              </p>
-            )}
-          </>
-        )}
-        {status === 'error' && (
-          <div className="flex items-center gap-1.5 text-sm text-red-600">
+        {phase === 'error' && (
+          <div className="flex items-center gap-1.5 text-sm text-red-600 mt-2">
             <AlertCircle size={14} />
             {error}
           </div>
         )}
       </div>
 
-      {/* Buton */}
-      {(status === 'idle' || status === 'error') ? (
+      {/* Start button */}
+      {phase !== 'connecting' && (
         <button
           onClick={startCall}
           className="flex items-center gap-2 px-6 py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-medium transition-colors shadow-sm"
@@ -404,15 +480,7 @@ function VoiceTest({ orgId, model }: { orgId: string; model: string }) {
           <Phone size={16} />
           Aramayı Başlat
         </button>
-      ) : status === 'connected' ? (
-        <button
-          onClick={endCall}
-          className="flex items-center gap-2 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors shadow-sm"
-        >
-          <PhoneOff size={16} />
-          Aramayı Sonlandır
-        </button>
-      ) : null}
+      )}
 
       <p className="text-xs text-slate-400 text-center max-w-xs">
         Tarayıcı mikrofon izni istenecek. Test görüşmesi kaydedilmez.

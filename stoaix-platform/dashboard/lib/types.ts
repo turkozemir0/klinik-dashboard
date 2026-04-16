@@ -207,6 +207,28 @@ export interface AdReportRun {
   updated_at: string
 }
 
+export interface Pipeline {
+  id: string
+  organization_id: string
+  name: string
+  description: string | null
+  is_default: boolean
+  color: string
+  position: number
+  created_at: string
+  stages?: PipelineStage[]
+}
+
+export interface PipelineStage {
+  id: string
+  pipeline_id: string
+  name: string
+  color: string
+  position: number
+  maps_to_status: string | null
+  is_system: boolean
+}
+
 // Aggregated types for dashboard
 export interface DashboardStats {
   totalLeads: number
