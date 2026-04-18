@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, Component, type ReactNode, type ErrorInfo } from 'react'
 import {
   Send, Trash2, PhoneOff, Phone,
   MessageSquare, Bot, AlertCircle, BookOpen, FileText, Clock,
@@ -226,6 +226,46 @@ function ChatTest({ orgId, channel, model }: { orgId: string; channel: 'voice' |
   )
 }
 
+// ─── Error Boundary (LiveKit crash catcher) ──────────────────────────────
+
+class LiveKitErrorBoundary extends Component<
+  { children: ReactNode; onReset: () => void },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[LiveKit Error]', error, info.componentStack)
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[520px] gap-4 text-center">
+          <AlertCircle size={32} className="text-red-400" />
+          <div>
+            <p className="text-sm font-semibold text-red-600">Ses bağlantısı hatası</p>
+            <p className="text-xs text-slate-500 mt-1 max-w-sm break-all">
+              {this.state.error.message}
+            </p>
+          </div>
+          <button
+            onClick={() => { this.setState({ error: null }); this.props.onReset() }}
+            className="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+          >
+            Tekrar Dene
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ─── Voice Test ───────────────────────────────────────────────────────────────
 
 // Agent state → grid visual state mapping
@@ -413,24 +453,27 @@ function VoiceTest({ orgId, model }: { orgId: string; model: string }) {
   // ── Active: LiveKitRoom wrapper ──────────────────────────────────────────────
   if (phase === 'active' && connDetails) {
     return (
-      <LiveKitRoom
-        serverUrl={connDetails.url}
-        token={connDetails.token}
-        audio={true}
-        video={false}
-        onDisconnected={endCall}
-        options={{ audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true } }}
-        className="flex flex-col items-center justify-center h-[520px] gap-6"
-      >
-        <RoomAudioRenderer />
-        <VoiceTestInner
-          onEnd={endCall}
-          onConnected={handleConnected}
-          elapsed={elapsed}
-          remaining={remaining}
-          modelConfig={modelConfig}
-        />
-      </LiveKitRoom>
+      <LiveKitErrorBoundary onReset={endCall}>
+        <LiveKitRoom
+          serverUrl={connDetails.url}
+          token={connDetails.token}
+          audio={true}
+          video={false}
+          onDisconnected={endCall}
+          onError={(err) => { console.error('[LiveKitRoom]', err); endCall() }}
+          options={{ audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true } }}
+          className="flex flex-col items-center justify-center h-[520px] gap-6"
+        >
+          <RoomAudioRenderer />
+          <VoiceTestInner
+            onEnd={endCall}
+            onConnected={handleConnected}
+            elapsed={elapsed}
+            remaining={remaining}
+            modelConfig={modelConfig}
+          />
+        </LiveKitRoom>
+      </LiveKitErrorBoundary>
     )
   }
 
