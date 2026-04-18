@@ -9,7 +9,7 @@ import {
 import {
   LiveKitRoom,
   RoomAudioRenderer,
-  useAgent,
+  useVoiceAssistant,
   useConnectionState,
 } from '@livekit/components-react'
 import { ConnectionState } from 'livekit-client'
@@ -267,12 +267,9 @@ function VoiceTestInner({
   remaining: number
   modelConfig: (typeof MODELS)[0]
 }) {
-  const agent           = useAgent()
+  const { state: agentState, audioTrack } = useVoiceAssistant()
   const connectionState = useConnectionState()
   const lkConnected     = connectionState === ConnectionState.Connected
-
-  const agentState   = (agent as any).state as string
-  const audioTrack   = (agent as any).audioTrack
   const gridState    = toGridState(lkConnected, agentState)
   const isLow        = remaining <= 30
   const formatTime   = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
