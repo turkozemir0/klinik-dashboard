@@ -20,6 +20,17 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from dotenv import load_dotenv
+from prompt_rules import (
+    PLATFORM_GUARDRAILS,
+    VOICE_CONVERSATION_RULES,
+    NATURALNESS_RULES,
+    REGISTER_RULES,
+    OBJECTION_RULES,
+    get_voice_rules,
+    language_instruction,
+    inbound_language_instruction,
+    LANGUAGE_NAMES,
+)
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -34,6 +45,22 @@ from livekit.agents import (
     llm,
 )
 from livekit.plugins import cartesia, deepgram, openai, anthropic, silero
+
+try:
+    from livekit.plugins.turn_detector import MultilingualModel
+    _TURN_DETECTOR_CLS = MultilingualModel
+except ImportError:
+    try:
+        from livekit.plugins.turn_detector import EOUModel
+        _TURN_DETECTOR_CLS = EOUModel
+        logging.getLogger("stoaix-platform").warning(
+            "MultilingualModel unavailable — falling back to EOUModel"
+        )
+    except ImportError:
+        _TURN_DETECTOR_CLS = None
+        logging.getLogger("stoaix-platform").warning(
+            "turn_detector plugin unavailable — VAD-only mode"
+        )
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -57,7 +84,16 @@ async def load_org(org_id: str) -> dict:
     res = sb.table("organizations").select("*").eq("id", org_id).single().execute()
     if not res.data:
         raise ValueError(f"Organization not found: {org_id}")
-    return res.data
+    org = res.data
+
+    # Subscription plan — tier check için (Advanced+ = çok dilli ses)
+    sub = sb.table("org_subscriptions") \
+        .select("plan_id, status") \
+        .eq("organization_id", org_id) \
+        .limit(1) \
+        .execute()
+    org["_plan"] = sub.data[0]["plan_id"] if sub.data else "legacy"
+    return org
 
 
 async def load_playbook(org_id: str, channel: str = "voice") -> dict | None:
@@ -170,13 +206,13 @@ async def fetch_free_slots_ghl(calendar_id: str, pit_token: str, days: int = 3) 
         if not slots:
             return ""
 
-        DAYS = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"]
         lines = []
         for date, times in slots.items():
             if not times:
                 continue
             d = datetime.strptime(date, "%Y-%m-%d")
-            lines.append(f"{DAYS[d.weekday() + 1 if d.weekday() < 6 else 0]} ({date}): {', '.join(times[:5])}")
+            day_names = DAYS_I18N.get("tr")
+            lines.append(f"{day_names[d.weekday() + 1 if d.weekday() < 6 else 0]} ({date}): {', '.join(times[:5])}")
         return "\n".join(lines)
     except Exception as e:
         logger.warning(f"fetch_free_slots failed: {e}")
@@ -289,13 +325,102 @@ class GoogleCalendarAdapter(CalendarAdapter):
             return {"success": False, "appointment_id": None, "error": str(e)}
 
 
+class DentsoftCalendarAdapter(CalendarAdapter):
+    """DentSoft calendar adapter — slot çekme + randevu oluşturma."""
+
+    DAYS_TR = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"]
+
+    def __init__(self, cal_config: dict):
+        self.api_url    = (cal_config.get("api_url") or "").rstrip("/")
+        self.api_key    = cal_config.get("api_key") or ""
+        self.clinic_id  = cal_config.get("clinic_id") or ""
+        self.doctor_id  = cal_config.get("default_doctor_id") or ""
+
+    async def _fetch(self, path: str, method: str = "GET", form_data: dict | None = None) -> dict | None:
+        """DentSoft API helper. Returns Response payload or None on error."""
+        import aiohttp
+        url     = f"{self.api_url}{path}"
+        headers = {"Authorization": f"Bearer {self.api_key}", "Accept": "application/json"}
+        try:
+            async with aiohttp.ClientSession() as session:
+                if method == "GET":
+                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if resp.status != 200:
+                            return None
+                        data = await resp.json()
+                else:
+                    fd = aiohttp.FormData()
+                    for k, v in (form_data or {}).items():
+                        fd.add_field(k, str(v))
+                    async with session.post(url, headers=headers, data=fd, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if resp.status != 200:
+                            return None
+                        data = await resp.json()
+                if data.get("Status", {}).get("Code") != 100:
+                    logger.warning(f"[dentsoft] API error: {data.get('Status', {}).get('Message')}")
+                    return None
+                return data.get("Response")
+        except Exception as e:
+            logger.warning(f"[dentsoft] _fetch failed ({path}): {e}")
+            return None
+
+    async def get_free_slots(self, days: int = 3) -> str:
+        if not self.doctor_id:
+            return ""
+        today = datetime.now().strftime("%Y-%m-%d")
+        params = urllib.parse.urlencode({
+            "ClinicID":  self.clinic_id,
+            "UserID":    self.doctor_id,
+            "Date":      today,
+            "Range":     f"1-{days * 5}",
+            "Available": "Available",
+        })
+        data = await self._fetch(f"/Api/v1/Doctor/OnlineWork?{params}")
+        if not data:
+            return ""
+
+        raw_slots = data if isinstance(data, list) else data.get("Slots", [])
+        grouped: dict[str, list[str]] = {}
+        for slot in raw_slots:
+            slot_date = (slot.get("Date") or slot.get("WorkDate") or "")[:10]
+            slot_time = (slot.get("Time") or slot.get("StartTime") or slot.get("Hour") or "")[:5]
+            if slot_date and slot_time:
+                grouped.setdefault(slot_date, []).append(slot_time)
+
+        lines = []
+        for date_key in sorted(grouped.keys())[:days]:
+            d        = datetime.strptime(date_key, "%Y-%m-%d")
+            day_name = self.DAYS_TR[d.weekday() + 1 if d.weekday() < 6 else 0]
+            times    = ", ".join(grouped[date_key][:8])
+            lines.append(f"  {day_name} ({date_key}): {times}")
+        return "\n".join(lines) if lines else ""
+
+    async def create_appointment(self, name, phone, datetime_str, notes="") -> dict:
+        if not self.doctor_id:
+            return {"success": False, "appointment_id": None, "error": "default_doctor_id not configured"}
+        form_data = {
+            "FullName":      name,
+            "ContactMobile": phone,
+            "Date":          datetime_str[:10],
+            "Time":          datetime_str[11:16],
+            "Note":          notes,
+            "PatientNumber": "",
+        }
+        path = f"/Api/v1/Appointment/New/{urllib.parse.quote(self.clinic_id)}/{urllib.parse.quote(self.doctor_id)}"
+        data = await self._fetch(path, method="POST", form_data=form_data)
+        if data is None:
+            return {"success": False, "appointment_id": None, "error": "DentSoft appointment creation failed"}
+        appt_id = data.get("PNR") or data.get("AppointmentID") or data.get("ID")
+        return {"success": True, "appointment_id": str(appt_id) if appt_id else None, "error": None}
+
+
 def get_calendar_adapter(org: dict) -> CalendarAdapter | None:
     """
     Returns the appropriate CalendarAdapter for the org, or None if not configured.
 
     Resolution order:
     1. channel_config.calendar.provider = 'google'    → GoogleCalendarAdapter
-    2. channel_config.calendar.provider = 'dentsoft'  → None (skeleton, API docs pending)
+    2. channel_config.calendar.provider = 'dentsoft'  → DentsoftCalendarAdapter
     3. crm_config.calendar_id + pit_token present     → GHLCalendarAdapter (legacy)
     4. otherwise → None
     """
@@ -309,8 +434,9 @@ def get_calendar_adapter(org: dict) -> CalendarAdapter | None:
         return GoogleCalendarAdapter(cal_config)
 
     if provider == "dentsoft":
-        # Dentsoft adapter not yet implemented — API docs pending
-        return None
+        if not cal_config.get("api_url") or not cal_config.get("api_key") or not cal_config.get("clinic_id"):
+            return None
+        return DentsoftCalendarAdapter(cal_config)
 
     # Legacy GHL: crm_config.calendar_id + crm_config.pit_token
     crm_config   = org.get("crm_config") or {}
@@ -410,6 +536,75 @@ async def create_appointment_reminders(
         logger.warning(f"create_appointment_reminders failed: {e}")
 
 
+# ── Language detection helpers ─────────────────────────────────────────────────
+
+def detect_language_heuristic(text: str) -> str | None:
+    """
+    İlk user utterance'dan dil algıla. None = TR (switch gerekmez).
+
+    Algılama sırası:
+      1. Türkçe özel karakterler (şçğıöü) → None (TR, switch yok)
+      2. Script-based: Arapça / Kiril / Çince yazı sistemi → kesin algılama
+      3. Latin-script özel karakterler: ß/äöü → DE, éèç → FR, ñ → ES, ãõ → PT
+      4. Kelime tabanlı: ≥2 indicator kelime eşleşmesi → en yüksek skor kazanır
+      5. Hiçbiri → None (TR default)
+    """
+    if not text or not text.strip():
+        return None
+
+    # 1. Turkish special chars → stay TR
+    if any(c in _TR_CHARS for c in text):
+        return None
+
+    # 2. Script-based detection (non-Latin scripts — very high confidence)
+    for c in text:
+        cp = ord(c)
+        if cp in _ARABIC_RANGE:
+            return "ar"
+        if cp in _CYRILLIC_RANGE:
+            return "ru"
+        if cp in _CJK_RANGE:
+            return "zh"
+
+    # 3. Latin-script special chars (high confidence)
+    chars = set(text)
+    if chars & _DE_CHARS:
+        return "de"
+    if chars & _FR_CHARS:
+        return "fr"
+    if chars & _ES_CHARS:
+        return "es"
+    if chars & _PT_CHARS:
+        return "pt"
+
+    # 4. Word-based detection (Latin-script languages without special chars)
+    words = set(re.sub(r"[^\w\s]", "", text.lower()).split())
+    if not words:
+        return None
+
+    best_lang = None
+    best_score = 0
+    for lang_code, indicators in _LANG_INDICATORS.items():
+        score = len(words & indicators)
+        if score > best_score:
+            best_score = score
+            best_lang = lang_code
+
+    if best_score >= 2:
+        return best_lang
+
+    return None
+
+
+async def _save_contact_language(contact_id: str, lang: str):
+    try:
+        get_supabase().table("contacts").update(
+            {"preferred_language": lang}
+        ).eq("id", contact_id).execute()
+    except Exception as e:
+        logger.warning(f"Failed to save contact language: {e}")
+
+
 # ── Prompt builder ─────────────────────────────────────────────────────────────
 
 def build_system_prompt(
@@ -427,13 +622,6 @@ def build_system_prompt(
         "no_kb_match",
         "Bu konuda elimde net bir bilgi yok. Danışmanımıza not alıyorum."
     )
-
-    calendar_section = (
-        "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "RANDEVU ALMA:\n"
-        "Kullanıcı randevu, görüşme veya uygun saat talep ederse check_availability tool'unu çağır.\n"
-        "Kullanıcı uygun bir saati seçince ad ve telefon al, ardından book_appointment tool'unu çağır.\n"
-    ) if calendar_enabled else ""
 
     must_fields  = [f for f in intake_fields if f.get("priority") == "must"]
     must_prompts = "\n".join(
@@ -468,17 +656,30 @@ def build_system_prompt(
 
     base_prompt = playbook.get("system_prompt_template", "") if playbook else ""
 
-    return f"""{base_prompt}
+    # ═══ TR: Mevcut Türkçe prompt — AYNEN korunur ═══
+    if lang == "tr":
+        calendar_section = (
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "RANDEVU ALMA:\n"
+            "1. Kullanıcı randevu/görüşme/uygun saat talep ederse → check_availability çağır.\n"
+            "2. Kullanıcı uygun bir saati seçince ve ad+telefon alınmışsa → book_appointment çağır.\n"
+            "3. Randevu onaylandığında tarih/saati yazıyla tekrarla ve teyit al.\n"
+            "SIRA ÖNEMLİ: Önce check_availability, sonra book_appointment. Tersini yapma."
+        ) if calendar_enabled else ""
+
+        return f"""{PLATFORM_GUARDRAILS}
+
+{base_prompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 KONUŞMA KURALLARI (KATI — İSTİSNASIZ UYGULANIR):
-- Her turda yalnızca 1 soru sor. Aynı anda iki soru sormak YASAK.
-- Yanıtların maksimum 2 cümle olsun. Monolog yapma.
-- Sayıları HER ZAMAN yazıyla söyle: "1500" yerine "bin beş yüz", "05321234567" yerine "sıfır beş üç iki bir iki üç dört beş altı yedi"
-- Fiyatları yazıyla söyle: "2.500 TL" yerine "iki bin beş yüz lira"
-- Tarihleri yazıyla söyle: "15.03.2026" yerine "on beş Mart iki bin yirmi altı"
-- 1.000 rakamı "bin"dir, "bir bin" YANLIŞ. Örnek: 1.400 → "bin dört yüz", 1.000 → "bin"
-- "Harika!", "Bunu düşünmenize bayıldım", "Mükemmel tercih!" gibi abartılı ifadeler YASAK. Doğal ve sade konuş.
+{VOICE_CONVERSATION_RULES}
+
+{NATURALNESS_RULES}
+
+{REGISTER_RULES}
+
+{OBJECTION_RULES}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BİLGİ TABANI (RAG — bu konuşma için ilgili içerik):
@@ -493,7 +694,7 @@ VERİ TOPLAMA TARZI (ÇOK ÖNEMLİ):
 - Detaylı program açıklaması yapma — sadece doğrudan sorulursa, 1-2 cümle ile kısa yanıt ver.
 - Bilgileri tek seferde sormak YASAK. Birer birer, sırayla sor.
 - Kullanıcı zaten bir bilgiyi paylaştıysa tekrar sorma.
-- Tüm zorunlu bilgiler toplandığında: "{"I've noted your information, one of our consultants will reach out to you shortly." if lang == "en" else "Bilgilerinizi not aldım, bir danışmanımız sizi en kısa sürede arayacak."}" de ve görüşmeyi nazikçe sonlandır.
+- Tüm zorunlu bilgiler toplandığında: "Bilgilerinizi not aldım, bir danışmanımız sizi en kısa sürede arayacak." de ve görüşmeyi nazikçe sonlandır.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 YÖNLENDİRME KURALLARI:{routing_text if routing_text else " (tanımlı kural yok)"}
@@ -509,6 +710,66 @@ HANDOFF TETİKLEYİCİLER:
 HALÜSİNASYON KURALI:
 {fallback_no_kb}
 {calendar_section}{few_shot_section}"""
+
+    # ═══ Non-TR: International prompt ═══
+    conv_rules, nat_rules, reg_rules, obj_rules = get_voice_rules(lang)
+    lang_inst = language_instruction(lang)
+
+    calendar_section_intl = (
+        "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "APPOINTMENT BOOKING:\n"
+        "1. If the user asks for an appointment/meeting/available time → call check_availability.\n"
+        "2. When they pick a time and name+phone are collected → call book_appointment.\n"
+        "3. When confirmed, repeat date/time verbally and get acknowledgement.\n"
+        "ORDER MATTERS: First check_availability, then book_appointment. Never reverse."
+    ) if calendar_enabled else ""
+
+    completion_msg = "I've noted your information, one of our consultants will reach out to you shortly."
+
+    return f"""{PLATFORM_GUARDRAILS}
+{lang_inst}
+
+{base_prompt}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONVERSATION RULES (STRICT — NO EXCEPTIONS):
+{conv_rules}
+
+{nat_rules}
+
+{reg_rules}
+
+{obj_rules}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KNOWLEDGE BASE (RAG — relevant content for this conversation):
+{kb_context if kb_context else "(No query yet — will be loaded when user asks a question)"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REQUIRED INFORMATION (must collect):
+{must_prompts}
+
+DATA COLLECTION STYLE (VERY IMPORTANT):
+- When caller states their topic, acknowledge in 1 sentence, move to first question immediately.
+- Don't give detailed explanations — only if directly asked, 1-2 sentences max.
+- Asking all fields at once is FORBIDDEN. Ask one by one, in order.
+- If the user already shared a piece of information, don't ask again.
+- When all required info is collected: "{completion_msg}" and politely end the call.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ROUTING RULES:{routing_text if routing_text else " (no rules defined)"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUT-OF-SCOPE TOPICS:{blocks_text if blocks_text else " (no blocks defined)"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HANDOFF TRIGGERS:
+If these words are heard, IMMEDIATELY transfer to consultant: {handoff_keywords}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HALLUCINATION RULE:
+{fallback_no_kb}
+{calendar_section_intl}{few_shot_section}"""
 
 
 # ── Agent sınıfı ───────────────────────────────────────────────────────────────
@@ -600,7 +861,7 @@ async def save_messages(conv_id: str, org_id: str, transcript: list):
         logger.warning(f"messages save failed: {e}")
 
 
-async def extract_collected_data(transcript: list, intake_fields: list) -> dict:
+async def extract_collected_data(transcript: list, intake_fields: list, lang: str = "tr") -> dict:
     """LLM ile transcript'ten structured data çıkar."""
     if not transcript or not intake_fields:
         return {}
@@ -618,7 +879,8 @@ async def extract_collected_data(transcript: list, intake_fields: list) -> dict:
             if m.get("role") in ("user", "assistant")
         )
 
-        prompt = f"""Aşağıdaki sesli görüşme transkripsiyonundan şu bilgileri çıkar ve JSON formatında döndür.
+        if lang == "tr":
+            prompt = f"""Aşağıdaki sesli görüşme transkripsiyonundan şu bilgileri çıkar ve JSON formatında döndür.
 Her field için kullanıcının verdiği değeri yaz, vermemişse null koy.
 
 Toplanacak bilgiler:
@@ -628,6 +890,17 @@ Konuşma:
 {transcript_text[:4000]}
 
 Sadece JSON döndür. Örnek: {{"full_name": "Ali Veli", "phone": null, "budget": "50000"}}"""
+        else:
+            prompt = f"""Extract the following information from this voice call transcript. Return as JSON.
+For each field, write the value the user provided. If not provided, use null.
+
+Fields to extract:
+{field_defs}
+
+Transcript:
+{transcript_text[:4000]}
+
+Return only JSON. Example: {{"full_name": "John Doe", "phone": null, "budget": "50000"}}"""
 
         resp = oa.chat.completions.create(
             model="gpt-4o-mini",
@@ -636,9 +909,12 @@ Sadece JSON döndür. Örnek: {{"full_name": "Ali Veli", "phone": null, "budget"
             max_tokens=500,
         )
         return json.loads(resp.choices[0].message.content)
+    except json.JSONDecodeError as e:
+        logger.error(f"extract_collected_data JSON parse failed: {e}")
+        return {"_extraction_failed": True, "_error": "json_parse"}
     except Exception as e:
-        logger.warning(f"collected_data extraction failed: {e}")
-        return {}
+        logger.error(f"extract_collected_data API failed: {e}", exc_info=True)
+        return {"_extraction_failed": True, "_error": str(e)[:100]}
 
 
 def calculate_qualification_score(intake_fields: list, collected_data: dict) -> int:
@@ -662,7 +938,7 @@ def calculate_qualification_score(intake_fields: list, collected_data: dict) -> 
     return min(100, round(must_score + should_score))
 
 
-async def generate_call_summary(transcript: list, collected_data: dict, org_name: str) -> str:
+async def generate_call_summary(transcript: list, collected_data: dict, org_name: str, lang: str = "tr") -> str:
     """GPT-4o mini ile konuşmanın kısa AI özetini üret."""
     if not transcript:
         return ""
@@ -677,7 +953,8 @@ async def generate_call_summary(transcript: list, collected_data: dict, org_name
         )
         data_str = ", ".join(f"{k}: {v}" for k, v in collected_data.items() if v)
 
-        prompt = f"""Aşağıdaki sesli görüşmeyi 2-3 cümleyle özetle. Türkçe yaz.
+        if lang == "tr":
+            prompt = f"""Aşağıdaki sesli görüşmeyi 2-3 cümleyle özetle. Türkçe yaz.
 Müşterinin ilgilendiği konu, temel bilgileri ve sonraki adım varsa belirt.
 Toplanan veriler: {data_str or 'yok'}
 
@@ -685,6 +962,15 @@ Konuşma:
 {transcript_text[:3000]}
 
 Özet:"""
+        else:
+            prompt = f"""Summarize this voice call in 2-3 sentences. Write in English.
+Mention the customer's topic of interest, key information, and next steps if any.
+Collected data: {data_str or 'none'}
+
+Transcript:
+{transcript_text[:3000]}
+
+Summary:"""
 
         resp = oa.chat.completions.create(
             model="gpt-4o-mini",
@@ -693,8 +979,11 @@ Konuşma:
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        logger.warning(f"summary generation failed: {e}")
+        logger.error(f"generate_call_summary failed: {e}", exc_info=True)
         return ""
+
+
+PROTECTED_STATUSES = {"qualified", "handed_off", "converted", "lost", "nurturing"}
 
 
 async def update_lead_data(lead_id: str, intake_fields: list, collected_data: dict, summary: str = ""):
@@ -702,6 +991,7 @@ async def update_lead_data(lead_id: str, intake_fields: list, collected_data: di
     if not lead_id:
         return
     try:
+        sb = get_supabase()
         must_keys = {f["key"] for f in intake_fields if f.get("priority") == "must"}
 
         completeness = {
@@ -711,17 +1001,21 @@ async def update_lead_data(lead_id: str, intake_fields: list, collected_data: di
         missing = [k for k in must_keys if not collected_data.get(k)]
         score   = calculate_qualification_score(intake_fields, collected_data)
 
+        # Mevcut lead status'ünü çek — korunan statüleri geçme
+        current_res = sb.table("leads").select("status").eq("id", lead_id).single().execute()
+        current_status = (current_res.data or {}).get("status", "new")
+
         update_payload = {
             "collected_data":      collected_data,
             "data_completeness":   completeness,
             "missing_fields":      missing,
             "qualification_score": score,
-            "status":              "in_progress" if collected_data else "new",
         }
+        if current_status not in PROTECTED_STATUSES:
+            update_payload["status"] = "in_progress" if collected_data else "new"
         if summary:
             update_payload["ai_summary"] = summary
 
-        sb = get_supabase()
         sb.table("leads").update(update_payload).eq("id", lead_id).execute()
         logger.info(f"lead updated — score: {score}, missing: {missing}")
     except Exception as e:
@@ -797,7 +1091,7 @@ async def save_call(
             "livekit_room_name": (metadata or {}).get("livekit_room"),
             "started_at":      call_start.isoformat(),
             "ended_at":        datetime.now(timezone.utc).isoformat(),
-            **({"metadata": metadata} if metadata else {}),
+            "metadata":        metadata or {},
         }).execute()
         logger.info(f"voice_call saved — {direction}, {duration}s")
     except Exception as e:
@@ -922,6 +1216,156 @@ def _get_sip_caller_number(ctx: JobContext) -> str:
     return ""
 
 
+# ── Multilang OPENINGS ─────────────────────────────────────────────────────────
+
+OPENINGS = {
+    "first_contact": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona}. Bize ilgi gösterdiğinizi gördük, iki dakikanız var mı?",
+        "en": "Hello{name}! I'm {persona} from {org}. We noticed your interest, do you have a moment?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. لاحظنا اهتمامك، هل لديك دقيقة؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. Wir haben Ihr Interesse bemerkt, haben Sie einen Moment?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. Мы заметили ваш интерес, у вас есть минутка?",
+    },
+    "warm_followup": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona}. Geçen görüşmemizden sonra aklınıza takılan bir şey var mı?",
+        "en": "Hello{name}! I'm {persona} from {org}. After our last conversation, do you have any questions?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. بعد محادثتنا الأخيرة، هل لديك أي أسئلة؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. Haben Sie nach unserem letzten Gespräch noch Fragen?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. После нашего разговора у вас остались вопросы?",
+    },
+    "appt_confirm": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona} arıyorum. {appt} randevunuzu teyit etmek istedim. Uygun musunuz?",
+        "en": "Hello{name}! I'm {persona} from {org}. I'm calling to confirm your appointment {appt}. Are you available?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. أتصل لتأكيد موعدك {appt}. هل أنت متاح؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. Ich rufe an, um Ihren Termin {appt} zu bestätigen. Passt es Ihnen?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. Звоню подтвердить вашу запись {appt}. Вам удобно?",
+    },
+    "noshow_followup": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona} arıyorum. Bugün sizi bekliyorduk, her şey yolunda mı?",
+        "en": "Hello{name}! I'm {persona} from {org}. We were expecting you today — is everything alright?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. كنا ننتظرك اليوم، هل كل شيء على ما يرام؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. Wir haben Sie heute erwartet — ist alles in Ordnung?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. Мы ждали вас сегодня — всё ли в порядке?",
+    },
+    "satisfaction_survey": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona} arıyorum. Kısa bir memnuniyet değerlendirmesi için iki dakikanız var mı?",
+        "en": "Hello{name}! I'm {persona} from {org}. Do you have two minutes for a brief satisfaction survey?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. هل لديك دقيقتان لاستبيان رضا قصير؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. Haben Sie zwei Minuten für eine kurze Zufriedenheitsumfrage?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. У вас есть пара минут для краткого опроса удовлетворённости?",
+    },
+    "treatment_reminder": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona} arıyorum. Periyodik kontrol zamanınız geldi, randevu almak ister misiniz?",
+        "en": "Hello{name}! I'm {persona} from {org}. It's time for your periodic check-up — would you like to schedule an appointment?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. حان وقت فحصك الدوري، هل تود حجز موعد؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. Es ist Zeit für Ihre regelmäßige Kontrolle — möchten Sie einen Termin vereinbaren?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. Пришло время планового осмотра — хотите записаться?",
+    },
+    "reactivation": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona} arıyorum. {offer}Uygun musunuz, iki dakikanız var mı?",
+        "en": "Hello{name}! I'm {persona} from {org}. {offer}Do you have a moment?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. {offer}هل لديك دقيقة؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. {offer}Haben Sie einen Moment?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. {offer}У вас есть минутка?",
+    },
+    "payment_followup": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona} arıyorum. Hesabınızla ilgili kısa bir bilgilendirme için arıyorum, uygun musunuz?",
+        "en": "Hello{name}! I'm {persona} from {org}. I'm calling with a brief update about your account — is now a good time?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. أتصل بخصوص تحديث قصير عن حسابك، هل الوقت مناسب؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. Ich rufe wegen einer kurzen Information zu Ihrem Konto an — passt es gerade?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. Звоню с кратким обновлением по вашему счёту — удобно сейчас?",
+    },
+    "appointment_reminder": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona} arıyorum. {time_word} randevunuzu hatırlatmak istedim. Hazır mısınız?",
+        "en": "Hello{name}! I'm {persona} from {org}. I'm calling to remind you about your {time_word} appointment. Are you ready?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. أتصل لتذكيرك بموعدك {time_word}. هل أنت مستعد؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. Ich rufe an, um Sie an Ihren {time_word} Termin zu erinnern. Sind Sie bereit?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. Напоминаю о вашей {time_word} записи. Вы готовы?",
+    },
+    "default": {
+        "tr": "Merhaba{name}! Ben {org}'dan {persona} arıyorum. Şu an uygun musunuz, iki dakikanız var mı?",
+        "en": "Hello{name}! I'm {persona} from {org}. Do you have a moment?",
+        "ar": "مرحباً{name}! أنا {persona} من {org}. هل لديك دقيقة؟",
+        "de": "Hallo{name}! Ich bin {persona} von {org}. Haben Sie einen Moment?",
+        "ru": "Здравствуйте{name}! Я {persona} из {org}. У вас есть минутка?",
+    },
+}
+
+INBOUND_GREETINGS = {
+    "tr": "Merhaba, {org}.",
+    "en": "Hello, welcome to {org}.",
+    "ar": "مرحباً، أهلاً بكم في {org}.",
+    "de": "Hallo, willkommen bei {org}.",
+    "ru": "Здравствуйте, добро пожаловать в {org}.",
+}
+
+# Calendar day names per language
+DAYS_I18N = {
+    "tr": ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"],
+    "en": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    "ar": ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"],
+    "de": ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
+    "ru": ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"],
+}
+
+# ── Inbound language detection ────────────────────────────────────────────────
+_LANG_DETECT_PLANS = {"professional", "business", "custom", "legacy"}
+_PROFESSIONAL_LANGS = {"tr", "en"}
+_BUSINESS_LANGS = {"tr", "en", "ar", "de", "es", "fr", "it", "pt", "ru", "zh"}
+
+_TR_CHARS = frozenset("şçğıöüŞÇĞİÖÜ")  # ö/ü shared with DE but common in TR — TR priority
+
+# Script-based detection — unique character ranges (very high accuracy)
+_ARABIC_RANGE = range(0x0600, 0x06FF + 1)   # Arabic script
+_CYRILLIC_RANGE = range(0x0400, 0x04FF + 1)  # Cyrillic (Russian etc.)
+_CJK_RANGE = range(0x4E00, 0x9FFF + 1)       # CJK Unified Ideographs (Chinese)
+
+# Word-based indicators per language (Latin-script languages need ≥2 matches)
+_LANG_INDICATORS = {
+    "en": frozenset({
+        "hi", "hello", "hey", "i", "my", "want", "need", "can", "would",
+        "please", "appointment", "call", "yes", "no", "the", "is", "are",
+        "do", "have", "about", "information", "like", "book",
+    }),
+    "de": frozenset({
+        "ich", "hallo", "guten", "tag", "morgen", "bitte", "termin",
+        "möchte", "brauche", "kann", "mein", "eine", "einen", "ja",
+        "nein", "und", "oder", "danke", "sprechen", "arzt", "zahnarzt",
+        "behandlung", "beratung", "vereinbaren",
+    }),
+    "fr": frozenset({
+        "je", "bonjour", "salut", "voudrais", "besoin", "rendez",
+        "vous", "merci", "oui", "non", "une", "pour", "avec",
+        "suis", "avoir", "consultation", "docteur", "clinique",
+        "prendre", "veuillez", "pouvez",
+    }),
+    "es": frozenset({
+        "hola", "quiero", "necesito", "cita", "por", "favor",
+        "una", "tengo", "puedo", "puede", "con", "para",
+        "consulta", "doctor", "gracias", "buenos", "buenas",
+        "dias", "tardes", "llamar", "reservar",
+    }),
+    "it": frozenset({
+        "ciao", "buongiorno", "buonasera", "vorrei", "ho",
+        "bisogno", "appuntamento", "per", "favore", "posso",
+        "una", "con", "grazie", "dottore", "clinica",
+        "prenotare", "consulto", "sono", "vorrebbe",
+    }),
+    "pt": frozenset({
+        "oi", "bom", "dia", "boa", "tarde", "noite", "quero",
+        "preciso", "consulta", "uma", "com", "por", "favor",
+        "obrigado", "obrigada", "doutor", "posso", "tenho",
+        "marcar", "agendar", "gostaria",
+    }),
+}
+
+# Special chars that strongly hint at a specific language
+_DE_CHARS = frozenset("äÄß")  # ö/ü shared with TR — only DE-exclusive chars here
+_FR_CHARS = frozenset("éèêëàùûîôÉÈÊËÀÙÛÎÔ")  # ç/Ç shared with TR — excluded
+_ES_CHARS = frozenset("ñÑ¿¡")
+_PT_CHARS = frozenset("ãõÃÕ")
+
+
 # ── Entrypoint ─────────────────────────────────────────────────────────────────
 
 async def entrypoint(ctx: JobContext):
@@ -950,11 +1394,11 @@ async def entrypoint(ctx: JobContext):
     playbook = await load_playbook(org_id, channel="voice")
     intake   = await load_intake_schema(org_id, channel="voice")
 
-    # Model öncelik sırası: 1. playbook features, 2. room metadata, 3. default
+    # Model öncelik sırası: 1. room metadata (test UI / dispatch), 2. playbook features, 3. default
     features  = (playbook or {}).get("features", {}) if playbook else {}
     llm_model = (
-        features.get("model")
-        or meta.get("model")
+        meta.get("model")
+        or features.get("model")
         or "claude-sonnet-4-6"
     )
     if llm_model.startswith("claude-"):
@@ -964,8 +1408,26 @@ async def entrypoint(ctx: JobContext):
 
     persona      = org.get("ai_persona", {})
     persona_name = persona.get("persona_name", "Asistan")
-    lang         = meta.get("lang") or persona.get("language", "tr")
     room_name    = ctx.room.name
+
+    # Language resolution chain: contact.preferred_language → meta.lang → org persona → "tr"
+    _contact_lang = None
+    _meta_contact_id = meta.get("contact_id")
+    if _meta_contact_id:
+        try:
+            _cl_res = get_supabase().table("contacts").select("preferred_language").eq("id", _meta_contact_id).maybeSingle().execute()
+            if _cl_res.data and _cl_res.data.get("preferred_language"):
+                _contact_lang = _cl_res.data["preferred_language"]
+        except Exception:
+            pass
+    lang = _contact_lang or meta.get("lang") or persona.get("language", "tr")
+
+    # Early plan gating — non-TR/EN needs business/custom/legacy
+    _org_plan = org.get("_plan", "legacy")
+    _MULTILANG_PLANS_EARLY = {"business", "custom", "legacy"}
+    if lang not in ("tr", "en") and _org_plan not in _MULTILANG_PLANS_EARLY:
+        logger.info(f"Plan {_org_plan} → lang {lang} blocked, fallback to TR")
+        lang = "tr"
 
     # Calendar feature — provider-agnostic adapter (features already loaded above)
     calendar_adapter = get_calendar_adapter(org) if features.get("calendar_booking", False) else None
@@ -982,7 +1444,17 @@ async def entrypoint(ctx: JobContext):
     if not scenario:
         initial_kb = ""  # Başlangıçta KB yükleme — şehir/ofis varsayımını önler, sorular gelince dinamik yüklenir
         system_prompt = build_system_prompt(org, playbook, intake, initial_kb, calendar_enabled, lang)
-        opening    = (playbook or {}).get("opening_message") or f"Merhaba, {org['name']}."
+        # Bilingual instruction: plan destekliyorsa LLM'e "arayan hangi dilde konuşursa o dilde yanıt ver" talimatı
+        if _org_plan in _LANG_DETECT_PLANS:
+            system_prompt += inbound_language_instruction(_org_plan)
+        # DB'deki opening_message her zaman öncelikli — dil fark etmez
+        _db_opening = (playbook or {}).get("opening_message")
+        if _db_opening:
+            opening = _db_opening
+        elif lang == "tr":
+            opening = f"Merhaba, {org['name']}."
+        else:
+            opening = INBOUND_GREETINGS.get(lang, INBOUND_GREETINGS["en"]).format(org=org['name'])
         direction  = "inbound"
         phone_from = _get_sip_caller_number(ctx) or meta.get("phone_from", "")
         phone_to   = os.environ.get("PLATFORM_INBOUND_NUMBER", "")
@@ -1011,11 +1483,26 @@ async def entrypoint(ctx: JobContext):
 
         outbound_playbook_text = playbook.get("system_prompt_template", "") if playbook else ""
 
+        # Helper for multilang opening from OPENINGS dict
+        def _opening(scenario_key, **kwargs):
+            """Get opening for current lang with fallback to default."""
+            tpl = OPENINGS.get(scenario_key, OPENINGS["default"]).get(lang)
+            if not tpl:
+                tpl = OPENINGS.get(scenario_key, OPENINGS["default"]).get("en", "")
+            name_part = ", " + contact_name if contact_name else ""
+            return tpl.format(
+                name=name_part,
+                org=org['name'],
+                persona=persona_name,
+                **kwargs,
+            )
+
         # ── First contact (workflow V3) ────────────────────────────────────
         if scenario == "first_contact":
             attempt = int(meta.get("attempt", "1"))
             run_id  = meta.get("run_id", "")
-            system_prompt = f"""{outbound_playbook_text}
+            if lang == "tr":
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına yeni müşteri adayı arayan {persona_name}'sın.
 Bu kişi {org['name']}'a ilgi gösterdi, şimdi onunla iletişime geçiyorsun.
@@ -1025,15 +1512,30 @@ KURAL: Kısa ve doğal konuş. Zorlayıcı olma. Max 3-4 tur.
 KURAL: Randevu veya bilgi almak istiyorlarsa yönlendir.
 KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name}. "
-                "Bize ilgi gösterdiğinizi gördük, iki dakikanız var mı?"
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name}. "
+                    "Bize ilgi gösterdiğinizi gördük, iki dakikanız var mı?"
+                )
+            else:
+                lang_inst = language_instruction(lang)
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} calling on behalf of {org['name']} to reach a new prospect.
+This person showed interest in {org['name']}, you are now contacting them.
+Call attempt: {attempt}.
+
+RULE: Be brief and natural. Don't be pushy. Max 3-4 turns.
+RULE: If they want an appointment or information, guide them.
+RULE: Never make up information not in the knowledge base.
+"""
+                opening = _opening("first_contact")
 
         # ── Warm follow-up (workflow V4) ───────────────────────────────────
         elif scenario == "warm_followup":
-            system_prompt = f"""{outbound_playbook_text}
+            if lang == "tr":
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına sıcak takip araması yapan {persona_name}'sın.
 Bu kişiyle daha önce temas kuruldu, ilgi gösterdi.
@@ -1042,16 +1544,30 @@ Bu kişiyle daha önce temas kuruldu, ilgi gösterdi.
 KURAL: Nazikçe hatırlat, soruları yanıtla. Zorlayıcı olma.
 KURAL: Max 3-4 tur konuşma.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name}. "
-                "Geçen görüşmemizden sonra aklınıza takılan bir şey var mı?"
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name}. "
+                    "Geçen görüşmemizden sonra aklınıza takılan bir şey var mı?"
+                )
+            else:
+                lang_inst = language_instruction(lang)
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} making a warm follow-up call on behalf of {org['name']}.
+This person was contacted before and showed interest.
+{f"Context note: {context_note}" if context_note else ""}
+
+RULE: Gently remind, answer questions. Don't be pushy.
+RULE: Max 3-4 turns.
+"""
+                opening = _opening("warm_followup")
 
         # ── Appointment confirm (workflow V5) ──────────────────────────────
         elif scenario == "appt_confirm":
-            appt_display = appt_time or "yaklaşan randevunuz"
-            system_prompt = f"""{outbound_playbook_text}
+            appt_display = appt_time or ("yaklaşan randevunuz" if lang == "tr" else "your upcoming appointment")
+            if lang == "tr":
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına randevu teyit araması yapan {persona_name}'sın.
 Arama amacı: Randevuyu teyit ettirmek.
@@ -1061,16 +1577,30 @@ KURAL: Sadece teyit al, 2-3 turdan uzatma.
 KURAL: İptal veya değişiklik istiyorlarsa kliniği aramaları gerektiğini söyle.
 KURAL: "Başka bir konuda yardımcı olabilir miyim?" YASAK.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name} arıyorum. "
-                + (f"{appt_display} randevunuzu teyit etmek istedim. " if appt_time else "Yaklaşan randevunuzu teyit etmek istedim. ")
-                + "Randevunuz için uygun musunuz?"
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name} arıyorum. "
+                    + (f"{appt_display} randevunuzu teyit etmek istedim. " if appt_time else "Yaklaşan randevunuzu teyit etmek istedim. ")
+                    + "Randevunuz için uygun musunuz?"
+                )
+            else:
+                lang_inst = language_instruction(lang)
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} calling on behalf of {org['name']} to confirm an appointment.
+{f"Appointment time: {appt_display}" if appt_time else ""}
+
+RULE: Only get confirmation, keep it to 2-3 turns max.
+RULE: If they want to cancel or reschedule, tell them to call the clinic.
+RULE: "Is there anything else I can help with?" is FORBIDDEN.
+"""
+                opening = _opening("appt_confirm", appt=appt_display)
 
         # ── No-show follow-up (workflow V7) ───────────────────────────────
         elif scenario == "noshow_followup":
-            system_prompt = f"""{outbound_playbook_text}
+            if lang == "tr":
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına no-show takip araması yapan {persona_name}'sın.
 Bu kişi bugünkü randevusuna gelmedi. Anlayışlı ve nazik ol.
@@ -1079,16 +1609,30 @@ KURAL: Suçlayıcı olma. Anlayışla yaklaş.
 KURAL: Yeni bir randevu teklif et, zorlama.
 KURAL: Max 3-4 tur.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name} arıyorum. "
-                "Bugün sizi bekliyorduk, her şey yolunda mı? Randevunuzu kaçırdığınızı gördük."
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name} arıyorum. "
+                    "Bugün sizi bekliyorduk, her şey yolunda mı? Randevunuzu kaçırdığınızı gördük."
+                )
+            else:
+                lang_inst = language_instruction(lang)
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} calling on behalf of {org['name']} for a no-show follow-up.
+This person missed their appointment today. Be understanding and kind.
+
+RULE: Don't be accusatory. Approach with understanding.
+RULE: Offer a new appointment, don't push.
+RULE: Max 3-4 turns.
+"""
+                opening = _opening("noshow_followup")
 
         # ── Satisfaction survey (workflow V8) ──────────────────────────────
         elif scenario == "satisfaction_survey":
             run_id = meta.get("run_id", "")
-            system_prompt = f"""{outbound_playbook_text}
+            if lang == "tr":
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına memnuniyet anketi araması yapan {persona_name}'sın.
 Bu kişi yakın zamanda hizmet aldı, kısa bir geri bildirim istiyorsun.
@@ -1097,17 +1641,31 @@ ARAÇ: Müşteri puan verince ve yorum yaparsa save_survey_result() tool'unu ça
 KURAL: 1-5 puan al, 1 cümle yorum al. Max 3-4 tur, kısa tut.
 KURAL: "Başka bir konuda yardımcı olabilir miyim?" YASAK.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name} arıyorum. "
-                "Kısa bir memnuniyet değerlendirmesi için iki dakikanız var mı? "
-                "1'den 5'e kadar bir puan verebilir misiniz?"
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name} arıyorum. "
+                    "Kısa bir memnuniyet değerlendirmesi için iki dakikanız var mı? "
+                    "1'den 5'e kadar bir puan verebilir misiniz?"
+                )
+            else:
+                lang_inst = language_instruction(lang)
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} calling on behalf of {org['name']} for a satisfaction survey.
+This person recently received service, you want brief feedback.
+
+TOOL: When the customer gives a score and comment, call save_survey_result().
+RULE: Get a 1-5 score, 1 sentence comment. Max 3-4 turns, keep it short.
+RULE: "Is there anything else I can help with?" is FORBIDDEN.
+"""
+                opening = _opening("satisfaction_survey")
 
         # ── Treatment reminder (workflow V9) ───────────────────────────────
         elif scenario == "treatment_reminder":
             interval_days = meta.get("interval_days", "90")
-            system_prompt = f"""{outbound_playbook_text}
+            if lang == "tr":
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına periyodik kontrol hatırlatması yapan {persona_name}'sın.
 Bu kişinin yaklaşık {interval_days} gün önce randevusu vardı, kontrol zamanı geldi.
@@ -1115,16 +1673,29 @@ Bu kişinin yaklaşık {interval_days} gün önce randevusu vardı, kontrol zama
 KURAL: Kısa ve nazik. Randevu teklif et. Max 3 tur.
 KURAL: Zorlayıcı olma.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name} arıyorum. "
-                f"Periyodik kontrol zamanınız geldi, randevu almak ister misiniz?"
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name} arıyorum. "
+                    f"Periyodik kontrol zamanınız geldi, randevu almak ister misiniz?"
+                )
+            else:
+                lang_inst = language_instruction(lang)
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} calling on behalf of {org['name']} for a periodic check-up reminder.
+This person had an appointment about {interval_days} days ago, it's time for a follow-up.
+
+RULE: Be brief and kind. Offer an appointment. Max 3 turns.
+RULE: Don't be pushy.
+"""
+                opening = _opening("treatment_reminder")
 
         # ── Reactivation (workflow V10) ────────────────────────────────────
         elif scenario == "reactivation":
             offer = meta.get("offer_text", "")
-            system_prompt = f"""{outbound_playbook_text}
+            if lang == "tr":
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına eski müşteri aktivasyon araması yapan {persona_name}'sın.
 Bu kişiyle uzun süredir temas kurulmadı.
@@ -1134,16 +1705,32 @@ KURAL: Nazik ve kısa. Zorlayıcı olma.
 KURAL: Varsa özel teklifi doğal bir şekilde ilet.
 KURAL: Max 3-4 tur.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name} arıyorum. "
-                + (f"Size özel bir haberimiz var: {offer} " if offer else "Sizi özledik! ")
-                + "Uygun musunuz, iki dakikanız var mı?"
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name} arıyorum. "
+                    + (f"Size özel bir haberimiz var: {offer} " if offer else "Sizi özledik! ")
+                    + "Uygun musunuz, iki dakikanız var mı?"
+                )
+            else:
+                lang_inst = language_instruction(lang)
+                offer_text = f"Special offer: {offer}. " if offer else ""
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} calling on behalf of {org['name']} for a reactivation call.
+This person hasn't been contacted in a long time.
+{f"Special offer: {offer}" if offer else ""}
+
+RULE: Be kind and brief. Don't be pushy.
+RULE: If there's a special offer, deliver it naturally.
+RULE: Max 3-4 turns.
+"""
+                opening = _opening("reactivation", offer=offer_text)
 
         # ── Payment follow-up (workflow V11) ───────────────────────────────
         elif scenario == "payment_followup":
-            system_prompt = f"""{outbound_playbook_text}
+            if lang == "tr":
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına ödeme takip araması yapan {persona_name}'sın.
 Bu kişinin bekleyen bir ödemesi var.
@@ -1152,17 +1739,31 @@ KURAL: Nazik ve anlayışlı. Suçlayıcı olma.
 KURAL: Ödeme planı sunabilirsin. Kliniğin imkânlarını açıkla.
 KURAL: Max 3-4 tur.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name} arıyorum. "
-                "Hesabınızla ilgili kısa bir bilgilendirme için arıyorum, uygun musunuz?"
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name} arıyorum. "
+                    "Hesabınızla ilgili kısa bir bilgilendirme için arıyorum, uygun musunuz?"
+                )
+            else:
+                lang_inst = language_instruction(lang)
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} calling on behalf of {org['name']} for a payment follow-up.
+This person has a pending payment.
+
+RULE: Be kind and understanding. Don't be accusatory.
+RULE: You can offer a payment plan. Explain the clinic's options.
+RULE: Max 3-4 turns.
+"""
+                opening = _opening("payment_followup")
 
         # ── Appointment reminder scenario ──────────────────────────────────
         elif scenario == "appointment_reminder":
-            time_word = "Yarınki" if reminder_hrs == "24" else "Bugünkü"
-            appt_display = appt_time or "yaklaşan randevunuz"
-            system_prompt = f"""{outbound_playbook_text}
+            appt_display = appt_time or ("yaklaşan randevunuz" if lang == "tr" else "your upcoming appointment")
+            if lang == "tr":
+                time_word = "Yarınki" if reminder_hrs == "24" else "Bugünkü"
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına randevu hatırlatma araması yapan {persona_name}'sın.
 Arama yapılan kişi: {contact_name}
@@ -1174,17 +1775,35 @@ KURAL: Randevuyu onayla. İptal veya değişiklik istiyorlarsa kliniği aramalar
 KURAL: "Başka bir konuda yardımcı olabilir miyim?" veya benzeri kapatıcı sorular YASAK.
 KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name} arıyorum. "
-                f"{time_word} randevunuzu hatırlatmak istedim. "
-                + (f"Randevunuz {appt_display} olarak kayıtlı. " if appt_time else "")
-                + "Randevunuz için hazır mısınız?"
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name} arıyorum. "
+                    f"{time_word} randevunuzu hatırlatmak istedim. "
+                    + (f"Randevunuz {appt_display} olarak kayıtlı. " if appt_time else "")
+                    + "Randevunuz için hazır mısınız?"
+                )
+            else:
+                time_word = "tomorrow's" if reminder_hrs == "24" else "today's"
+                lang_inst = language_instruction(lang)
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} calling on behalf of {org['name']} for an appointment reminder.
+Person being called: {contact_name}
+Purpose: Appointment reminder
+{f"Appointment time: {appt_display}" if appt_time else ""}
+
+RULE: This is a very short reminder call, keep it to 2-3 turns max.
+RULE: Confirm the appointment. If they want to cancel or reschedule, tell them to call the clinic.
+RULE: "Is there anything else I can help with?" or similar closing questions are FORBIDDEN.
+RULE: Never make up information not in the knowledge base.
+"""
+                opening = _opening("appointment_reminder", time_word=time_word)
 
         # ── Standard outbound (followup, re_contact, etc.) ─────────────────
         else:
-            system_prompt = f"""{outbound_playbook_text}
+            if lang == "tr":
+                system_prompt = f"""{outbound_playbook_text}
 
 Sen {org['name']} adına arayan {persona_name}'sın.
 Arama yapılan kişi: {contact_name}
@@ -1194,11 +1813,25 @@ Arama amacı: {scenario}
 KURAL: Kısa ve doğal konuş. Zorlayıcı olma.
 KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
 """
-            opening = (
-                f"Merhaba{', ' + contact_name if contact_name else ''}! "
-                f"Ben {org['name']}'dan {persona_name} arıyorum. "
-                f"Şu an uygun musunuz, iki dakikanız var mı?"
-            )
+                opening = (
+                    f"Merhaba{', ' + contact_name if contact_name else ''}! "
+                    f"Ben {org['name']}'dan {persona_name} arıyorum. "
+                    f"Şu an uygun musunuz, iki dakikanız var mı?"
+                )
+            else:
+                lang_inst = language_instruction(lang)
+                system_prompt = f"""{outbound_playbook_text}
+{lang_inst}
+
+You are {persona_name} calling on behalf of {org['name']}.
+Person being called: {contact_name}
+Call purpose: {scenario}
+{f"Context note: {context_note}" if context_note else ""}
+
+RULE: Be brief and natural. Don't be pushy.
+RULE: Never make up information not in the knowledge base.
+"""
+                opening = _opening("default")
 
         direction  = "outbound"
         phone_from = os.environ.get("PLATFORM_OUTBOUND_NUMBER", "")
@@ -1241,7 +1874,11 @@ KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
 
         # ── Calendar tools (only if calendar adapter is available) ───────────
         if calendar_enabled and calendar_adapter is not None:
-            @fnc_ctx.ai_callable(description="Müsait randevu saatlerini listeler. Kullanıcı randevu/görüşme istediğinde çağır.")
+            @fnc_ctx.ai_callable(description=(
+                "Müsait randevu saatlerini listeler. "
+                "Kullanıcı randevu, görüşme veya müsait saat sorduğunda HEMEN çağır. "
+                "book_appointment'tan ÖNCE mutlaka bu tool'u çağır."
+            ))
             async def check_availability(
                 date: Annotated[str, llm.TypeInfo(description="Kontrol edilecek tarih, YYYY-MM-DD formatında. Belirtilmezse yakın 3 günü döndür.")] = ""
             ) -> str:
@@ -1250,7 +1887,12 @@ KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
                     return "TAKVİM_HATA: Takvime şu an erişemiyorum. Kullanıcıya ekibimizin en kısa sürede kendisini arayacağını söyle ve görüşmeyi nazikçe sonlandır."
                 return f"Müsait saatler:\n{slots}"
 
-            @fnc_ctx.ai_callable(description="Randevu oluşturur. Kullanıcı ad, telefon ve saat bilgisini verdikten sonra çağır.")
+            @fnc_ctx.ai_callable(description=(
+                "Randevu oluşturur. SADECE şu koşullar sağlandığında çağır: "
+                "(1) ad ve telefon alınmış, (2) check_availability ile uygun saat belirlenmiş, "
+                "(3) hasta randevu almak istediğini açıkça onaylamış. "
+                "Uygunluk kontrolü için bu tool'u DEĞİL check_availability'yi kullan."
+            ))
             async def book_appointment(
                 name: Annotated[str, llm.TypeInfo(description="Randevu sahibinin adı soyadı")],
                 phone: Annotated[str, llm.TypeInfo(description="Telefon numarası, +90 ile başlayan format")],
@@ -1260,51 +1902,112 @@ KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
                 result = await calendar_adapter.create_appointment(name, phone, datetime_str, notes)
                 if result["success"]:
                     sb = get_supabase()
-                    # Create voice reminder tasks (-24h and -2h)
-                    asyncio.create_task(create_appointment_reminders(
-                        org_id, contact_id, lead_id, conv_id, datetime_str
-                    ))
-                    # Save to appointments table (canonical DB source)
-                    asyncio.create_task(save_appointment_to_db(
-                        sb, org_id, contact_id, lead_id, conv_id,
-                        datetime_str, notes=notes,
-                        external_id=result.get("appointment_id"),
-                    ))
-                    return f"Randevunuz oluşturuldu: {name}, {datetime_str}. Onay bilgisi size iletilecektir."
+                    try:
+                        # Save to appointments table (canonical DB source) — await for error propagation
+                        await save_appointment_to_db(
+                            sb, org_id, contact_id, lead_id, conv_id,
+                            datetime_str, notes=notes,
+                            external_id=result.get("appointment_id"),
+                        )
+                        # Reminder tasks fire-and-forget (opsiyonel, failure is non-blocking)
+                        asyncio.create_task(create_appointment_reminders(
+                            org_id, contact_id, lead_id, conv_id, datetime_str
+                        ))
+                        return f"Randevunuz oluşturuldu: {name}, {datetime_str}. Onay bilgisi size iletilecektir."
+                    except Exception as e:
+                        logger.error(f"book_appointment DB save failed: {e}")
+                        return "Kayıt hatası oluştu, lütfen tekrar deneyin."
                 return "Randevu oluşturulurken bir sorun oluştu. Lütfen tekrar deneyin veya bizi arayın."
 
     # ── Session ───────────────────────────────────────────────────────────────
-    VOICE_IDS = {
+    CARTESIA_VOICES = {
         "tr": os.environ.get("CARTESIA_VOICE_ID_TR", "c1cfee3d-532d-47f8-8dd2-8e5b2b66bf1d"),
         "en": os.environ.get("CARTESIA_VOICE_ID_EN", "62ae83ad-4f6a-430b-af41-a9bede9286ca"),
+        "ar": os.environ.get("CARTESIA_VOICE_ID_AR", ""),
+        "de": os.environ.get("CARTESIA_VOICE_ID_DE", ""),
+        "ru": os.environ.get("CARTESIA_VOICE_ID_RU", ""),
+        "fr": os.environ.get("CARTESIA_VOICE_ID_FR", ""),
+        "es": os.environ.get("CARTESIA_VOICE_ID_ES", ""),
+        "it": os.environ.get("CARTESIA_VOICE_ID_IT", ""),
+        "pt": os.environ.get("CARTESIA_VOICE_ID_PT", ""),
+        "zh": os.environ.get("CARTESIA_VOICE_ID_ZH", ""),
     }
-    tts_lang = lang if lang in VOICE_IDS else "tr"
+    MULTILANG_PLANS = {"business", "custom", "legacy"}
+
+    # Dil önceliği: channel_config.voice.language > meta/persona lang
+    org_lang_raw = org.get("channel_config", {}).get("voice", {}).get("language") or lang
+
+    # Tier kısıtlaması: Lite/Plus → sadece TR/EN
+    org_plan = org.get("_plan", "legacy")
+    if org_lang_raw not in ("tr", "en") and org_plan not in MULTILANG_PLANS:
+        logger.info(f"Plan {org_plan} → multi-language blocked, fallback to TR")
+        tts_lang = "tr"
+    else:
+        # Ses ID'si yoksa (env boş) TR'ye düş
+        tts_lang = org_lang_raw if CARTESIA_VOICES.get(org_lang_raw) else "tr"
+
+    voice_id = CARTESIA_VOICES.get(tts_lang) or CARTESIA_VOICES["tr"]
+
+    STT_LANG_MAP = {"tr": "tr", "en": "en", "ar": "ar", "de": "de", "ru": "ru", "fr": "fr", "es": "es"}
+    stt_language = STT_LANG_MAP.get(tts_lang, "tr")
 
     session = AgentSession(
-        stt=deepgram.STT(model="nova-3", language=tts_lang),
+        stt=deepgram.STT(model="nova-3", language=stt_language, endpointing_ms=300),
         llm=llm_instance,
         tts=cartesia.TTS(
             model="sonic-3",
-            voice=VOICE_IDS[tts_lang],
+            voice=voice_id,
             language=tts_lang,
         ),
-        vad=silero.VAD.load(),
+        vad=silero.VAD.load(
+            min_speech_duration=0.3,      # 300ms — kısa gürültü/echo'yu filtrele (varsayılan 50ms çok düşük)
+            activation_threshold=0.55,    # biraz daha seçici (varsayılan 0.5)
+        ),
+        **({"turn_detection": _TURN_DETECTOR_CLS()} if _TURN_DETECTOR_CLS else {}),
+        allow_interruptions=True,
+        min_interruption_duration=0.3,        # 300ms barge-in eşiği
+        min_interruption_words=1,             # 1 kelime ile interrupt
+        min_endpointing_delay=0.5,
+        max_endpointing_delay=6.0,            # Türkçe uzun cümle desteği
         **({"fnc_ctx": fnc_ctx} if fnc_ctx else {}),
     )
 
     call_start     = datetime.now(timezone.utc)
     transcript     = []
     handoff_reason = None   # handoff tetiklendiyse sebebi
+    _lang_switched = False  # ilk utterance'da dil algılama yapıldı mı
 
     @session.on("conversation_item_added")
     def on_item(ev):
-        nonlocal handoff_reason
+        nonlocal handoff_reason, _lang_switched
         item    = ev.item
         role    = getattr(item, "role", None)
         content = getattr(item, "content", None)
         if role and content:
             text = content if isinstance(content, str) else str(content)
             transcript.append({"role": role, "content": text})
+
+            # Inbound dil algılama — ilk user utterance'da bir kez çalışır
+            if (
+                role == "user"
+                and not _lang_switched
+                and not scenario                        # sadece inbound
+                and _org_plan in _LANG_DETECT_PLANS
+            ):
+                _lang_switched = True
+                allowed = _BUSINESS_LANGS if _org_plan in ("business", "custom", "legacy") else _PROFESSIONAL_LANGS
+                detected = detect_language_heuristic(text)
+                if detected and detected != "tr" and detected in allowed:
+                    new_voice = CARTESIA_VOICES.get(detected)
+                    if new_voice:
+                        try:
+                            session.stt.update_options(language=detected)
+                            session.tts.update_options(voice=new_voice, language=detected)
+                            logger.info(f"Lang switch: TR → {detected.upper()}")
+                        except Exception as e:
+                            logger.warning(f"Lang switch failed: {e}")
+                    if contact_id:
+                        asyncio.create_task(_save_contact_language(contact_id, detected))
 
             # Handoff keyword kontrolü (user mesajlarında)
             if role == "user" and handoff_keywords and handoff_reason is None:
@@ -1321,6 +2024,9 @@ KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
         room_input_options=RoomInputOptions(noise_cancellation=True),
     )
 
+    # ── Mic hemen kapat — session.start ile opening arasındaki gürültüyü engelle
+    session.input.set_audio_enabled(False)
+
     background_audio = BackgroundAudioPlayer(
         ambient_sound=AudioConfig(BuiltinAudioClip.OFFICE_AMBIENCE, volume=0.7),
         thinking_sound=[
@@ -1332,31 +2038,43 @@ KURAL: Bilgi tabanında olmayan bir şeyi asla uydurma.
 
     @ctx.room.on("disconnected")
     def on_disconnected():
-        asyncio.create_task(_save_all(
-            org_id=org_id,
-            direction=direction,
-            call_start=call_start,
-            transcript=transcript,
-            phone_from=phone_from,
-            phone_to=phone_to,
-            contact_id=contact_id,
-            lead_id=lead_id,
-            conv_id=conv_id,
-            intake=intake,
-            handoff_reason=handoff_reason,
-            room_name=room_name,
-            run_id=meta.get("run_id"),
-            callback_url=meta.get("callback_url"),
-        ))
+        async def _safe_save():
+            try:
+                await _save_all(
+                    org_id=org_id,
+                    direction=direction,
+                    call_start=call_start,
+                    transcript=transcript,
+                    phone_from=phone_from,
+                    phone_to=phone_to,
+                    contact_id=contact_id,
+                    lead_id=lead_id,
+                    conv_id=conv_id,
+                    intake=intake,
+                    handoff_reason=handoff_reason,
+                    room_name=room_name,
+                    run_id=meta.get("run_id"),
+                    callback_url=meta.get("callback_url"),
+                    lang=lang,
+                    org_lang=persona.get("language", "tr"),
+                )
+            except Exception as e:
+                logger.error(f"CRITICAL _save_all failed — call may not be recorded: {e}", exc_info=True)
+        asyncio.create_task(_safe_save())
 
-    await session.generate_reply(instructions=opening)
+    # Opening — mic zaten kapalı (session.start sonrasında kapatıldı)
+    session.clear_user_turn()
+    speech = session.generate_reply(instructions=opening)
+    await speech.wait_for_playout()
+    session.clear_user_turn()
+    session.input.set_audio_enabled(True)
 
 
 async def _save_all(
     org_id, direction, call_start, transcript,
     phone_from, phone_to, contact_id, lead_id,
     conv_id, intake, handoff_reason, room_name,
-    run_id=None, callback_url=None,
+    run_id=None, callback_url=None, lang="tr", org_lang="tr",
 ):
     """Çağrı bittikten sonra tüm DB yazımlarını sırayla yap."""
     duration = int((datetime.now(timezone.utc) - call_start).total_seconds())
@@ -1364,20 +2082,22 @@ async def _save_all(
     # 1. Messages
     await save_messages(conv_id, org_id, transcript)
 
-    # 2. Collected data çıkar, AI özet üret, lead güncelle
+    # 2. Collected data çıkar (call language), AI özet üret (org language for dashboard)
     collected_data = {}
     missing_fields = []
     summary        = ""
     if lead_id and intake:
-        collected_data = await extract_collected_data(transcript, intake)
-        summary        = await generate_call_summary(transcript, collected_data, org_id)
+        collected_data = await extract_collected_data(transcript, intake, lang)
+        summary        = await generate_call_summary(transcript, collected_data, org_id, org_lang)
         await update_lead_data(lead_id, intake, collected_data, summary)
         must_keys      = {f["key"] for f in intake if f.get("priority") == "must"}
         missing_fields = [k for k in must_keys if not collected_data.get(k)]
 
     # 3. Handoff log
     if handoff_reason:
-        summary = f"Handoff tetiklendi ({handoff_reason}). Konuşma süresi: {duration}s."
+        ai_summary_for_handoff = await generate_call_summary(transcript, collected_data, org_id, org_lang)
+        summary = ai_summary_for_handoff or \
+            f"Handoff tetiklendi ({handoff_reason}). Süre: {duration}s. Özet üretilemedi."
         await save_handoff(
             org_id=org_id,
             lead_id=lead_id,
@@ -1394,7 +2114,14 @@ async def _save_all(
         if conv_id:
             await close_conversation(conv_id)
 
-    # 5. Voice call kaydet
+    # 5. Voice call kaydet — debug metadata ile
+    call_metadata = {
+        "livekit_room":       room_name,
+        "extraction_status":  "failed" if collected_data.get("_extraction_failed") else "ok",
+        "extraction_error":   collected_data.get("_error"),
+        "summary_generated":  bool(summary),
+        "save_version":       "v2",
+    }
     await save_call(
         org_id=org_id,
         direction=direction,
@@ -1406,7 +2133,7 @@ async def _save_all(
         contact_id=contact_id,
         lead_id=lead_id,
         conversation_id=conv_id,
-        metadata={"livekit_room": room_name},
+        metadata=call_metadata,
     )
 
     logger.info(f"All data saved — duration: {duration}s, handoff: {handoff_reason}")
