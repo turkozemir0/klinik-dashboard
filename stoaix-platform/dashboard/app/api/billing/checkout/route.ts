@@ -8,7 +8,7 @@ function getServiceClient() {
 }
 
 // POST /api/billing/checkout
-// Body: { planId: 'lite'|'plus'|'advanced'|'agency', interval: 'monthly'|'annual' }
+// Body: { planId: 'essential'|'professional'|'business'|'custom', interval: 'monthly'|'annual' }
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { planId, interval = 'monthly' } = body as { planId: string; interval: 'monthly' | 'annual' }
 
-  const validPlans = ['lite', 'plus', 'advanced', 'agency']
+  const validPlans = ['essential', 'professional', 'business']
   if (!validPlans.includes(planId)) {
     return NextResponse.json({ error: 'Geçersiz plan' }, { status: 400 })
   }

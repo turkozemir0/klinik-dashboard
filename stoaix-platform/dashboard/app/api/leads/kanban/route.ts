@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   const status = sp.get('status')
   const q = sp.get('q')?.trim() ?? ''
   const page = parseInt(sp.get('page') ?? '0', 10)
-  const PAGE = 30
+  const PAGE = 20
 
   if (!status) return NextResponse.json({ error: 'status required' }, { status: 400 })
 

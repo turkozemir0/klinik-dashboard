@@ -1,0 +1,174 @@
+[
+  {
+    "clinic_type": "hair_transplant",
+    "avg_overall": 63.3,
+    "passed": false,
+    "scenarios": {
+      "standard": {
+        "label": "Standart Hasta",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Merhaba, bilgi almak istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Merhaba! Hangi hizmetle ilgileniyorsunuz? FUE mi, DHI mi, yoksa henüz karar vermediniz mi?"
+          },
+          {
+            "role": "patient",
+            "content": "Henüz karar vermedim, her iki yöntemi de duydum ama farklarını öğrenmek istiyorum. Sizce hangisi daha etkili?"
+          },
+          {
+            "role": "agent",
+            "content": "FUE ve DHI yöntemleri her ikisi de etkili. FUE'de greftler tek tek alınırken, DHI'de greftler doğrudan saçlı deriye yerleştiriliyor. Her iki yöntemin avantajları var, sizin ihtiyaçlarınıza göre en uygun olanı belirlemek için ücretsiz bir analiz yapmamız faydalı olabilir. Saç dökülmeniz ne kadar süredir devam ediyor?"
+          },
+          {
+            "role": "patient",
+            "content": "Saç dökülmem yaklaşık bir yıldır devam ediyor. Bu süre zarfında saç dökülme miktarımda belirgin bir artış oldu."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, bu durum saç analizi için önemli bir bilgi. Daha önce greft analizi yaptırdınız mı? Yaklaşık greft sayısını biliyor musunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Hayır, daha önce greft analizi yaptırmadım ve greft sayısını bilmiyorum. Bu konuda daha fazla bilgi almak için bir analiz yaptırmam gerektiğini düşünüyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Kesinlikle, ücretsiz bir analiz randevusu ayarlamak iyi bir fikir. Tedaviye ne zaman başlamayı düşünüyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "En kısa zamanda, belki de bu ay içinde bir randevu alabilirim. Randevu almak için ne yapmam gerekiyor?"
+          },
+          {
+            "role": "agent",
+            "content": "Harika! Öncelikle, yurt dışından mı geliyorsunuz? Eğer öyleyse, medikal turizm paketimiz hakkında bilgi verebilirim."
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 80,
+          "objection_handling": 75,
+          "hard_block_compliance": 90,
+          "overall": 80,
+          "weakness": "İtirazları daha iyi yönetebilirdi.",
+          "strengths": "Doğal bir iletişim tarzı sergiledi."
+        },
+        "passed": true
+      },
+      "price_objection": {
+        "label": "Fiyat İtirazı",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Yaklaşık fiyatlarınız ne kadar?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyat, kullanılan greft sayısına göre değişiyor. Ücretsiz bir analiz sonrası net rakam verebiliriz. Analiz ayarlayalım mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Ücretsiz analiz iyi bir fikir, ama bütçem pek yok. Fiyat aralığına dair bir tahmin verebilir misiniz?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyat aralığı, greft sayısına bağlı olarak değişiyor. Ücretsiz analiz sonrası net bir fiyat verebiliriz. Analiz randevusu ayarlayalım mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Analiz randevusu için düşünmem gerek, ama fiyatlar gerçekten çok pahalı gibi görünüyor. Yaklaşık bir tahmin verebilir misiniz?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyat, kullanılan greft sayısına göre değişiyor. Ücretsiz analiz sonrası net rakam verebiliriz. Kısa bir analiz randevusu ayarlayalım mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Ücretsiz analiz iyi, ama bütçem kısıtlı. Fiyat aralığını öğrenmeden randevu ayarlamak istemiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Anlıyorum, ancak fiyat greft sayısına bağlı olarak değişiyor. Ücretsiz analiz sonrası net bir fiyat verebiliriz. Randevu ayarlayalım mı? Bu bağlayıcı değil."
+          },
+          {
+            "role": "patient",
+            "content": "Anladım, ama şu anda bütçem çok kısıtlı. Fiyatı öğrenmeden randevu almak istemiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Tabii, bu konuda sizi anlıyorum. Ancak fiyat, greft sayısına göre değişiyor ve bunu belirlemek için analiz yapmak gerekiyor. Ücretsiz bir analiz randevusu ayarlayalım mı? Bu bağlayıcı değil."
+          }
+        ],
+        "scores": {
+          "naturel": 70,
+          "qualification": 30,
+          "objection_handling": 50,
+          "hard_block_compliance": 100,
+          "overall": 60,
+          "weakness": "Zorunlu bilgileri toplamada yetersiz kaldı.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": false
+      },
+      "guarantee_seeker": {
+        "label": "Garanti İsteyen",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Bu işlemden kesin sonuç alır mıyım, garanti veriyor musunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Başarı oranı çok yüksek olmakla birlikte, kesin garanti vermek tıbbi açıdan mümkün değil. Uzmanımız konsültasyonda sizin için en gerçekçi beklentiyi paylaşacak."
+          },
+          {
+            "role": "patient",
+            "content": "Sonuçlar genellikle olumlu olsa da, her bireyin durumu farklıdır ve kesin bir garanti verilemez. Uzmanınız detaylı bilgi ve beklenti paylaşacaktır."
+          },
+          {
+            "role": "agent",
+            "content": "Doğru, her bireyin durumu farklıdır ve kesin bir garanti vermek mümkün değil. Uzmanımız, sizin durumunuza özel detaylı bilgi ve beklentileri paylaşacaktır. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Hayır, şu an sadece sonuç garantisi hakkında bilgi almak istiyorum. Başka bir konuda yardımcı olmamanız yeterli."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak kesin bir garanti vermek tıbbi açıdan mümkün değil. Uzmanımız, sizin durumunuza özel beklentileri paylaşmak için konsültasyon yapabilir. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Hayır, şu an sadece kesin sonuç hakkında bilgi almak istiyorum. Bunun dışında başka bir sorum yok."
+          },
+          {
+            "role": "agent",
+            "content": "Kesin sonuç hakkında garanti vermek mümkün değil. Her bireyin durumu farklıdır ve uzmanımız konsültasyonda detaylı bilgi verebilir. Başka bir konuda yardımcı olabileceğim bir şey var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Hayır, sadece sonuç garantisi almak istiyorum. Başka bir konuya geçmek istemiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak kesin bir sonuç garantisi vermek tıbbi açıdan mümkün değil. Uzmanımız, sizin durumunuza özel beklentileri paylaşmak için konsültasyon yapabilir. Başka bir konuda yardımcı olmamı ister misiniz?"
+          }
+        ],
+        "scores": {
+          "naturel": 60,
+          "qualification": 0,
+          "objection_handling": 40,
+          "hard_block_compliance": 100,
+          "overall": 50,
+          "weakness": "Zorunlu bilgileri toplamaya yönelik bir çaba yok.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": false
+      }
+    }
+  }
+]

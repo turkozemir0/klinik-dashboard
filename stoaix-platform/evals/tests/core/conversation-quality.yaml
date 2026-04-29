@@ -1,0 +1,245 @@
+# Core Conversation Quality Tests — Tüm org/sektörler için geçerli
+# Bu testler prompt'tan bağımsız, evrensel konuşma kalitesi sorunlarını yakalar.
+# 12 test: multi-message, cliché, patronizing, intent priority, over-qualifying, emoji tone
+
+# ══════════════════════════════════════════════
+# MULTI-MESSAGE HANDLING (3 Tests)
+# Kullanıcı birden fazla mesajı hızlıca arka arkaya attığında
+# debounce ile birleştirilen mesajların tamamının işlenmesi
+# ══════════════════════════════════════════════
+
+- description: "CQ-MM1: İki farklı soruya tek seferde cevap — her ikisi de ele alınmalı"
+  vars:
+    message: "Henüz emin değilim\nEvet, randevu olabilir"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Hoş geldiniz! Hangi tedavi ile ilgileniyorsunuz?"
+      - role: user
+        content: "Genel bilgi almak istiyorum"
+      - role: assistant
+        content: "Tabii. Hangi yöntem ilginizi çekiyor — yoksa henüz karar vermediniz mi? Bir de randevu ayarlamak ister misiniz?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Kullanıcı İKİ farklı bilgi verdi: (1) henüz emin değil, (2) randevuya evet.
+        Agent her ikisine de değinmeli — en azından randevu kabulünü GÖRMEZLİKTEN GELMEMELİ.
+        Randevu kabul edildiğinde randevu sürecine geçmeli (isim/tarih sormak gibi).
+        Pass: Her iki bilgiye de tepki var. Randevu kabulü işleniyor.
+        Fail: Sadece birine tepki var, diğeri tamamen görmezden geliniyor.
+
+- description: "CQ-MM2: Hızlı evet + ek bilgi — ikisi de yakalanmalı"
+  vars:
+    message: "Evet\n3 yıldır var"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Merhaba! Tedavi hakkında bilgi almak ister misiniz? Ne kadar süredir bu sorun var?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Kullanıcı iki mesaj gönderdi: "Evet" (bilgi almak istiyor) ve "3 yıldır var" (süre bilgisi).
+        Agent her iki bilgiyi de işlemeli — 3 yıllık süreyi kabul edip bir sonraki soruyu sormalı.
+        Pass: 3 yıl bilgisini kabul ediyor + sonraki niteleme sorusunu soruyor.
+        Fail: Sadece "Evet"e tepki verip süre bilgisini tekrar soruyor.
+
+- description: "CQ-MM3: Birden fazla bilgi parçası tek mesajda — hiçbiri atlanmamalı"
+  vars:
+    message: "Adım Ahmet, 42 yaşındayım, İstanbul'da yaşıyorum"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Merhaba! Size nasıl yardımcı olabilirim?"
+      - role: user
+        content: "Tedavi hakkında bilgi almak istiyorum"
+      - role: assistant
+        content: "Tabii, önce sizi biraz tanıyalım. Adınızı öğrenebilir miyim?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Kullanıcı tek mesajda 3 bilgi verdi: isim (Ahmet), yaş (42), şehir (İstanbul).
+        Agent bunların HEPSİNİ kabul etmeli ve ZATEN VERİLEN bilgileri tekrar sormamalı.
+        Sonraki adıma geçmeli (henüz verilmemiş bir bilgiyi sormalı).
+        Pass: Bilgileri onaylıyor + zaten sorulan bilgileri tekrar SORMUYOR + yeni soru soruyor.
+        Fail: Zaten verilen bilgiyi (isim/yaş/şehir) tekrar soruyor.
+
+# ══════════════════════════════════════════════
+# INTENT PRIORITY (2 Tests)
+# Kullanıcı randevuya/işleme evet dediğinde
+# eğitim/niteleme yerine o işleme geçilmeli
+# ══════════════════════════════════════════════
+
+- description: "CQ-IP1: Randevu kabulü — nitelemeye değil randevuya geçmeli"
+  vars:
+    message: "Evet, randevu alalım"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Merhaba! Tedavi hakkında bilgi almak ister misiniz?"
+      - role: user
+        content: "Fiyat ne kadar?"
+      - role: assistant
+        content: "Fiyat kişiye özel belirleniyor. Ücretsiz bir analiz randevusu ayarlayalım mı?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Kullanıcı açıkça randevu istedi. Agent HEMEN randevu sürecine geçmeli
+        (isim, tarih, iletişim bilgisi sormak gibi).
+        Ek niteleme soruları sormaya DEVAM ETMEMELİ.
+        Pass: Randevu sürecine geçiyor (isim/tarih/bilgi soruyor).
+        Fail: Randevuyu görmezden gelip niteleme sorusu soruyor.
+
+- description: "CQ-IP2: İnsan temsilci talebi — hemen yönlendirmeli"
+  vars:
+    message: "Bir yetkiliyle görüşmek istiyorum"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Merhaba! Size nasıl yardımcı olabilirim?"
+      - role: user
+        content: "Tedavi hakkında detaylı bilgi lazım"
+      - role: assistant
+        content: "Tabii, hangi tedavi ile ilgileniyorsunuz?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Kullanıcı açıkça insan temsilci istiyor. Agent bunu kabul etmeli ve
+        yönlendirme yapmalı (doktor/ekip arayacak, devrediyorum vb.).
+        Kendi başına soru sormaya devam ETMEMELİ.
+        Pass: İnsan temsilciye yönlendirme yapıyor veya geri dönüş sözü veriyor.
+        Fail: Talebi görmezden gelip soru sormaya devam ediyor.
+
+# ══════════════════════════════════════════════
+# CLICHÉ / TEMPLATE COPY (2 Tests)
+# AI'ın few-shot örneklerini birebir kopyalaması
+# veya kalıplaşmış dolgu cümleler kullanması
+# ══════════════════════════════════════════════
+
+- description: "CQ-CL1: Dolgu cümle kullanmıyor — duruma özgü tepki"
+  vars:
+    message: "6 aydır sorunum var"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Ne kadar süredir bu sorun devam ediyor?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent, kullanıcının verdiği bilgiye DURUMA ÖZGÜ tepki vermeli.
+        Kalıplaşmış dolgu cümleler kullanmamalı.
+        Kabul edilebilir: "Anlıyorum, 6 aydır..." veya doğrudan sonraki soruya geçmek.
+        Kabul edilemez: Bilgiyle ilgisiz genel yorumlar yapmak.
+        Pass: Duruma uygun kısa tepki + sonraki soru.
+        Fail: İçi boş, durumla ilgisiz dolgu cümle.
+
+- description: "CQ-CL2: Farklı sürelerde farklı tepki — aynı kalıp değil"
+  vars:
+    message: "10 yıldır devam ediyor"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Ne kadar süredir bu sorun devam ediyor?"
+  assert:
+    - type: llm-rubric
+      value: |
+        10 yıl uzun bir süre — agent bunu fark etmeli ama aşırı yorum yapmamalı.
+        Kısa bir kabul + sonraki niteleme sorusu yeterli.
+        Pass: Süreyi kabul ediyor (ama abartmıyor) + soru soruyor. Max 2-3 cümle.
+        Fail: Süreyi tamamen görmezden geliyor VEYA uzun bir analiz/yorum yapıyor.
+
+# ══════════════════════════════════════════════
+# PATRONIZING / UNSOLICITED ADVICE (2 Tests)
+# AI'ın sorulmadığı halde tıbbi/kişisel yorum yapması
+# ══════════════════════════════════════════════
+
+- description: "CQ-PA1: Tıbbi yorum yapmıyor — doktora bırakıyor"
+  vars:
+    message: "Daha önce bir kez tedavi oldum, şimdi ikincisini düşünüyorum"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Merhaba! Size nasıl yardımcı olabilirim?"
+      - role: user
+        content: "Tedavi hakkında bilgi almak istiyorum"
+      - role: assistant
+        content: "Tabii! Daha önce benzer bir tedavi yaptırdınız mı?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Kullanıcı daha önce tedavi olduğunu ve ikincisini istediğini söylüyor.
+        Agent bunu kabul etmeli ama TIBBİ YORUM yapmamalı.
+        "İlk tedavi değerlendirilmeli", "yeterli zaman geçmeli", "riskli olabilir"
+        gibi tıbbi tavsiyeler YASAK — bu doktorun işi.
+        Pass: Kabul + sonraki adıma yönlendirme (tarih, bölge sorusu vb.). Tıbbi yorum yok.
+        Fail: İstenmeyen tıbbi tavsiye veya uyarı veriyor.
+
+- description: "CQ-PA2: Kişisel yargı yok — sadece bilgi topla"
+  vars:
+    message: "Yaşım 22, tedavi yaptırmak istiyorum"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Kaç yaşındasınız?"
+  assert:
+    - type: llm-rubric
+      value: |
+        22 yaş genç olabilir ama agent "çok genç", "erken olabilir" gibi
+        kişisel yargı BELİRTMEMELİ. Bilgiyi kabul edip devam etmeli.
+        Yaşla ilgili değerlendirme doktora aittir.
+        Pass: Yaşı kabul ediyor, yargısız devam ediyor.
+        Fail: "Genç yaşta...", "erken olabilir" gibi kişisel yorum yapıyor.
+
+# ══════════════════════════════════════════════
+# OVER-QUALIFYING (1 Test)
+# Kullanıcı zaten hazırken gereksiz soru bombardımanı
+# ══════════════════════════════════════════════
+
+- description: "CQ-OQ1: Hazır lead'e gereksiz soru sormuyor — randevuya yönlendiriyor"
+  vars:
+    message: "Mümkün olan en yakın tarihte randevu istiyorum"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Merhaba! Size nasıl yardımcı olabilirim?"
+      - role: user
+        content: "Adım Mehmet, 35 yaşındayım, 3 yıldır sorunum var, ön bölgede. Hemen tedavi olmak istiyorum."
+      - role: assistant
+        content: "Teşekkürler Mehmet! Bilgilerinizi aldım. Randevu için bir tarih belirleyelim mi?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Kullanıcı zaten TÜM bilgileri vermiş (isim, yaş, süre, bölge, zamanlama) ve acil istiyor.
+        Agent GEREKSİZ ek soru sormamalı — doğrudan randevu/handoff sürecine geçmeli.
+        Pass: Randevu/handoff sürecine geçiyor. İletişim bilgisi veya tarih netleştirme sorabilir.
+        Fail: Zaten verilen bilgileri tekrar soruyor veya gereksiz niteleme sorusu ekliyor.
+
+# ══════════════════════════════════════════════
+# EMOJI TONE MISMATCH (2 Tests)
+# Ciddi/hassas konularda emoji kullanımı
+# ══════════════════════════════════════════════
+
+- description: "CQ-ET1: Ciddi konuda emoji yok — ağrı/şikayet"
+  vars:
+    message: "Çok ağrım var, dayanamıyorum, çok kötüyüm"
+    channel: whatsapp
+  assert:
+    - type: llm-rubric
+      value: |
+        Kullanıcı ciddi ağrı/acı yaşıyor. Agent empati göstermeli.
+        Bu mesajda 😊 😄 👍 ✨ gibi neşeli/pozitif emojiler KULLANILMAMALI.
+        Emojisiz yanıt idealdir. Acil yönlendirme yapılabilir.
+        Pass: Empati + emoji yok (veya sadece nötr emoji). Ciddi ton.
+        Fail: Ağrı/şikayete 😊 veya pozitif emoji ile karşılık veriyor.
+
+- description: "CQ-ET2: Finansal endişede uygun ton — gereksiz neşe yok"
+  vars:
+    message: "Param yok, bunu karşılayamam, çok stresli bir dönemdeyim"
+    channel: whatsapp
+  assert:
+    - type: llm-rubric
+      value: |
+        Kullanıcı finansal stres yaşıyor. Agent anlayışlı olmalı.
+        Pozitif emoji (😊 ✨ 🎉) bu bağlamda uygunsuz.
+        Ödeme seçeneklerinden bahsedebilir ama baskıcı olmamalı.
+        Pass: Anlayışlı ton, baskısız bilgi. Pozitif emoji yok.
+        Fail: Strese rağmen neşeli emoji veya baskıcı satış.

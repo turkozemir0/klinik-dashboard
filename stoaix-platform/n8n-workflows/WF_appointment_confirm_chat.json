@@ -1,13 +1,15 @@
 {
   "name": "stoaix — C3 Appointment Confirm Chat",
   "nodes": [
-
     {
       "id": "n01",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [200, 300],
+      "position": [
+        200,
+        300
+      ],
       "parameters": {
         "path": "appointment-confirm-chat",
         "httpMethod": "POST",
@@ -17,30 +19,44 @@
       },
       "webhookId": "c3-appointment-confirm-chat"
     },
-
     {
       "id": "n02",
       "name": "Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [420, 300],
+      "position": [
+        420,
+        300
+      ],
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "cfg_sb_url", "name": "SUPABASE_URL",         "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co", "type": "string" },
-            { "id": "cfg_sb_key", "name": "SUPABASE_SERVICE_KEY", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",           "type": "string" }
+            {
+              "id": "cfg_sb_url",
+              "name": "SUPABASE_URL",
+              "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "cfg_sb_key",
+              "name": "SUPABASE_SERVICE_KEY",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",
+              "type": "string"
+            }
           ]
         },
         "options": {}
       }
     },
-
     {
       "id": "n03",
       "name": "Wait Delay",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [640, 300],
+      "position": [
+        640,
+        300
+      ],
       "parameters": {
         "resume": "timeInterval",
         "unit": "minutes",
@@ -48,125 +64,170 @@
       },
       "webhookId": "c3-wait-delay"
     },
-
     {
       "id": "n04",
       "name": "Fetch Org WA Credentials",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [860, 300],
+      "position": [
+        860,
+        300
+      ],
       "parameters": {
         "method": "GET",
         "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/organizations",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}"
+            }
           ]
         },
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "id",     "value": "={{ 'eq.' + $('Webhook').first().json.body.org_id }}" },
-            { "name": "select", "value": "id,channel_config,ai_persona" },
-            { "name": "limit",  "value": "1" }
+            {
+              "name": "id",
+              "value": "={{ 'eq.' + $('Webhook').first().json.body.org_id }}"
+            },
+            {
+              "name": "select",
+              "value": "id,channel_config,ai_persona"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
           ]
         }
       }
     },
-
     {
       "id": "n05",
-      "name": "Build Message",
+      "name": "Extract WA Credentials",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1080, 300],
+      "position": [
+        1080,
+        300
+      ],
       "parameters": {
-        "jsCode": "const orgArr  = $('Fetch Org WA Credentials').all();\nconst org     = orgArr[0]?.json ?? {};\nconst payload = $('Webhook').first().json.body;\n\nconst wa    = org.channel_config?.whatsapp;\nconst creds = wa?.credentials;\n\nif (!wa?.active || !creds?.phone_number_id || !creds?.access_token) {\n  return [{ json: {\n    skip: true,\n    run_id:       payload.run_id,\n    callback_url: payload.callback_url,\n  } }];\n}\n\nconst lang        = org.ai_persona?.language || 'tr';\nconst contactName = payload.contact_data?.name || '';\nconst apptTime    = payload.contact_data?.appointment_time || payload.config?.appointment_time || '';\nconst orgName     = org.name || '';\n\n// Direct text message for appointment confirm (24h window)\nconst bodyText = lang === 'en'\n  ? `Hello ${contactName}! This is a reminder for your appointment at ${orgName} on ${apptTime}. Please reply YES to confirm or NO to reschedule.`\n  : `Merhaba ${contactName}! ${orgName} randevunuzu hatırlatmak istedik: ${apptTime}. Onaylamak için EVET, yeniden planlamak için HAYIR yazabilir misiniz?`;\n\nreturn [{ json: {\n  skip:             false,\n  phone_number_id:  creds.phone_number_id,\n  access_token:     creds.access_token,\n  to_phone:         payload.phone.replace(/^\\+/, ''),\n  body_text:        bodyText,\n  run_id:           payload.run_id,\n  callback_url:     payload.callback_url,\n} }];"
+        "jsCode": "const orgArr  = $('Fetch Org WA Credentials').all();\nconst org     = orgArr[0]?.json ?? {};\nconst payload = $('Webhook').first().json.body;\n\nconst wa    = org.channel_config?.whatsapp;\nconst creds = wa?.credentials;\n\nif (!wa?.active || !creds?.phone_number_id || !creds?.access_token) {\n  return [{ json: {\n    skip: true,\n    run_id:       payload.run_id,\n    callback_url: payload.callback_url,\n    phone:        payload.phone,\n  } }];\n}\n\nconst lang = org.ai_persona?.language || 'tr';\nconst LANG_MAP = { en: 'en_US', de: 'de', tr: 'tr', ar: 'ar', fr: 'fr_FR' };\nconst templateLang = LANG_MAP[lang] || lang;\nconst templateName = payload.config?.message_template || 'appointment_confirm_v1';\n\nconst cd = payload.contact_data || {};\nconst isTR = (lang === 'tr');\nconst isDE = (lang === 'de');\nconst param1 = cd.name || cd.full_name\n  || (isTR ? 'Değerli müşterimiz' : isDE ? 'Geschätzter Kunde' : 'Valued customer');\n\nconst apptRaw = cd.appointment_time || '';\nlet param2 = '', param3 = '';\nif (apptRaw.includes(',')) {\n  const parts = apptRaw.split(',').map(s => s.trim());\n  param2 = parts[0] || '';\n  param3 = parts[1] || '';\n} else if (apptRaw) {\n  param2 = apptRaw;\n}\n\nconst templateBody = {\n  messaging_product: 'whatsapp',\n  to: payload.phone.replace(/^\\+/, ''),\n  type: 'template',\n  template: {\n    name: templateName,\n    language: { code: templateLang }\n  }\n};\n\nconst paramCount = Number(payload.config?.template_param_count) || 0;\nif (paramCount >= 1) {\n  const params = [{ type: 'text', text: param1 }];\n  if (paramCount >= 2 && param2) params.push({ type: 'text', text: param2 });\n  if (paramCount >= 3 && param3) params.push({ type: 'text', text: param3 });\n  templateBody.template.components = [{ type: 'body', parameters: params }];\n}\n\nreturn [{ json: {\n  skip:             false,\n  phone_number_id:  creds.phone_number_id,\n  access_token:     creds.access_token,\n  template_body:    JSON.stringify(templateBody),\n  run_id:           payload.run_id,\n  callback_url:     payload.callback_url,\n} }];"
       }
     },
-
     {
       "id": "n06",
       "name": "WA Configured?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1300, 300],
+      "position": [
+        1300,
+        300
+      ],
       "parameters": {
         "conditions": {
-          "options": { "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "c1",
-              "leftValue":  "={{ $json.skip }}",
+              "leftValue": "={{ $json.skip }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "notEquals" }
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
             }
           ],
           "combinator": "and"
         }
       }
     },
-
     {
       "id": "n07",
-      "name": "Send WA Text",
+      "name": "Send WA Template",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1520, 200],
+      "position": [
+        1520,
+        200
+      ],
       "parameters": {
         "method": "POST",
         "url": "=https://graph.facebook.com/v19.0/{{ $json.phone_number_id }}/messages",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "={{ 'Bearer ' + $json.access_token }}" },
-            { "name": "Content-Type",  "value": "application/json" }
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.to_phone }}\",\n  \"type\": \"text\",\n  \"text\": { \"body\": \"{{ $json.body_text }}\" }\n}"
+        "jsonBody": "={{ $json.template_body }}"
       }
     },
-
     {
       "id": "n08",
       "name": "Callback — Success",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1740, 200],
+      "position": [
+        1740,
+        200
+      ],
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Build Message').item.json.callback_url }}",
+        "url": "={{ $('Extract WA Credentials').item.json.callback_url }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\n  \"run_id\": \"{{ $('Build Message').item.json.run_id }}\",\n  \"status\": \"success\",\n  \"result\": { \"notes\": \"Appointment confirm WA message sent\" }\n}"
+        "jsonBody": "={\n  \"run_id\": \"{{ $('Extract WA Credentials').item.json.run_id }}\",\n  \"status\": \"success\",\n  \"result\": { \"notes\": \"Appointment confirm WA message sent\" }\n}"
       }
     },
-
     {
       "id": "n09",
       "name": "Callback — WA Not Configured",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1520, 420],
+      "position": [
+        1520,
+        420
+      ],
       "parameters": {
         "method": "POST",
         "url": "={{ $json.callback_url }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -175,27 +236,101 @@
         "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"status\": \"failed\",\n  \"result\": { \"notes\": \"WhatsApp not configured for this org\" }\n}"
       }
     }
-
   ],
-
   "connections": {
-    "Webhook":                  { "main": [[{ "node": "Config",                      "type": "main", "index": 0 }]] },
-    "Config":                   { "main": [[{ "node": "Wait Delay",                  "type": "main", "index": 0 }]] },
-    "Wait Delay":               { "main": [[{ "node": "Fetch Org WA Credentials",    "type": "main", "index": 0 }]] },
-    "Fetch Org WA Credentials": { "main": [[{ "node": "Build Message",               "type": "main", "index": 0 }]] },
-    "Build Message":            { "main": [[{ "node": "WA Configured?",              "type": "main", "index": 0 }]] },
-    "WA Configured?": {
+    "Webhook": {
       "main": [
-        [{ "node": "Send WA Text",                   "type": "main", "index": 0 }],
-        [{ "node": "Callback — WA Not Configured",   "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Send WA Text": { "main": [[{ "node": "Callback — Success", "type": "main", "index": 0 }]] }
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Wait Delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Delay": {
+      "main": [
+        [
+          {
+            "node": "Fetch Org WA Credentials",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Org WA Credentials": {
+      "main": [
+        [
+          {
+            "node": "Extract WA Credentials",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract WA Credentials": {
+      "main": [
+        [
+          {
+            "node": "WA Configured?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WA Configured?": {
+      "main": [
+        [
+          {
+            "node": "Send WA Template",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Callback — WA Not Configured",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WA Template": {
+      "main": [
+        [
+          {
+            "node": "Callback — Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-
   "active": false,
-  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
   "pinData": {},
-  "meta": { "instanceId": "stoaix-platform" },
-  "notes": "C3 Appointment Confirm Chat. Sends direct WhatsApp text message T-24h. Note: requires active 24h conversation window or use template instead. Callback on success/fail."
+  "meta": {
+    "instanceId": "stoaix-platform"
+  },
+  "notes": "C3 Appointment Confirm Chat. Sends WhatsApp template message for appointment confirmation. LANG_MAP supports en/de/tr/ar/fr. Callback on success/fail."
 }

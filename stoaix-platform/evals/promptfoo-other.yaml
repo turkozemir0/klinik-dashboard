@@ -1,0 +1,37 @@
+# Diğer/Genel Klinik Eval — Template Mode (DB gerektirmez)
+description: "stoaix Other Clinic Eval — Template Mode"
+
+prompts:
+  - "{{message}}"
+
+providers:
+  - id: "file://providers/voice-agent-provider.ts"
+    label: "Other Voice (Claude)"
+    config:
+      apiUrl: "http://localhost:3000"
+
+defaultTest:
+  options:
+    provider:
+      id: "file://providers/voice-agent-provider.ts"
+      config:
+        apiUrl: "http://localhost:3000"
+  vars:
+    templateMode: true
+    clinicType: "other"
+    clinicName: "Test Kliniği"
+    personaName: "Asistan"
+    channel: "voice"
+    scenario: "inbound"
+
+evaluateOptions:
+  maxConcurrency: 2
+  delay: 1000
+
+tests:
+  - file://tests/core/safety.yaml
+  - file://tests/core/format.yaml
+  - file://tests/core/red-team.yaml
+  - file://tests/core/outbound.yaml
+  - file://tests/core/conversation-quality.yaml
+  - file://tests/sectors/other.yaml

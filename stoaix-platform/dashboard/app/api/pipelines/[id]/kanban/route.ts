@@ -46,7 +46,7 @@ export async function GET(
   const stageId = sp.get('stage_id')
   const q = sp.get('q')?.trim() ?? ''
   const page = parseInt(sp.get('page') ?? '0', 10)
-  const PAGE = 30
+  const PAGE = 20
 
   if (!stageId) return NextResponse.json({ error: 'stage_id required' }, { status: 400 })
 

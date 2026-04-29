@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as sbAdmin } from '@supabase/supabase-js'
 
-// Vercel cron veya UptimeRobot'tan çağrılır
-// Vercel Hobby: saatte bir (0 * * * *)
-// UptimeRobot: 5dk'da bir (ücretsiz önerilen seçenek)
+// Vercel cron (saatte bir) veya UptimeRobot (5dk) çağırır.
+// DB'ye yazmaz — sadece HTTP response döner.
+// Hata durumunda max 1 satır/saat DB'ye yazar (throttle).
+
+let lastAlertAt = 0
+const ALERT_THROTTLE_MS = 60 * 60 * 1000 // 1 saat
 
 function getServiceClient() {
   return sbAdmin(
@@ -13,14 +16,6 @@ function getServiceClient() {
 }
 
 export async function GET(req: NextRequest) {
-  // Cron auth: Vercel otomatik Authorization header ekler
-  // veya UptimeRobot için API key header kontrolü
-  const authHeader = req.headers.get('authorization')
-  if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    // UptimeRobot veya harici çağrıda secret yoksa → yine de izin ver (monitoring endpoint)
-    // Gerçek güvenlik: sadece Vercel cron + UptimeRobot erişebilmeli
-  }
-
   const n8nBase = (process.env.N8N_WEBHOOK_BASE_URL ?? '').replace(/\/$/, '')
   const n8nApiKey = process.env.N8N_API_KEY ?? ''
 
@@ -44,20 +39,21 @@ export async function GET(req: NextRequest) {
       message = `HTTP ${res.status}`
     }
 
-    const service = getServiceClient()
-    await service.from('system_alerts').insert({
-      service: 'n8n',
-      status,
-      latency_ms: latency,
-      message,
-    })
-
-    // Son 24 saatte 'down' veya 'degraded' alertleri temizle (opsiyonel — sadece son 500 kaydı tut)
-    // Eski kayıtları sil
-    await service.from('system_alerts')
-      .delete()
-      .lt('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .eq('service', 'n8n')
+    // Sadece hata durumunda + throttle ile DB'ye yaz (max 1/saat)
+    if (status !== 'ok' && Date.now() - lastAlertAt > ALERT_THROTTLE_MS) {
+      lastAlertAt = Date.now()
+      const service = getServiceClient()
+      await service.from('system_alerts').insert({
+        service: 'n8n',
+        status,
+        latency_ms: latency,
+        message,
+      })
+      // Temizlik: 3 günden eski kayıtları sil
+      await service.from('system_alerts')
+        .delete()
+        .lt('created_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString())
+    }
 
     return NextResponse.json({ ok: true, status, latency_ms: latency })
   } catch (err: any) {
@@ -65,17 +61,19 @@ export async function GET(req: NextRequest) {
     status = 'down'
     message = err.message ?? 'Bağlantı hatası'
 
-    const service = getServiceClient()
-    await service.from('system_alerts').insert({
-      service: 'n8n',
-      status: 'down',
-      latency_ms: latency,
-      message,
-    })
+    // Throttle: max 1 alert/saat
+    if (Date.now() - lastAlertAt > ALERT_THROTTLE_MS) {
+      lastAlertAt = Date.now()
+      const service = getServiceClient()
+      await service.from('system_alerts').insert({
+        service: 'n8n',
+        status: 'down',
+        latency_ms: latency,
+        message,
+      })
+    }
 
-    // n8n down — loglama yeterli (email entegrasyonu opsiyonel, Resend/SendGrid ile eklenebilir)
     console.error('[n8n-alert] n8n DOWN:', message)
-
     return NextResponse.json({ ok: false, status: 'down', error: message, latency_ms: latency })
   }
 }

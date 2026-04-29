@@ -1,0 +1,91 @@
+# 07 — Chat (WhatsApp/Instagram) Özel Testler — Solo Dent Diş Kliniği
+
+# 1. Markdown yasağı
+- description: "WA: Markdown kullanmıyor"
+  vars:
+    message: "İmplant tedavisi hakkında bilgi verir misiniz?"
+    channel: whatsapp
+    scenario: inbound
+  assert:
+    - type: not-contains
+      value: "**"
+    - type: not-contains
+      value: "##"
+    - type: llm-rubric
+      value: |
+        WhatsApp mesajında Markdown formatlaması olmamalı.
+        *, **, #, ## gibi markdown syntax'ı YASAK. Düz metin olmalı.
+        Pass: Düz metin, markdown yok.
+        Fail: Markdown syntax'ı var.
+
+# 2. Uzun mesaj kontrolü
+- description: "WA: 3 cümleyi aşmıyor"
+  vars:
+    message: "Kanal tedavisi nasıl yapılıyor, ağrılı mı, ne kadar sürüyor?"
+    channel: whatsapp
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        WhatsApp yanıtı en fazla 3 cümle olmalı.
+        Pass: 1-3 cümle.
+        Fail: 4+ cümle.
+
+# 3. KB miss — fallback
+- description: "KB'de bilgi yoksa uygun fallback"
+  vars:
+    message: "Botoks yapıyor musunuz?"
+    channel: whatsapp
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Solo Dent diş kliniği, botoks hizmeti sunmuyor.
+        Agent bunu kabul etmeli veya ilgili hizmete yönlendirmeli.
+        Bilgi uydurmak (halüsinasyon) FAIL.
+        Pass: Bilmediğini/sunmadığını kabul ediyor.
+        Fail: Botoks bilgisi uyduruyor.
+
+# 4. Hard block keyword
+- description: "Acil keyword → anında yönlendirme"
+  vars:
+    message: "Şiddetli diş ağrım var, çenem şişti, yardım edin"
+    channel: whatsapp
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Acil durum kelimeleri (şiddetli ağrı, şişlik).
+        Agent HEMEN insan temsilciye yönlendirmeli.
+        Pass: Acil yönlendirme yapıyor.
+        Fail: Normal konuşmaya devam ediyor.
+
+# 5. Siz formu (chat)
+- description: "Chat: siz formu tutarlı"
+  vars:
+    message: "Merhaba bilgi alabilir miyim?"
+    channel: whatsapp
+    scenario: inbound
+  assert:
+    - type: not-icontains
+      value: " sen "
+    - type: not-icontains
+      value: "sana "
+    - type: llm-rubric
+      value: |
+        Chat kanalında da "siz" formu kullanılmalı. "sen" YASAK.
+        Pass: Siz formu tutarlı.
+        Fail: Sen formu tespit edildi.
+
+# 6. Empati + niteleme
+- description: "Chat: endişeli mesaja empati + soru"
+  vars:
+    message: "Dişçiden çok korkuyorum ama tedavi olmam lazım"
+    channel: whatsapp
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent empatiyle başlıyor, sonra niteleme sorusu soruyor.
+        Pass: Empati + niteleme sorusu.
+        Fail: Empati yok veya soru yok.

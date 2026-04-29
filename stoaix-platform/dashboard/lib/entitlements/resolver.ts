@@ -47,3 +47,23 @@ export async function fetchPlanEntitlement(planId: string, featureKey: string) {
     .single()
   return data
 }
+
+// --- Batch versions (for /api/billing/limits) ---
+
+export async function fetchAllOverrides(orgId: string) {
+  const sb = getServiceClient()
+  const { data } = await sb
+    .from('org_entitlement_overrides')
+    .select('feature_key, enabled, limit_override, expires_at')
+    .eq('organization_id', orgId)
+  return data ?? []
+}
+
+export async function fetchAllPlanEntitlements(planId: string) {
+  const sb = getServiceClient()
+  const { data } = await sb
+    .from('plan_entitlements')
+    .select('feature_key, enabled, limit_value')
+    .eq('plan_id', planId)
+  return data ?? []
+}

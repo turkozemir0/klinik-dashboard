@@ -1,0 +1,197 @@
+# 01 — Lead Niteleme (Qualification) Testleri — Solo Dent Diş Kliniği
+# Agent'ın hastaları doğal şekilde nitelendirme yeteneğini test eder
+
+# 1. İlk temas — ad alma
+- description: "İlk temas: Agent ad soruyor mu?"
+  vars:
+    message: "Merhaba, implant tedavisi hakkında bilgi istiyorum"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent hastanın adını sormalı veya kendini tanıtıp ad sormalı.
+        Direkt bilgi vermeden önce kim olduğunu öğrenmeye çalışmalı.
+        Pass: Adını soruyor veya doğal şekilde tanışma başlatıyor.
+        Fail: Direkt bilgi verip ad sormadan devam ediyor.
+    - type: not-icontains
+      value: " sen "
+
+# 2. Telefon toplama
+- description: "Ad sonrası şikayet/ilgi alanı soruyor"
+  vars:
+    message: "Ahmet Yılmaz"
+    channel: voice
+    scenario: inbound
+    history:
+      - role: assistant
+        content: "Merhaba, Solo Dent Diş Kliniği'ne hoş geldiniz! Ben Selin, size yardımcı olayım. Adınızı öğrenebilir miyim?"
+      - role: user
+        content: "Ahmet Yılmaz"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent şikayeti veya ilgilenilen tedaviyi soruyor.
+        İmplant mı, ortodonti mi, genel şikayet mi netleştiriyor.
+        Pass: Şikayet/tedavi türü sorusu soruyor, doğal geçiş.
+        Fail: Şikayet sormadan başka konuya geçiyor.
+
+# 3. İlgi alanı tespiti
+- description: "İlgi alanı doğru tespit ediliyor mu?"
+  vars:
+    message: "Diş beyazlatma yaptırmak istiyorum"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent diş beyazlatma ile ilgili bilgi veriyor veya kabul edip nitelemeye devam ediyor.
+        Pass: Diş beyazlatma talebini anladığını gösteriyor.
+        Fail: Konuyla ilgisiz yanıt veriyor.
+
+# 4. Bütçe sorusu yönetimi
+- description: "Bütçe belirtildiğinde kesin fiyat vermeden acknowledge"
+  vars:
+    message: "Bütçem 5.000 TL civarında"
+    channel: voice
+    scenario: inbound
+    history:
+      - role: assistant
+        content: "Merhaba, Solo Dent'e hoş geldiniz! Adınızı öğrenebilir miyim?"
+      - role: user
+        content: "Fatma"
+      - role: assistant
+        content: "Memnun oldum Fatma Hanım. Nasıl bir tedavi düşünüyorsunuz?"
+      - role: user
+        content: "Zirkonyum kaplama düşünüyorum"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent kesin fiyat vermemeli. Bütçeyi not alıp, konsültasyonda net
+        bilgi verileceğini söylemeli. "5.000 TL yeterli/yetmez" gibi
+        kesin ifadeler FAIL.
+        Pass: Bütçeyi kabul ediyor, kesin rakam vermiyor.
+        Fail: Kesin fiyat veriyor veya "yeterli/yetmez" diyor.
+    - type: not-icontains
+      value: "garanti"
+
+# 5. Şikayet detayı
+- description: "Şikayet varsa süre ve bölge soruyor"
+  vars:
+    message: "Dişim ağrıyor"
+    channel: voice
+    scenario: inbound
+    history:
+      - role: assistant
+        content: "Merhaba, Solo Dent'e hoş geldiniz! Adınızı alabilir miyim?"
+      - role: user
+        content: "Mehmet"
+      - role: assistant
+        content: "Memnun oldum Mehmet Bey. Nasıl yardımcı olabilirim?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent ağrının detayını soruyor — ne zamandır, hangi diş/bölge.
+        Pass: Ağrı ile ilgili detay sorusu soruyor (süre veya bölge).
+        Fail: Ağrıyı görmezden gelip başka konuya geçiyor.
+
+# 6. Çift soru yasağı
+- description: "Tek turda 2+ soru sormuyor mu?"
+  vars:
+    message: "Merhaba, porselen kaplama yaptırmak istiyorum"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent yanıtında en fazla 1 soru işareti (?) olmalı.
+        İki veya daha fazla soru sormak FAIL.
+        Soru işareti sayısını kontrol et.
+        Pass: 0 veya 1 soru işareti var.
+        Fail: 2 veya daha fazla soru işareti var.
+
+# 7. Tedavi geçmişi
+- description: "Daha önce tedavi alıp almadığını soruyor"
+  vars:
+    message: "Evet, 3 aydır ağrıyor, sol alt çene tarafında"
+    channel: voice
+    scenario: inbound
+    history:
+      - role: assistant
+        content: "Merhaba, adınızı öğrenebilir miyim?"
+      - role: user
+        content: "Zeynep Aydın"
+      - role: assistant
+        content: "Memnun oldum Zeynep Hanım. Nasıl yardımcı olabilirim?"
+      - role: user
+        content: "Dişim ağrıyor"
+      - role: assistant
+        content: "Anlıyorum. Ne zamandır ağrınız var, hangi bölgede?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent bilgiyi alıp bir sonraki niteleme sorusuna geçiyor.
+        Daha önce tedavi alıp almadığını sorabilir veya randevuya yönlendirebilir.
+        Pass: Yeni bir niteleme sorusu soruyor veya randevu yönlendirmesi yapıyor.
+        Fail: Zaten verilen bilgiyi tekrar soruyor.
+
+# 8. Niteleme tamamlandığında randevu yönlendirmesi
+- description: "Zorunlu bilgiler toplandığında randevu sunuyor"
+  vars:
+    message: "Evet, yarın gelebilirim"
+    channel: voice
+    scenario: inbound
+    history:
+      - role: assistant
+        content: "Merhaba, adınızı alabilir miyim?"
+      - role: user
+        content: "Kemal Demir"
+      - role: assistant
+        content: "Memnun oldum Kemal Bey. Nasıl bir tedavi düşünüyorsunuz?"
+      - role: user
+        content: "İmplant yaptırmak istiyorum"
+      - role: assistant
+        content: "Anladım. Daha önce bu konuda bir tedavi aldınız mı?"
+      - role: user
+        content: "Hayır, ilk defa"
+      - role: assistant
+        content: "Telefon numaranızı alabilir miyim?"
+      - role: user
+        content: "0555 123 45 67"
+      - role: assistant
+        content: "Teşekkürler. Size uygun bir randevu ayarlayalım mı?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent randevu veya konsültasyon yönlendirmesi yapıyor.
+        Bilgi toplama aşamasını bitirmiş ve somut bir sonraki adım sunuyor.
+        Pass: Randevu/konsültasyon sunuyor.
+        Fail: Hala bilgi toplamaya devam ediyor.
+
+# 9. Başkası için arıyor
+- description: "Başkası için arayan netleştiriliyor mu?"
+  vars:
+    message: "Çocuğum için arıyorum, dişleri çürük galiba"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent çocuk diş hekimliği kapsamında ele alıyor.
+        Çocuğun yaşını veya detayını soruyor, empati gösteriyor.
+        Pass: Çocuk için bilgi alıyor, yaş/detay soruyor.
+        Fail: Kim olduğunu netleştirmeden devam ediyor.
+
+# 10. Hızlı hasta — tek mesajda çoklu bilgi
+- description: "Tek mesajda çok bilgi veren hasta doğru parse ediliyor mu?"
+  vars:
+    message: "Ahmet, 0532 111 22 33, implant istiyorum, yarın müsaitim"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent tüm bilgileri (ad, telefon, tedavi, randevu) anladığını gösteriyor.
+        Zaten verilen bilgileri tekrar sormak yerine randevuya yönlendiriyor.
+        Pass: Bilgileri kabul edip randevu/konsültasyon sunuyor.
+        Fail: Zaten verilen bilgileri tekrar soruyor.

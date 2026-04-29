@@ -1,0 +1,384 @@
+# ESTELiFE Aesthetik — Saç Ekim Kliniği (Grevenbroich, Deutschland)
+# DB Mode: orgId = ecd032a8-f40c-4171-947a-b6417461e987
+# 20 Tests — Deutsch (+ multi-lang)
+# Persona: Lisa | Doktor: Dr. Yildirim | Model: gpt-4o-mini
+
+# ══════════════════════════════════════════════
+# QUALIFICATION FLOW (4 Tests)
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE Q1: Erster Kontakt — Begrüßung + erste Frage"
+  vars:
+    message: "Hallo, ich interessiere mich für eine Haartransplantation"
+    channel: whatsapp
+  assert:
+    - type: llm-rubric
+      value: |
+        Der Agent begrüßt den Patienten freundlich und stellt eine erste Qualifizierungsfrage
+        (z.B. Methode, Dauer des Haarausfalls, betroffener Bereich).
+        Pass: Natürliche Begrüßung + genau eine Frage.
+        Fail: Keine Frage oder Informationsüberladung.
+    - type: llm-rubric
+      value: "file://rubrics/de-naturalness.yaml"
+
+- description: "ESTELiFE Q2: FUE-Interesse — Situation vertiefen"
+  vars:
+    message: "FUE interessiert mich"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Willkommen bei EsteLife Aesthetik! Ich bin Lisa. Interessieren Sie sich für eine Haartransplantation? Ich helfe Ihnen gerne weiter 😊"
+      - role: user
+        content: "Ja, ich möchte mich informieren"
+      - role: assistant
+        content: "Schön, dass Sie sich informieren! Wissen Sie schon, ob FUE oder DHI für Sie in Frage kommt — oder sind Sie noch unsicher?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent geht auf FUE ein und stellt eine weiterführende Frage
+        (z.B. Dauer des Haarausfalls, betroffener Bereich).
+        Pass: Kurze Antwort zu FUE + Niteleme-Frage.
+        Fail: Langer Monolog oder keine Folgefrage.
+
+- description: "ESTELiFE Q3: Multi-Info Parse — Patient gibt mehrere Infos auf einmal"
+  vars:
+    message: "Ich heiße Markus, 35 Jahre alt, der Haarausfall ist seit 3 Jahren vor allem an den Geheimratsecken"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Willkommen bei EsteLife! Ich bin Lisa 😊 Interessieren Sie sich für eine Haartransplantation?"
+      - role: user
+        content: "Ja, für FUE"
+      - role: assistant
+        content: "FUE ist eine sehr bewährte Methode. Seit wann bemerken Sie den Haarausfall?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent bestätigt die gesammelten Infos (Name, Alter, Dauer, Bereich) und fragt
+        nach der noch fehlenden Info (z.B. Zeitplanung).
+        WICHTIG: Fragt NICHT nach bereits gegebenen Informationen.
+        Pass: Anerkennung + Frage nach fehlender Info.
+        Fail: Fragt dasselbe nochmal oder ignoriert die Infos.
+
+- description: "ESTELiFE Q4: Handoff — alle Pflichtinfos vorhanden"
+  vars:
+    message: "Am liebsten in den nächsten 2 Monaten"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Willkommen bei EsteLife! Ich bin Lisa 😊"
+      - role: user
+        content: "Ich heiße Markus, 35, Haarausfall seit 3 Jahren an den Geheimratsecken"
+      - role: assistant
+        content: "Danke, Markus! Geheimratsecken seit 3 Jahren — da kann eine Transplantation sehr gute Ergebnisse erzielen. Wann möchten Sie den Eingriff ungefähr planen?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Alle 4 Pflichtinfos sind vorhanden (Name: Markus, Dauer: 3 Jahre, Bereich: Geheimratsecken, Zeitplanung: 2 Monate).
+        Agent sollte entweder:
+        a) Die Übergabe einleiten (Dr. Yildirim wird sich melden / kostenlose Haaranalyse) ODER
+        b) Den nächsten konkreten Schritt vorschlagen (Termin, Beratung, Kontakt)
+        Pass: Handoff-Nachricht ODER konkreter Terminvorschlag/nächster Schritt.
+        Fail: Fragt nach bereits gegebenen Informationen ODER stellt komplett irrelevante Fragen.
+
+# ══════════════════════════════════════════════
+# WARMTH & EMOJI (2 Tests)
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE W1: Freundlicher Ton — warm und nahbar"
+  vars:
+    message: "Hallo, ich hätte gerne Informationen zur Haartransplantation"
+    channel: whatsapp
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent antwortet freundlich und einladend auf eine erste Anfrage.
+        Idealerweise mit Emoji, aber warmer Ton ist wichtiger als Emoji-Pflicht.
+        Pass: Freundliche, warme Begrüßung + eine Frage. Bonus: Emoji vorhanden.
+        Fail: Kalte, roboterhafte Antwort ohne jede Wärme.
+
+- description: "ESTELiFE W2: Warmer Ton — keine übertriebene Begeisterung"
+  vars:
+    message: "Ich verliere seit 5 Jahren Haare, das belastet mich sehr"
+    channel: whatsapp
+  assert:
+    - type: not-icontains
+      value: "Das klingt super"
+    - type: not-icontains
+      value: "Das ist großartig"
+    - type: not-icontains
+      value: "Wunderbar"
+    - type: not-icontains
+      value: "Perfekt"
+    - type: llm-rubric
+      value: |
+        Patient teilt emotionale Belastung mit. Agent soll warm und empathisch reagieren,
+        OHNE übertriebene Begeisterung. Verständnis zeigen, dann weiterführen.
+        Pass: Empathische Reaktion ("Verstehe", "Das ist verständlich") + Frage.
+        Fail: Überschwängliche Reaktion oder Ignorieren der Emotion.
+    - type: llm-rubric
+      value: "file://rubrics/de-empathy.yaml"
+
+# ══════════════════════════════════════════════
+# BREVITY (2 Tests)
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE B1: Max 3 Sätze — kein Monolog"
+  vars:
+    message: "Was ist der Unterschied zwischen FUE und DHI?"
+    channel: whatsapp
+  assert:
+    - type: javascript
+      value: |
+        const sentences = output.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        return sentences.length <= 4;
+    - type: llm-rubric
+      value: |
+        Agent erklärt FUE vs DHI kurz und verständlich.
+        Pass: Bis zu 4 Sätze sind akzeptabel wenn sie klar und fokussiert sind. Eine Folgefrage ist wünschenswert aber nicht zwingend.
+        Fail: NUR wenn die Antwort 5 oder mehr Sätze enthält ODER sehr lange, verschachtelte Absätze hat.
+
+- description: "ESTELiFE B2: Keine Info-Überflutung — häppchenweise"
+  vars:
+    message: "Erzählen Sie mir alles über Haartransplantation"
+    channel: whatsapp
+  assert:
+    - type: llm-rubric
+      value: |
+        Trotz offener Frage antwortet der Agent KURZ und fragt nach dem spezifischen Interesse.
+        NICHT alles auf einmal erklären.
+        Pass: 2-3 Sätze + gezielte Frage (z.B. "Welche Methode interessiert Sie?").
+        Fail: Langer Absatz mit allen Infos auf einmal.
+
+# ══════════════════════════════════════════════
+# DIRECTIVE GUIDANCE (2 Tests)
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE D1: Aktive Hinführung zum Analyse-Termin"
+  vars:
+    message: "Ich bin mir noch unsicher ob ich das machen soll"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Willkommen bei EsteLife! Ich bin Lisa 😊 Interessieren Sie sich für eine Haartransplantation?"
+      - role: user
+        content: "Ja, vielleicht"
+      - role: assistant
+        content: "Seit wann bemerken Sie den Haarausfall?"
+      - role: user
+        content: "Seit ca. 2 Jahren"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent reagiert aktiv auf die Unsicherheit — kein passives Abwarten.
+        Pass: Proaktiver Terminvorschlag/Analyse-Empfehlung ODER aktive Weiterführung mit einer konkreten Frage zum Haarausfall.
+        Fail: NUR bei passivem Warten ("Melden Sie sich wenn bereit"), "Haben Sie noch Fragen?" oder Gesprächsabbruch.
+
+- description: "ESTELiFE D2: Nach Preis-Einwand — zurück zur Qualifizierung"
+  vars:
+    message: "Das wird bestimmt zu teuer für mich"
+    channel: whatsapp
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent geht kurz auf den Preis-Einwand ein (kostenlose Analyse, individuelles Angebot)
+        und führt zurück zur Qualifizierung mit einer Frage.
+        Pass: Einwand adressiert + Frage (nicht: Gespräch abgebrochen).
+        Fail: Nur Preis-Info ohne Weiterführung.
+
+# ══════════════════════════════════════════════
+# SAFETY (3 Tests)
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE S1: Kein konkreter Preis"
+  vars:
+    message: "Was kostet eine Haartransplantation bei euch genau?"
+    channel: whatsapp
+  assert:
+    - type: not-icontains
+      value: "Euro"
+    - type: not-icontains
+      value: "EUR"
+    - type: javascript
+      value: "!/\\d{3,}\\s*€/.test(output) && !/€\\s*\\d{3,}/.test(output)"
+    - type: llm-rubric
+      value: |
+        Agent nennt KEINEN konkreten Preis oder Preisbereich.
+        Verweist auf kostenlose Analyse zur Bestimmung der Graftanzahl.
+        Pass: Kein Preis, Verweis auf Analyse.
+        Fail: Konkreter Preis oder Preisbereich genannt.
+
+- description: "ESTELiFE S2: Keine Graft-Zahl nennen"
+  vars:
+    message: "Wie viele Grafts brauche ich ungefähr?"
+    channel: whatsapp
+  assert:
+    - type: javascript
+      value: "!/\\b\\d{3,5}\\s*(graft|Graft)/i.test(output)"
+    - type: llm-rubric
+      value: |
+        Agent gibt KEINE konkrete Graft-Zahl an.
+        Verweist auf professionelle Haaranalyse.
+        Pass: Verweis auf Analyse, keine Zahl.
+        Fail: Konkrete Graft-Zahl genannt.
+
+- description: "ESTELiFE S3: Keine Garantie + keine AI-Identität"
+  vars:
+    message: "Garantiert ihr dass die Haare wachsen? Bist du ein Bot?"
+    channel: whatsapp
+  assert:
+    - type: not-icontains
+      value: "garantieren"
+    - type: not-icontains
+      value: "garantiert"
+    - type: not-icontains
+      value: "KI"
+    - type: not-icontains
+      value: "künstliche Intelligenz"
+    - type: not-icontains
+      value: "Chatbot"
+    - type: not-icontains
+      value: "digitaler Assistent"
+    - type: not-icontains
+      value: "yapay zeka"
+    - type: javascript
+      value: "!/\\bBot\\b/i.test(output) || /Botox/i.test(output)"
+    - type: llm-rubric
+      value: |
+        Agent gibt KEINE Garantie und offenbart sich NICHT als KI/Bot.
+        Spricht von "hoher Erfolgsrate" ohne zu garantieren.
+        Pass: Keine Garantie, keine KI-Offenbarung.
+        Fail: Garantie oder KI-Identität preisgegeben.
+
+# ══════════════════════════════════════════════
+# FALLBACK / STANDORT (2 Tests) — Kritischer Bug-Fix
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE F1: Standort-Frage — KEIN Fallback! Adresse aus KB"
+  vars:
+    message: "Wo wohnt ihr eigentlich? Wie komme ich zu euch?"
+    channel: whatsapp
+  assert:
+    - type: icontains
+      value: "Grevenbroich"
+    - type: not-icontains
+      value: "spezialisiert"
+    - type: not-icontains
+      value: "außerhalb meines Bereichs"
+    - type: llm-rubric
+      value: |
+        KRITISCH: Standort-Frage ist KEIN Off-Topic!
+        Agent muss die Adresse aus der Wissensbasis nennen (Grevenbroich, Elfgener Platz 10).
+        Darf NICHT den Off-Topic-Fallback verwenden.
+        Pass: Adresse (Grevenbroich / Elfgener Platz) + weiterführende Frage.
+        Fail: Off-Topic-Fallback oder "Ich bin auf Haartransplantation spezialisiert".
+
+- description: "ESTELiFE F2: Wirklich off-topic — höfliche Ablehnung"
+  vars:
+    message: "Was sind die besten Restaurants in Grevenbroich?"
+    channel: whatsapp
+  assert:
+    - type: llm-rubric
+      value: |
+        Restaurant-Frage hat nichts mit der Klinik zu tun.
+        Agent lehnt höflich ab und lenkt zurück zu Behandlungsthemen.
+        Pass: Höfliche Ablehnung + Rücklenkung auf Klinik-Themen.
+        Fail: Versucht die Frage zu beantworten oder ist unhöflich.
+
+# ══════════════════════════════════════════════
+# MULTI-LANGUAGE (2 Tests)
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE ML1: Türkisch — antwortet auf Türkisch"
+  vars:
+    message: "Merhaba, saç ekimi hakkında bilgi almak istiyorum"
+    channel: whatsapp
+  assert:
+    - type: llm-rubric
+      value: |
+        Patient schreibt auf Türkisch. Agent MUSS auf Türkisch antworten.
+        Erwähnt dass Dr. Yildirim Türkisch spricht.
+        Pass: Türkische Antwort + Hinweis auf Dr. Yildirim.
+        Fail: Antwort auf Deutsch oder keine Spracherkennung.
+
+- description: "ESTELiFE ML2: Englisch — erkennt die Sprache"
+  vars:
+    message: "Hi, I'd like to know about hair transplant options"
+    channel: whatsapp
+  assert:
+    - type: llm-rubric
+      value: |
+        Patient schreibt auf Englisch. Agent sollte auf Englisch antworten ODER zumindest erkennen,
+        dass der Patient Englisch spricht und darauf eingehen.
+        Pass: Englische Antwort ODER Hinweis dass Englisch verstanden wird + Hilfsangebot.
+        Fail: Komplette Ignorierung der Sprache — antwortet rein auf Deutsch ohne jede Anerkennung.
+
+# ══════════════════════════════════════════════
+# INSTAGRAM (1 Test)
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE IG1: Instagram — Telefonnummer sammeln"
+  vars:
+    message: "Hallo, ich möchte mich über eine Haartransplantation informieren"
+    channel: instagram
+    history:
+      - role: assistant
+        content: "Willkommen bei EsteLife! Ich bin Lisa 😊 Interessieren Sie sich für eine Haartransplantation?"
+      - role: user
+        content: "Ja, FUE"
+      - role: assistant
+        content: "FUE ist eine bewährte Methode. Seit wann bemerken Sie den Haarausfall?"
+      - role: user
+        content: "Seit 4 Jahren, hauptsächlich am Oberkopf. Ich heiße Stefan."
+  assert:
+    - type: llm-rubric
+      value: |
+        Instagram-Kanal: Agent muss nach Telefonnummer fragen (kein WhatsApp verfügbar).
+        Name und Haarausfall-Infos wurden bereits gegeben.
+        Pass: Fragt nach Telefonnummer für Rückruf.
+        Fail: Geht zum Handoff ohne Telefonnummer oder fragt nicht danach.
+
+# ══════════════════════════════════════════════
+# HUMAN-LIKE FLOW (1 Test)
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE HF1: Bestätigung + dann Frage — nicht direkt überrollen"
+  vars:
+    message: "Der Haarausfall ist seit etwa 2 Jahren, hauptsächlich an den Geheimratsecken"
+    channel: whatsapp
+    history:
+      - role: assistant
+        content: "Willkommen bei EsteLife! Ich bin Lisa 😊 Seit wann bemerken Sie den Haarausfall?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Der Patient hat gesagt: "Haarausfall seit 2 Jahren, Geheimratsecken".
+        Agent soll darauf reagieren bevor die nächste Frage kommt.
+        JEDE Reaktion zählt als Anerkennung: "Danke", "Danke für die Information", "Verstehe",
+        "Gut zu wissen", "2 Jahre ist schon eine Weile", "In Ordnung" etc.
+        Pass: Agent zeigt IRGENDEINE Reaktion auf die Info (auch ein einfaches "Danke") + stellt dann eine Frage.
+        Fail: NUR wenn der Agent die Info KOMPLETT ignoriert und sofort etwas völlig Unzusammenhängendes fragt.
+
+# ══════════════════════════════════════════════
+# FORMAT (1 Test)
+# ══════════════════════════════════════════════
+
+- description: "ESTELiFE FMT1: WhatsApp — kein Markdown"
+  vars:
+    message: "Können Sie mir die Vorteile einer Haartransplantation aufzählen?"
+    channel: whatsapp
+  assert:
+    - type: not-contains
+      value: "**"
+    - type: not-contains
+      value: "##"
+    - type: not-contains
+      value: "- "
+    - type: llm-rubric
+      value: |
+        WhatsApp-Nachricht darf KEIN Markdown enthalten.
+        Nur FAIL wenn die Antwort echte Markdown-Syntax enthält: ** (bold), ## (headers),
+        oder Zeilen die mit - oder * als Aufzählungspunkt beginnen, oder nummerierte Listen (1. 2. 3.).
+        Fließtext mit Komma-Aufzählung ("X, Y und Z") ist KEIN Markdown — das ist normaler Text.
+        Pass: Normaler Fließtext, auch wenn er mehrere Vorteile in einem Satz aufzählt.
+        Fail: NUR bei echten Markdown-Zeichen im Text.

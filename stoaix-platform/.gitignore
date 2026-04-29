@@ -41,6 +41,9 @@ n8n-workflows/.env.n8n
 .tmp-ata-review/
 Export_Contacts_*.csv
 
+# Promptfoo eval output
+evals/output/
+
 # Logs
 *.log
 .vercel

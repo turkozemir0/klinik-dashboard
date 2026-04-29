@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as sbAdmin } from '@supabase/supabase-js'
+
+function getServiceClient() {
+  return sbAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -14,7 +19,7 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const service = createServiceClient()
+  const service = getServiceClient()
 
   // Fetch conversation to verify org access
   const { data: conv } = await service
@@ -45,7 +50,7 @@ export async function GET(
 
   const { data: messages, error } = await service
     .from('messages')
-    .select('id, role, content, created_at')
+    .select('id, role, content, content_type, media_url, created_at')
     .eq('conversation_id', params.conversationId)
     .order('created_at', { ascending: true })
     .limit(100)

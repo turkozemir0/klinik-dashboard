@@ -38,7 +38,7 @@ export async function POST(
     discount_percent?: number
   }
 
-  const validPlans = ['lite', 'plus', 'advanced', 'agency']
+  const validPlans = ['essential', 'professional', 'business', 'custom']
   if (!validPlans.includes(plan_id)) {
     return NextResponse.json({ error: 'Geçersiz plan' }, { status: 400 })
   }

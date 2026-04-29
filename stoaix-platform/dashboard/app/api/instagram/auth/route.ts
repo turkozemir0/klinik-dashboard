@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   const authParams = new URLSearchParams({
     client_id:     appId,
     redirect_uri:  redirectUri,
-    scope:         'instagram_basic,instagram_manage_messages,pages_manage_metadata,pages_read_engagement,pages_show_list,business_management',
+    scope:         'instagram_basic,instagram_manage_messages,pages_manage_metadata,pages_read_engagement,pages_show_list,business_management,leads_retrieval,pages_manage_ads',
     response_type: 'code',
     state,
   })

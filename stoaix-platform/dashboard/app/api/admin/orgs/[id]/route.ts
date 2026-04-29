@@ -29,12 +29,21 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const service = getServiceClient()
   const { data: org, error } = await service
     .from('organizations')
-    .select('id, name, slug, sector, status, phone, email, city, channel_config, crm_config, working_hours, created_at')
+    .select('id, name, slug, sector, status, phone, email, city, channel_config, crm_config, working_hours, default_language, timezone, created_at')
     .eq('id', params.id)
     .single()
 
   if (error || !org) return NextResponse.json({ error: 'Org bulunamadı' }, { status: 404 })
-  return NextResponse.json(org)
+
+  // Plan bilgisini ekle (voice language tier check için)
+  const { data: sub } = await service
+    .from('org_subscriptions')
+    .select('plan_id, status')
+    .eq('organization_id', params.id)
+    .limit(1)
+    .maybeSingle()
+
+  return NextResponse.json({ ...org, _plan: sub?.plan_id ?? 'legacy' })
 }
 
 // PATCH — channel_config ve/veya crm_config güncelle
@@ -45,12 +54,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!await isSuperAdmin(user.id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const { channel_config, crm_config, status } = body
+  const { channel_config, crm_config, status, default_language, timezone } = body
 
   const updates: Record<string, unknown> = {}
   if (channel_config !== undefined) updates.channel_config = channel_config
   if (crm_config !== undefined) updates.crm_config = crm_config
   if (status !== undefined) updates.status = status
+  if (default_language !== undefined) updates.default_language = default_language
+  if (timezone !== undefined) updates.timezone = timezone
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Güncellenecek alan yok' }, { status: 400 })

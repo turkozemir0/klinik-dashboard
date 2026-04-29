@@ -49,7 +49,7 @@ async function getAllWorkflows() {
   const all = []
   let cursor = null
   do {
-    const qs = cursor ? `/api/v1/workflows?limit=100&cursor=${cursor}` : '/api/v1/workflows?limit=100'
+    const qs = cursor ? `/api/v1/workflows?limit=250&cursor=${cursor}` : '/api/v1/workflows?limit=250'
     const { data } = await apiRequest('GET', qs)
     all.push(...(data.data || []))
     cursor = data.nextCursor || null

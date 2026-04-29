@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as sbAdmin } from '@supabase/supabase-js'
 import { getTemplate } from '@/lib/workflow-templates'
+import { checkEntitlement } from '@/lib/entitlements'
 import type { TriggerType } from '@/lib/workflow-types'
 
 function getServiceClient() {
@@ -61,13 +62,16 @@ export async function POST(request: NextRequest) {
   if (contactId) {
     const { data: contact } = await service
       .from('contacts')
-      .select('phone, full_name, source_channel')
+      .select('phone, full_name, source_channel, preferred_language')
       .eq('id', contactId)
       .maybeSingle()
     if (contact) {
       contactPhone  = contact.phone ?? contactPhone
       contactData.name         = contact.full_name ?? ''
       contactData.lead_source  = contact.source_channel ?? ''
+      if (contact.preferred_language) {
+        contactData.preferred_language = contact.preferred_language
+      }
     }
   }
 
@@ -163,6 +167,20 @@ export async function POST(request: NextRequest) {
     const template = getTemplate(workflow.template_id)
     if (!template) continue
 
+    // Entitlement check — plan downgrade veya modül disable sonrası self-healing
+    const ent = await checkEntitlement(org_id, template.required_feature)
+    if (!ent.enabled) {
+      console.warn('[process-trigger] entitlement denied, deactivating:', workflow.id)
+      await service.from('org_workflows').update({ is_active: false }).eq('id', workflow.id)
+      continue
+    }
+
+    // C1: WhatsApp/IG'den gelen leadlerde skip — chatbot zaten AI cevap verdi
+    if (template.id === 'lead_first_contact_chat' &&
+        ['whatsapp', 'instagram'].includes(contactData.lead_source)) {
+      continue
+    }
+
     // workflow_runs INSERT
     const isValidUuid = (v: any) => typeof v === 'string' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
@@ -217,9 +235,9 @@ export async function POST(request: NextRequest) {
           .update({ status: 'failed', finished_at: new Date().toISOString() })
           .eq('id', run.id)
       }
-    }
 
-    processed++
+      processed++
+    }
   }
 
   return NextResponse.json({ processed })

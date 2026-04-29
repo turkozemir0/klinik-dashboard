@@ -49,16 +49,38 @@ export async function GET() {
   const playbookCount = playbookResult.count ?? 0
   const channelConfig = org?.channel_config as any
 
+  const hasChannel = !!(
+    channelConfig?.whatsapp?.active === true ||
+    channelConfig?.instagram?.active === true ||
+    channelConfig?.voice_inbound?.active === true
+  )
+
+  const steps = [
+    { key: 'business_info', label: 'İşletme Profilini Tamamla', completed: !!(org?.phone && org?.email && org?.city) },
+    { key: 'kb_items',      label: 'Bilgi Bankası Oluştur',     completed: kbCount > 0 },
+    { key: 'channel',       label: 'Kanal Bağla',               completed: hasChannel },
+    { key: 'playbook',      label: 'AI Asistanını Kur',         completed: playbookCount > 0 },
+    { key: 'conversation',  label: 'İlk Konuşmayı Bekle',      completed: convCount > 0 },
+  ]
+  const percent = Math.round((steps.filter(s => s.completed).length / steps.length) * 100)
+
+  // Fire-and-forget: daily login tracking
+  const today = new Date().toISOString().split('T')[0]
+  service.from('org_events')
+    .select('id').eq('org_id', orgId).eq('event_type', 'dashboard_login')
+    .gte('created_at', today + 'T00:00:00Z').limit(1).maybeSingle()
+    .then(({ data }) => {
+      if (!data) service.from('org_events').insert({ org_id: orgId, event_type: 'dashboard_login', metadata: { user_id: user.id } })
+    })
+
   return NextResponse.json({
-    business_info_complete: !!(org?.phone && org?.email && org?.city),
+    business_info_complete: steps[0].completed,
     has_kb_items: kbCount > 0,
-    has_channel: !!(
-      channelConfig?.whatsapp?.active === true ||
-      channelConfig?.instagram?.active === true ||
-      channelConfig?.voice_inbound?.active === true
-    ),
+    has_channel: hasChannel,
     has_playbook: playbookCount > 0,
     has_conversation: convCount > 0,
     kb_count: kbCount,
+    steps,
+    percent,
   })
 }

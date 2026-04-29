@@ -128,6 +128,7 @@ export default function NotificationBell({ userId, orgId }: Props) {
   const typeColors: Record<string, string> = {
     hot_lead: 'text-orange-500',
     handoff: 'text-amber-500',
+    handoff_reminder: 'text-red-500',
     new_message: 'text-blue-500',
     takeover: 'text-purple-500',
   }
@@ -189,6 +190,7 @@ export default function NotificationBell({ userId, orgId }: Props) {
                     <span className={`mt-0.5 text-base ${typeColors[notif.type] ?? 'text-slate-400'}`}>
                       {notif.type === 'hot_lead' ? '🔥' :
                        notif.type === 'handoff' ? '🤝' :
+                       notif.type === 'handoff_reminder' ? '⏰' :
                        notif.type === 'new_message' ? '💬' : '👤'}
                     </span>
                     <div className="min-w-0 flex-1">

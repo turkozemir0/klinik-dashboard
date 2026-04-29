@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Save, Loader2, Send, CheckCircle2, Calendar } from 'lucide-react'
+import { X, Save, Loader2, Send, CheckCircle2, Calendar, Copy, Check, Eye, EyeOff, Globe } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,12 +46,25 @@ interface CalendarConfig {
   clinic_id?: string
 }
 
+interface VoiceLanguageConfig {
+  language?: string
+}
+
+interface WebsiteFormsConfig {
+  active: boolean
+  api_key?: string
+  default_country_code?: string
+  field_mapping?: Record<string, string>
+}
+
 interface ChannelConfig {
   voice_inbound:  VoiceInboundConfig
   voice_outbound: VoiceOutboundConfig
+  voice?:         VoiceLanguageConfig
   whatsapp:       WhatsAppChannelConfig
   instagram:      { active: boolean; provider?: string; credentials?: Record<string, string> }
   calendar?:      CalendarConfig
+  website_forms?: WebsiteFormsConfig
 }
 
 interface CrmConfig {
@@ -69,6 +82,9 @@ interface OrgDetail {
   name: string
   channel_config: ChannelConfig
   crm_config: CrmConfig
+  default_language?: string
+  timezone?: string
+  _plan?: string
 }
 
 interface Props {
@@ -119,11 +135,66 @@ const OUTBOUND_CONNECTION_TYPES = [
   { value: 'other',       label: 'Diğer',       desc: 'Başka provider' },
 ]
 
+const VOICE_LANGUAGES_BASE = [
+  { value: 'tr', label: 'Türkçe (TR)' },
+  { value: 'en', label: 'İngilizce (EN)' },
+]
+
+const VOICE_LANGUAGES_ADVANCED = [
+  ...VOICE_LANGUAGES_BASE,
+  { value: 'ar', label: 'Arapça (AR)' },
+  { value: 'de', label: 'Almanca (DE)' },
+  { value: 'ru', label: 'Rusça (RU)' },
+  { value: 'fr', label: 'Fransızca (FR)' },
+  { value: 'es', label: 'İspanyolca (ES)' },
+  { value: 'it', label: 'İtalyanca (IT)' },
+  { value: 'pt', label: 'Portekizce (PT)' },
+  { value: 'zh', label: 'Çince (ZH)' },
+]
+
+const MULTILANG_PLANS = new Set(['business', 'custom', 'legacy'])
+
+const FORM_MAPPING_TARGETS = [
+  { value: '', label: '— Seç —' },
+  { value: 'full_name', label: 'Ad Soyad' },
+  { value: 'phone', label: 'Telefon' },
+  { value: 'email', label: 'E-posta' },
+  { value: 'city', label: 'Şehir' },
+  { value: 'country', label: 'Ülke' },
+]
+
+const FORM_CC_OPTIONS = [
+  { code: '90',  label: 'TR (+90)' },
+  { code: '49',  label: 'DE (+49)' },
+  { code: '1',   label: 'US/CA (+1)' },
+  { code: '44',  label: 'UK (+44)' },
+  { code: '971', label: 'AE (+971)' },
+]
+
+const ORG_LANGUAGE_OPTIONS = [
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'en', label: 'English' },
+  { code: 'ar', label: 'العربية' },
+  { code: 'fr', label: 'Français' },
+  { code: 'es', label: 'Español' },
+  { code: 'ru', label: 'Русский' },
+  { code: 'nl', label: 'Nederlands' },
+]
+
+const ORG_TIMEZONE_OPTIONS = [
+  { group: 'Avrupa', zones: ['Europe/Istanbul', 'Europe/Berlin', 'Europe/London', 'Europe/Paris', 'Europe/Moscow'] },
+  { group: 'Orta Doğu', zones: ['Asia/Dubai', 'Asia/Riyadh', 'Asia/Baghdad'] },
+  { group: 'Amerika', zones: ['America/New_York', 'America/Chicago', 'America/Los_Angeles'] },
+]
+
 const TABS = [
+  { key: 'general',   label: 'Genel' },
   { key: 'channels',  label: 'Kanallar & Mesajlaşma' },
   { key: 'sip',       label: 'Ses / SIP' },
   { key: 'crm',       label: 'Dış CRM' },
   { key: 'calendar',  label: 'Randevu / Takvim' },
+  { key: 'forms',     label: 'Web Formları' },
 ] as const
 
 // ─── Small components ─────────────────────────────────────────────────────────
@@ -184,7 +255,7 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
-  const [activeTab, setActiveTab] = useState<'channels' | 'sip' | 'crm' | 'calendar'>('channels')
+  const [activeTab, setActiveTab] = useState<'general' | 'channels' | 'sip' | 'crm' | 'calendar' | 'forms'>('general')
 
   // ── Channels state ──
   const [waActive, setWaActive]       = useState(false)
@@ -225,6 +296,10 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
   const [webhookTesting, setWebhookTesting]     = useState(false)
   const [webhookTestResult, setWebhookTestResult] = useState<'ok' | 'fail' | null>(null)
 
+  // ── Voice language state ──
+  const [voiceLang, setVoiceLang]         = useState('tr')
+  const [orgPlan, setOrgPlan]             = useState<string>('legacy')
+
   // ── Calendar state ──
   const [calProvider, setCalProvider]     = useState<CalendarConfig['provider']>('none')
   const [calGoogleConnected, setCalGoogleConnected] = useState(false)
@@ -234,9 +309,25 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
   const [calDsApiKey, setCalDsApiKey]               = useState('')
   const [calDsClinicId, setCalDsClinicId]           = useState('')
 
+  // ── General org state ──
+  const [orgLang, setOrgLang]       = useState('tr')
+  const [orgTimezone, setOrgTimezone] = useState('Europe/Berlin')
+
+  // ── Web Forms state ──
+  const [formsActive, setFormsActive]           = useState(false)
+  const [formsApiKey, setFormsApiKey]           = useState('')
+  const [formsDefaultCC, setFormsDefaultCC]     = useState('90')
+  const [formsMapping, setFormsMapping]         = useState<{ formField: string; target: string }[]>([{ formField: '', target: '' }])
+  const [formsShowKey, setFormsShowKey]         = useState(false)
+  const [formsCopied, setFormsCopied]           = useState(false)
+
   // ── Load ──
   useEffect(() => {
     fetch(`/api/admin/orgs/${orgId}`).then(r => r.json()).then((data: OrgDetail) => {
+      // general
+      setOrgLang(data.default_language ?? 'tr')
+      setOrgTimezone(data.timezone ?? 'Europe/Berlin')
+
       const cc = (data.channel_config ?? {}) as Partial<ChannelConfig>
 
       // channels
@@ -259,6 +350,10 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
       setInbLkDispatch(inb?.livekit_dispatch_rule_id ?? '')
       setInbLkTrunk(inb?.livekit_sip_trunk_id ?? '')
 
+      // voice language
+      setVoiceLang(cc.voice?.language ?? 'tr')
+      setOrgPlan((data as OrgDetail)._plan ?? 'legacy')
+
       // outbound
       const out = cc.voice_outbound as VoiceOutboundConfig | undefined
       setOutActive(out?.active ?? false)
@@ -278,6 +373,14 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
       setCalDsApiUrl(cal?.api_url ?? '')
       setCalDsApiKey(cal?.api_key ?? '')
       setCalDsClinicId(cal?.clinic_id ?? '')
+
+      // website forms
+      const wf = cc.website_forms as WebsiteFormsConfig | undefined
+      setFormsActive(wf?.active ?? false)
+      setFormsApiKey(wf?.api_key ?? '')
+      setFormsDefaultCC(wf?.default_country_code ?? '90')
+      const fmRows = Object.entries(wf?.field_mapping ?? {}).map(([formField, target]) => ({ formField, target }))
+      setFormsMapping(fmRows.length > 0 ? fmRows : [{ formField: '', target: '' }])
 
       // crm
       const crm = (data.crm_config ?? { provider: 'none' }) as CrmConfig
@@ -387,9 +490,22 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
     const currentData = await currentRes.json()
     const existingCC = (currentData.channel_config ?? {}) as any
 
+    // Build website_forms config — preserve api_key from existing
+    const formsFieldMapping: Record<string, string> = {}
+    for (const m of formsMapping) {
+      if (m.formField.trim() && m.target) formsFieldMapping[m.formField.trim()] = m.target
+    }
+    const websiteFormsConfig: WebsiteFormsConfig = {
+      active: formsActive,
+      api_key: formsApiKey || existingCC.website_forms?.api_key || undefined,
+      default_country_code: formsDefaultCC,
+      field_mapping: Object.keys(formsFieldMapping).length > 0 ? formsFieldMapping : (existingCC.website_forms?.field_mapping ?? {}),
+    }
+
     const channelConfig: ChannelConfig = {
       voice_inbound:  voiceInbound,
       voice_outbound: voiceOutbound,
+      voice: { language: voiceLang },
       whatsapp: waActive ? { active: true, provider: waProvider, credentials: waCreds } : { active: false },
       // Preserve Instagram OAuth credentials — only toggle active flag here
       instagram: { ...existingCC.instagram, active: igActive },
@@ -401,6 +517,7 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
             calendar_id: calCalendarId.trim() || 'primary',
           }
         : calendarConfig,
+      website_forms: websiteFormsConfig,
     }
 
     let crmConfig: CrmConfig = { provider: 'none' }
@@ -423,7 +540,7 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
     const res = await fetch(`/api/admin/orgs/${orgId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel_config: channelConfig, crm_config: crmConfig }),
+      body: JSON.stringify({ channel_config: channelConfig, crm_config: crmConfig, default_language: orgLang, timezone: orgTimezone }),
     })
 
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Kayıt başarısız'); return }
@@ -469,6 +586,47 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+              {/* ── GENERAL TAB ── */}
+              {activeTab === 'general' && (
+                <div className="space-y-5">
+                  <SectionLabel>Genel Ayarlar</SectionLabel>
+
+                  {/* Language */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1.5">Varsayılan Dil</label>
+                    <select
+                      value={orgLang}
+                      onChange={e => setOrgLang(e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                      {ORG_LANGUAGE_OPTIONS.map(l => (
+                        <option key={l.code} value={l.code}>{l.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-400 mt-1">AI asistanın ve sistem mesajlarının varsayılan dili</p>
+                  </div>
+
+                  {/* Timezone */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1.5">Saat Dilimi</label>
+                    <select
+                      value={orgTimezone}
+                      onChange={e => setOrgTimezone(e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                      {ORG_TIMEZONE_OPTIONS.map(g => (
+                        <optgroup key={g.group} label={g.group}>
+                          {g.zones.map(z => (
+                            <option key={z} value={z}>{z}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-400 mt-1">İş akışları ve randevu zamanlaması için kullanılır</p>
+                  </div>
+                </div>
+              )}
 
               {/* ── CHANNELS TAB ── */}
               {activeTab === 'channels' && (
@@ -609,6 +767,33 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
                     </div>
                   </div>
 
+                  {/* Voice Language */}
+                  <div>
+                    <SectionLabel>Konuşma Dili</SectionLabel>
+                    <div className="border border-slate-100 rounded-xl p-4 space-y-3">
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">AI Agent Dili</label>
+                        <select
+                          value={voiceLang}
+                          onChange={e => setVoiceLang(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+                        >
+                          {(MULTILANG_PLANS.has(orgPlan) ? VOICE_LANGUAGES_ADVANCED : VOICE_LANGUAGES_BASE).map(l => (
+                            <option key={l.value} value={l.value}>{l.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {!MULTILANG_PLANS.has(orgPlan) && (
+                        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                          TR/EN dışı diller Business veya Custom plan gerektirir. Mevcut plan: <strong>{orgPlan || 'essential/professional'}</strong>
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-400">
+                        Ses ID'leri Vercel'de <code className="font-mono">CARTESIA_VOICE_ID_XX</code> env var ile ayarlanır.
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Outbound */}
                   <div>
                     <SectionLabel>Outbound — Giden Aramalar</SectionLabel>
@@ -710,11 +895,8 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
                   {crmProvider === 'dentsoft' && (
                     <div className="space-y-3 pt-1 border-t border-slate-100">
                       <SectionLabel>Dentsoft API Bilgileri</SectionLabel>
-                      <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5 text-xs text-amber-700">
-                        Native Dentsoft adapter henüz geliştirme aşamasında. API dökümantasyonu teslim edildiğinde aktif olacak.
-                      </div>
-                      <Field label="API URL" value={dsApiUrl} onChange={setDsApiUrl} placeholder="https://api.dentsoft.com.tr" mono={false} />
-                      <Field label="API Key" value={dsApiKey} onChange={setDsApiKey} placeholder="xxx..." />
+                      <Field label="API URL" value={dsApiUrl} onChange={setDsApiUrl} placeholder="https://clinicadi.dentsoft.com.tr" mono={false} />
+                      <Field label="API Key" value={dsApiKey} onChange={setDsApiKey} placeholder="Bearer token..." />
                       <Field label="Klinik ID" value={dsClinicId} onChange={setDsClinicId} placeholder="klinik_id" />
                     </div>
                   )}
@@ -766,13 +948,108 @@ export default function OrgSettingsModal({ orgId, orgName, onClose, onSaved }: P
                   {calProvider === 'dentsoft' && (
                     <div className="space-y-3 pt-1 border-t border-slate-100">
                       <SectionLabel>Dentsoft Takvim Bilgileri</SectionLabel>
-                      <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5 text-xs text-amber-700">
-                        Dentsoft takvim entegrasyonu, CRM sekmesindeki Dentsoft API bilgilerini kullanır. Ayrı credentials gerekmez.
-                      </div>
-                      <Field label="API URL" value={calDsApiUrl} onChange={setCalDsApiUrl} placeholder="https://api.dentsoft.com.tr" mono={false} />
-                      <Field label="API Key" value={calDsApiKey} onChange={setCalDsApiKey} placeholder="xxx..." />
+                      <p className="text-xs text-slate-500">
+                        Dentsoft takvim entegrasyonu Bearer Token ile calisiyor. Musteriler Entegrasyonlar sayfasindan da baglayabilir.
+                      </p>
+                      <Field label="API URL" value={calDsApiUrl} onChange={setCalDsApiUrl} placeholder="https://clinicadi.dentsoft.com.tr" mono={false} />
+                      <Field label="API Key" value={calDsApiKey} onChange={setCalDsApiKey} placeholder="Bearer token..." />
                       <Field label="Klinik ID" value={calDsClinicId} onChange={setCalDsClinicId} placeholder="klinik_id" />
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── FORMS TAB ── */}
+              {activeTab === 'forms' && (
+                <div className="space-y-5">
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs text-slate-500">
+                    Website form webhook ile müşteri web sitesindeki formlar platforma bağlanır. Form gönderildiğinde otomatik lead oluşturulur.
+                  </div>
+
+                  {/* Active toggle */}
+                  <div>
+                    <SectionLabel>Durum</SectionLabel>
+                    <div className="flex items-center justify-between p-3.5 border border-slate-100 rounded-xl">
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">Web Form Webhook</p>
+                        <p className="text-xs text-slate-400">Form gönderimlerini otomatik lead'e dönüştür</p>
+                      </div>
+                      <Toggle active={formsActive} onToggle={() => setFormsActive(v => !v)} />
+                    </div>
+                  </div>
+
+                  {formsActive && (
+                    <>
+                      {/* API Key */}
+                      <div>
+                        <SectionLabel>API Anahtarı</SectionLabel>
+                        {formsApiKey ? (
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                              <code className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-600 truncate">
+                                {formsShowKey ? formsApiKey : formsApiKey.slice(0, 8) + '••••••••' + formsApiKey.slice(-4)}
+                              </code>
+                              <button type="button" onClick={() => setFormsShowKey(v => !v)} className="p-1.5 text-slate-400 hover:text-slate-600">
+                                {formsShowKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
+                              <button type="button" onClick={() => { navigator.clipboard.writeText(formsApiKey); setFormsCopied(true); setTimeout(() => setFormsCopied(false), 2000) }}
+                                className="p-1.5 text-slate-400 hover:text-slate-600">
+                                {formsCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                              </button>
+                            </div>
+                            <p className="text-xs text-slate-400">
+                              Webhook URL: <code className="font-mono">https://platform.stoaix.com/api/public/form-submit</code>
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                            API anahtarı henüz oluşturulmamış. Müşteri Dashboard → Ayarlar → Form Webhook sekmesinden oluşturabilir.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Default Country Code */}
+                      <div>
+                        <SectionLabel>Varsayılan Ülke Kodu</SectionLabel>
+                        <select value={formsDefaultCC} onChange={e => setFormsDefaultCC(e.target.value)}
+                          className="w-48 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+                          {FORM_CC_OPTIONS.map(cc => (
+                            <option key={cc.code} value={cc.code}>{cc.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Field Mapping */}
+                      <div>
+                        <SectionLabel>Alan Eşleştirme</SectionLabel>
+                        <div className="space-y-2">
+                          {formsMapping.map((m, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <input value={m.formField} onChange={e => setFormsMapping(prev => prev.map((r, j) => j === i ? { ...r, formField: e.target.value } : r))}
+                                placeholder="Form alan adı"
+                                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                              <span className="text-slate-300 text-sm">→</span>
+                              <select value={m.target} onChange={e => setFormsMapping(prev => prev.map((r, j) => j === i ? { ...r, target: e.target.value } : r))}
+                                className="w-32 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+                                {FORM_MAPPING_TARGETS.map(t => (
+                                  <option key={t.value} value={t.value}>{t.label}</option>
+                                ))}
+                              </select>
+                              {formsMapping.length > 1 && (
+                                <button type="button" onClick={() => setFormsMapping(prev => prev.filter((_, j) => j !== i))}
+                                  className="p-1 text-slate-400 hover:text-red-500">
+                                  <X size={14} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <button type="button" onClick={() => setFormsMapping(prev => [...prev, { formField: '', target: '' }])}
+                          className="text-xs text-brand-600 hover:text-brand-700 mt-2 font-medium">
+                          + Eşleştirme Ekle
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
               )}

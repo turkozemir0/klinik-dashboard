@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as sbAdmin } from '@supabase/supabase-js'
 import OpenAI from 'openai'
+import { isDemoOrg, getDemoRef, checkDemoRateLimit, incrementDemoUsage } from '@/lib/demo-guard'
+
+const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'gpt-4o-mini']
 
 function getServiceClient() {
-  return createClient(
+  return sbAdmin(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
@@ -18,21 +22,44 @@ const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'claude-sonnet-4-6':         { input: 3.00,  output: 15.00 },
   'claude-haiku-4-5-20251001': { input: 1.00,  output: 5.00  },
   'gpt-4o-mini':               { input: 0.15,  output: 0.60  },
-  'gpt-4o':                    { input: 2.50,  output: 10.00 },
 }
 
 export async function POST(req: NextRequest) {
+  // --- Auth ---
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const service = getServiceClient()
+  const { data: orgUser } = await service
+    .from('org_users')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (!orgUser) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const orgId = orgUser.organization_id
+
+  // --- Input validation ---
   const {
     message,
     history = [],
     channel = 'whatsapp',
-    orgId,
-    model = 'claude-sonnet-4-6',
+    model: rawModel = 'claude-sonnet-4-6',
   } = await req.json()
 
-  if (!message || !orgId) {
-    return NextResponse.json({ error: 'message and orgId required' }, { status: 400 })
+  if (!message) {
+    return NextResponse.json({ error: 'message required' }, { status: 400 })
+  }
+
+  const model = ALLOWED_MODELS.includes(rawModel) ? rawModel : 'claude-sonnet-4-6'
+
+  // Demo rate limiting
+  if (isDemoOrg(orgId)) {
+    const ref = getDemoRef()
+    const limit = await checkDemoRateLimit(ref, 'chatbot_messages')
+    if (limit) return NextResponse.json({ error: limit.error, limit: limit.limit, used: limit.used, message: 'Günlük demo limitiniz doldu.' }, { status: 429 })
+    await incrementDemoUsage(ref, 'chatbot_messages', 1)
   }
 
   // Playbook'u çek

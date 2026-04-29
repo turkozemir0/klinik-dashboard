@@ -112,6 +112,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Kayıt başarısız' }, { status: 500 })
   }
 
+  // Subscribe WABA to our app so webhooks are delivered
+  if (resolvedWabaId) {
+    try {
+      const subRes = await fetch(`${GRAPH}/${resolvedWabaId}/subscribed_apps`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${access_token}` },
+      })
+      if (!subRes.ok) {
+        console.error('[whatsapp/manual-connect] subscribed_apps failed:', await subRes.text())
+      }
+    } catch (e) {
+      console.error('[whatsapp/manual-connect] subscribed_apps error:', e)
+    }
+  }
+
   return NextResponse.json({
     ok:              true,
     phone_number:    phoneNumber,

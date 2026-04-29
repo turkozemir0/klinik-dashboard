@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabase } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { checkEntitlement, incrementUsage } from '@/lib/entitlements'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 function getServiceClient() {
   return createSupabase(
@@ -71,6 +72,10 @@ export async function POST(req: NextRequest) {
     .eq('user_id', user.id)
     .maybeSingle()
   if (!orgUser) return NextResponse.json({ error: 'Org bulunamadı' }, { status: 403 })
+
+  const blocked = demoWriteBlock(orgUser.organization_id)
+  if (blocked) return blocked
+
   if (!['admin', 'patron', 'yönetici'].includes(orgUser.role)) {
     return NextResponse.json({ error: 'Yetki yetersiz' }, { status: 403 })
   }

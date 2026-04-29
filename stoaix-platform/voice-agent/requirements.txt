@@ -1,4 +1,7 @@
-livekit-agents[deepgram,openai,anthropic,cartesia,silero,turn-detector]>=1.2.0
+livekit-agents[deepgram,openai,anthropic,cartesia,silero,turn-detector]~=1.5.0
 supabase>=2.0.0
 python-dotenv>=1.0.0
 openai>=1.0.0
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-mock>=3.12.0

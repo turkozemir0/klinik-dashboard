@@ -21,9 +21,10 @@ interface Props {
   userRole?: string | null
   userId?: string | null
   orgId?: string | null
+  isDemo?: boolean
 }
 
-export default function Sidebar({ orgName, isSuperAdmin, userRole, userId, orgId }: Props) {
+export default function Sidebar({ orgName, isSuperAdmin, userRole, userId, orgId, isDemo }: Props) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -56,13 +57,20 @@ export default function Sidebar({ orgName, isSuperAdmin, userRole, userId, orgId
     { href: '/dashboard/settings',       label: lang === 'tr' ? 'Hesap Ayarları' : 'Account',  icon: Settings,        roles: ['admin','yönetici','satisci'] },
   ]
 
-  const navItems = allNavItems.filter(item =>
-    isSuperAdmin || item.roles === null || (userRole && item.roles.includes(userRole))
-  )
+  const navItems = allNavItems.filter(item => {
+    if (isDemo) return true // demo shows all tabs (read-only enforced in UI)
+    return isSuperAdmin || item.roles === null || (userRole && item.roles.includes(userRole))
+  })
 
   useEffect(() => { setMobileOpen(false) }, [pathname])
 
   async function handleLogout() {
+    if (isDemo) {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      window.location.href = 'https://stoaix.com'
+      return
+    }
     const msg = lang === 'tr' ? 'Çıkış yapmak istediğinize emin misiniz?' : 'Are you sure you want to log out?'
     if (!confirm(msg)) return
     const supabase = createClient()
@@ -117,7 +125,10 @@ export default function Sidebar({ orgName, isSuperAdmin, userRole, userId, orgId
                     <div className="shrink-0 rounded-lg bg-gradient-to-br from-brand-400 via-brand-500 to-accent-500 px-2 py-1 shadow-lg shadow-brand-500/20">
                       <img src="/stoaixlogo-tight.png" alt="stoaix" className="h-4 w-auto brightness-0 invert" />
                     </div>
-                    <p className="text-xs font-medium text-white truncate w-full">{orgName}</p>
+                    <p className="text-xs font-medium text-white truncate w-full">
+                      {orgName}
+                      {isDemo && <span className="ml-1 inline-block rounded bg-amber-400/90 px-1 py-0.5 text-[9px] font-bold text-slate-900 align-middle">DEMO</span>}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -219,7 +230,7 @@ export default function Sidebar({ orgName, isSuperAdmin, userRole, userId, orgId
         </nav>
 
         {/* Usage Widget */}
-        {orgId && <UsageWidget orgId={orgId} collapsed={collapsed} />}
+        {orgId && !isDemo && <UsageWidget orgId={orgId} collapsed={collapsed} />}
 
         {/* Footer — compact: Collapse + Lang + Logout */}
         <div className={`relative border-t border-white/10 pt-2 pb-2 ${collapsed ? 'px-2 space-y-1' : 'px-2'}`}>

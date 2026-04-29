@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 function getServiceClient() {
   return createClient(
@@ -51,6 +52,9 @@ export async function PATCH(request: NextRequest) {
 
   const orgId = await getOrgId(user.id)
   if (!orgId) return NextResponse.json({ error: 'No org' }, { status: 403 })
+
+  const blocked = demoWriteBlock(orgId)
+  if (blocked) return blocked
 
   const body = await request.json()
   const rawPhones: string[] = body.phones ?? []

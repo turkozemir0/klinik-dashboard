@@ -9,10 +9,12 @@ import {
 import {
   LiveKitRoom,
   RoomAudioRenderer,
+  StartAudio,
   useVoiceAssistant,
   useConnectionState,
+  useRemoteParticipants,
 } from '@livekit/components-react'
-import { ConnectionState } from 'livekit-client'
+import { ConnectionState, ParticipantKind } from 'livekit-client'
 import {
   AgentAudioVisualizerGrid,
   type GridVisualState,
@@ -30,7 +32,6 @@ const MODELS = [
   { id: 'claude-sonnet-4-6',         label: 'Claude Sonnet 4.6',  costPerMin: 0.0082 },
   { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5',   costPerMin: 0.0056 },
   { id: 'gpt-4o-mini',               label: 'GPT-4o Mini',         costPerMin: 0.0045 },
-  { id: 'gpt-4o',                    label: 'GPT-4o',              costPerMin: 0.0070 },
 ]
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ interface AgentTestPanelProps {
   hasChat: boolean
   kbCount: number
   promptLength: number
+  scenario?: string
 }
 
 // ─── Model Selector ───────────────────────────────────────────────────────────
@@ -307,13 +309,29 @@ function VoiceTestInner({
   remaining: number
   modelConfig: (typeof MODELS)[0]
 }) {
-  const { state: agentState, audioTrack } = useVoiceAssistant()
+  const { state: agentState, audioTrack, agent: agentParticipant } = useVoiceAssistant()
   const connectionState = useConnectionState()
   const lkConnected     = connectionState === ConnectionState.Connected
+  const remoteParticipants = useRemoteParticipants()
+  const agentInRoom = remoteParticipants.some(p => p.kind === ParticipantKind.AGENT)
+
   const gridState    = toGridState(lkConnected, agentState)
   const isLow        = remaining <= 30
   const formatTime   = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
   const estimatedCost = (elapsed / 60) * modelConfig.costPerMin
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[VoiceTest]', {
+      connectionState,
+      agentState,
+      agentInRoom,
+      agentIdentity: agentParticipant?.identity,
+      hasAudioTrack: !!audioTrack,
+      remoteCount: remoteParticipants.length,
+      remoteKinds: remoteParticipants.map(p => `${p.identity}(kind=${p.kind})`),
+    })
+  }, [connectionState, agentState, agentInRoom, agentParticipant, audioTrack, remoteParticipants])
 
   // Start timer once LK room is connected
   const connectedRef = useRef(false)
@@ -324,7 +342,9 @@ function VoiceTestInner({
     }
   }, [lkConnected, onConnected])
 
-  const stateLabel = AGENT_STATE_LABELS[agentState] ?? 'Bağlandı'
+  const stateLabel = !agentInRoom && lkConnected
+    ? 'Agent bekleniyor...'
+    : (AGENT_STATE_LABELS[agentState] ?? 'Bağlandı')
 
   // Color based on state
   const gridColor =
@@ -393,7 +413,7 @@ function VoiceTestInner({
   )
 }
 
-function VoiceTest({ orgId, model }: { orgId: string; model: string }) {
+function VoiceTest({ orgId, model, scenario }: { orgId: string; model: string; scenario?: string }) {
   const [phase, setPhase] = useState<'idle' | 'connecting' | 'active' | 'error'>('idle')
   const [error, setError]   = useState('')
   const [connDetails, setConnDetails] = useState<{ token: string; url: string } | null>(null)
@@ -434,17 +454,21 @@ function VoiceTest({ orgId, model }: { orgId: string; model: string }) {
       const res = await fetch('/api/agent/voice-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId, model }),
+        body: JSON.stringify({ orgId, model, scenario }),
       })
       if (!res.ok) throw new Error('Token alınamadı')
-      const { token, url } = await res.json()
-      setConnDetails({ token, url })
+      const data = await res.json()
+      if (!data.dispatchOk) {
+        console.warn('[VoiceTest] Dispatch failed:', data.dispatchError)
+      }
+      console.log('[VoiceTest] Token OK, dispatch:', data.dispatchOk ? 'success' : data.dispatchError)
+      setConnDetails({ token: data.token, url: data.url })
       setPhase('active')
     } catch (e: any) {
       setPhase('error')
       setError(e?.message || 'Bağlantı hatası')
     }
-  }, [orgId, model])
+  }, [orgId, model, scenario])
 
   useEffect(() => () => stopTimer(), [stopTimer])
 
@@ -465,6 +489,7 @@ function VoiceTest({ orgId, model }: { orgId: string; model: string }) {
           className="flex flex-col items-center justify-center h-[520px] gap-6"
         >
           <RoomAudioRenderer />
+          <StartAudio label="Sesi etkinleştirmek için tıklayın" />
           <VoiceTestInner
             onEnd={endCall}
             onConnected={handleConnected}
@@ -605,7 +630,7 @@ function ReadinessGate({
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
 export default function AgentTestPanel({
-  orgId, activeChannel, hasVoice, hasChat, kbCount, promptLength,
+  orgId, activeChannel, hasVoice, hasChat, kbCount, promptLength, scenario,
 }: AgentTestPanelProps) {
   const [model, setModel] = useState('claude-sonnet-4-6')
 
@@ -628,7 +653,7 @@ export default function AgentTestPanel({
     <ReadinessGate kbCount={kbCount} promptLength={promptLength}>
       <ModelSelector model={model} onChange={setModel} />
       {showChat  && <ChatTest  orgId={orgId} channel="whatsapp" model={model} />}
-      {showVoice && <VoiceTest orgId={orgId} model={model} />}
+      {showVoice && <VoiceTest orgId={orgId} model={model} scenario={scenario} />}
     </ReadinessGate>
   )
 }

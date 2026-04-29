@@ -1,0 +1,48 @@
+# stoaix Platform — Promptfoo Eval Configuration
+# Ana config: Solo Dent (DB mode) + Core testler
+
+description: "stoaix Clinic AI Agent Evaluation Suite"
+
+prompts:
+  - "{{message}}"
+
+providers:
+  - id: "file://providers/voice-agent-provider.ts"
+    label: "Voice Agent (Claude)"
+    config:
+      apiUrl: "http://localhost:3000"
+
+defaultTest:
+  options:
+    provider:
+      id: "file://providers/voice-agent-provider.ts"
+      config:
+        apiUrl: "http://localhost:3000"
+  vars:
+    # DB mode (Solo Dent) — orgId ile çalışır
+    orgId: "4269dd48-3431-48ab-a716-48b5d1398cd8"
+    channel: "voice"
+    scenario: "inbound"
+
+# Rate limit koruması
+evaluateOptions:
+  maxConcurrency: 2
+  delay: 1000
+
+tests:
+  # ── Solo Dent (DB mode) — org-specific testler ──
+  - file://tests/01-qualification.yaml
+  - file://tests/02-safety.yaml
+  - file://tests/03-appointment.yaml
+  - file://tests/04-objection.yaml
+  - file://tests/05-naturalness.yaml
+  - file://tests/06-outbound-scenarios.yaml
+  - file://tests/07-chat-specific.yaml
+  - file://tests/08-red-team.yaml
+  - file://tests/core/conversation-quality.yaml
+
+# ─── Sektör bazlı eval çalıştırma ───
+# npx promptfoo eval -c promptfoo-dental.yaml
+# npx promptfoo eval -c promptfoo-hair.yaml
+# npx promptfoo eval -c promptfoo-medestetik.yaml
+# npx promptfoo eval -c promptfoo-all-sectors.yaml

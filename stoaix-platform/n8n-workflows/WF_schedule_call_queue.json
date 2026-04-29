@@ -1,89 +1,172 @@
 {
   "name": "stoaix — SCHED Call Queue Retry Poller",
   "nodes": [
-
     {
       "id": "n01",
       "name": "Schedule — Every 5min",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [200, 300],
+      "position": [
+        200,
+        300
+      ],
       "parameters": {
         "rule": {
-          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
         }
       }
     },
-
     {
       "id": "n02",
       "name": "Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [420, 300],
+      "position": [
+        420,
+        300
+      ],
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "cfg_sb_url",   "name": "SUPABASE_URL",        "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co", "type": "string" },
-            { "id": "cfg_sb_key",   "name": "SUPABASE_SERVICE_KEY","value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",           "type": "string" },
-            { "id": "cfg_dash",     "name": "DASHBOARD_URL",       "value": "https://platform.stoaix.com",             "type": "string" },
-            { "id": "cfg_secret",   "name": "INTERNAL_SECRET",     "value": "YOUR_WORKFLOW_INTERNAL_SECRET",           "type": "string" }
+            {
+              "id": "cfg_sb_url",
+              "name": "SUPABASE_URL",
+              "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "cfg_sb_key",
+              "name": "SUPABASE_SERVICE_KEY",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",
+              "type": "string"
+            },
+            {
+              "id": "cfg_dash",
+              "name": "DASHBOARD_URL",
+              "value": "https://platform.stoaix.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg_secret",
+              "name": "INTERNAL_SECRET",
+              "value": "YOUR_WORKFLOW_INTERNAL_SECRET",
+              "type": "string"
+            }
           ]
         },
         "options": {}
       }
     },
-
     {
       "id": "n03",
       "name": "Fetch Pending Call Queue",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [640, 300],
+      "position": [
+        640,
+        300
+      ],
       "parameters": {
         "method": "GET",
         "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/call_queue",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey",        "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}" },
-            { "name": "Authorization", "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}" }
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}"
+            }
           ]
         },
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "select",       "value": "id,run_id,organization_id,phone,script_type,attempt,max_attempts" },
-            { "name": "status",       "value": "eq.pending" },
-            { "name": "scheduled_at", "value": "={{ 'lte.' + new Date().toISOString() }}" },
-            { "name": "limit",        "value": "50" }
+            {
+              "name": "select",
+              "value": "id,run_id,organization_id,phone,script_type,attempt,max_attempts"
+            },
+            {
+              "name": "status",
+              "value": "eq.pending"
+            },
+            {
+              "name": "scheduled_at",
+              "value": "={{ 'lte.' + new Date().toISOString() }}"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            }
           ]
         }
       }
     },
-
     {
       "id": "n04",
       "name": "Dispatch Retries",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [860, 300],
+      "position": [
+        860,
+        300
+      ],
       "parameters": {
-        "jsCode": "const cfg   = $('Config').first().json;\nconst items = $('Fetch Pending Call Queue').all();\n\nif (!items.length || !items[0].json?.id) {\n  return [{ json: { dispatched: 0 } }];\n}\n\nconst results = [];\n\nfor (const item of items) {\n  const entry = item.json;\n  if (!entry?.id) continue;\n\n  // Skip if max attempts reached\n  if (entry.attempt > entry.max_attempts) {\n    await fetch(\n      `${cfg.SUPABASE_URL}/rest/v1/call_queue?id=eq.${entry.id}`,\n      {\n        method: 'PATCH',\n        headers: {\n          'Content-Type': 'application/json',\n          'apikey': cfg.SUPABASE_SERVICE_KEY,\n          'Authorization': `Bearer ${cfg.SUPABASE_SERVICE_KEY}`,\n          'Prefer': 'return=minimal',\n        },\n        body: JSON.stringify({ status: 'failed' }),\n      }\n    );\n    continue;\n  }\n\n  // Update call_queue to 'dialing'\n  await fetch(\n    `${cfg.SUPABASE_URL}/rest/v1/call_queue?id=eq.${entry.id}`,\n    {\n      method: 'PATCH',\n      headers: {\n        'Content-Type': 'application/json',\n        'apikey': cfg.SUPABASE_SERVICE_KEY,\n        'Authorization': `Bearer ${cfg.SUPABASE_SERVICE_KEY}`,\n        'Prefer': 'return=minimal',\n      },\n      body: JSON.stringify({ status: 'dialing' }),\n    }\n  );\n\n  // POST to process-trigger with event='no_answer'\n  const body = JSON.stringify({\n    event:  'no_answer',\n    org_id: entry.organization_id,\n    ref_id: entry.run_id,\n    data: {\n      call_queue_id: entry.id,\n      attempt:       entry.attempt,\n      script_type:   entry.script_type,\n      phone:         entry.phone,\n    },\n  });\n\n  try {\n    const res = await fetch(`${cfg.DASHBOARD_URL}/api/workflows/process-trigger`, {\n      method:  'POST',\n      headers: {\n        'Content-Type':       'application/json',\n        'x-internal-secret':  cfg.INTERNAL_SECRET,\n      },\n      body,\n    });\n    const result = await res.json();\n    results.push({ json: { entry_id: entry.id, org_id: entry.organization_id, result } });\n  } catch(e) {\n    console.error('Failed to dispatch retry for call_queue:', entry.id, e);\n    // Revert status to pending for retry\n    await fetch(\n      `${cfg.SUPABASE_URL}/rest/v1/call_queue?id=eq.${entry.id}`,\n      {\n        method: 'PATCH',\n        headers: {\n          'Content-Type': 'application/json',\n          'apikey': cfg.SUPABASE_SERVICE_KEY,\n          'Authorization': `Bearer ${cfg.SUPABASE_SERVICE_KEY}`,\n          'Prefer': 'return=minimal',\n        },\n        body: JSON.stringify({ status: 'pending' }),\n      }\n    );\n    results.push({ json: { entry_id: entry.id, error: String(e) } });\n  }\n}\n\nreturn results.length ? results : [{ json: { dispatched: 0 } }];"
+        "jsCode": "const _h = this.helpers;\nconst cfg   = $('Config').first().json;\nconst items = $('Fetch Pending Call Queue').all();\n\nif (!items.length || !items[0].json?.id) {\n  return [{ json: { dispatched: 0 } }];\n}\n\nconst sbHeaders = {\n  'Content-Type': 'application/json',\n  'apikey': cfg.SUPABASE_SERVICE_KEY,\n  'Authorization': `Bearer ${cfg.SUPABASE_SERVICE_KEY}`,\n  'Prefer': 'return=minimal',\n};\n\nasync function patchQueue(entryId, body) {\n  try {\n    await _h.httpRequest({\n      method: 'PATCH',\n      url: `${cfg.SUPABASE_URL}/rest/v1/call_queue?id=eq.${entryId}`,\n      headers: sbHeaders,\n      body: JSON.stringify(body)\n    });\n  } catch {}\n}\n\nconst results = [];\n\nfor (const item of items) {\n  const entry = item.json;\n  if (!entry?.id) continue;\n\n  // Skip if max attempts reached\n  if (entry.attempt > entry.max_attempts) {\n    await patchQueue(entry.id, { status: 'failed' });\n    continue;\n  }\n\n  // Update call_queue to 'dialing'\n  await patchQueue(entry.id, { status: 'dialing' });\n\n  // POST to process-trigger with event='no_answer'\n  try {\n    const result = await _h.httpRequest({\n      method: 'POST',\n      url: `${cfg.DASHBOARD_URL}/api/workflows/process-trigger`,\n      headers: {\n        'Content-Type': 'application/json',\n        'x-internal-secret': cfg.INTERNAL_SECRET,\n      },\n      body: JSON.stringify({\n        event:  'no_answer',\n        org_id: entry.organization_id,\n        ref_id: entry.run_id,\n        data: {\n          call_queue_id: entry.id,\n          attempt:       entry.attempt,\n          script_type:   entry.script_type,\n          phone:         entry.phone,\n        },\n      })\n    });\n    results.push({ json: { entry_id: entry.id, org_id: entry.organization_id, result } });\n  } catch(e) {\n    console.error('Failed to dispatch retry for call_queue:', entry.id, e);\n    // Revert status to pending for retry\n    await patchQueue(entry.id, { status: 'pending' });\n    results.push({ json: { entry_id: entry.id, error: String(e) } });\n  }\n}\n\nreturn results.length ? results : [{ json: { dispatched: 0 } }];\n"
       }
     }
-
   ],
-
   "connections": {
-    "Schedule — Every 5min": { "main": [[{ "node": "Config",                    "type": "main", "index": 0 }]] },
-    "Config":                 { "main": [[{ "node": "Fetch Pending Call Queue", "type": "main", "index": 0 }]] },
-    "Fetch Pending Call Queue":{ "main": [[{ "node": "Dispatch Retries",        "type": "main", "index": 0 }]] }
+    "Schedule — Every 5min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Pending Call Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Pending Call Queue": {
+      "main": [
+        [
+          {
+            "node": "Dispatch Retries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-
   "active": false,
-  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
   "pinData": {},
-  "meta": { "instanceId": "stoaix-platform" },
+  "meta": {
+    "instanceId": "stoaix-platform"
+  },
   "notes": "SCHED: Runs every 5 minutes. Polls call_queue for pending retry entries (scheduled_at <= now). For each: updates status=dialing, POSTs to process-trigger with event=no_answer. process-trigger finds V4 workflow and dispatches. Set active=true when V4 is configured."
 }

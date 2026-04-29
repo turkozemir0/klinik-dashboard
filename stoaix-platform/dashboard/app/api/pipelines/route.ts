@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as sbAdmin } from '@supabase/supabase-js'
 import { checkEntitlement } from '@/lib/entitlements'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 function getServiceClient() {
   return sbAdmin(
@@ -47,6 +48,9 @@ export async function POST(request: NextRequest) {
   const supabase = createClient()
   const orgId = await getOrgId(supabase)
   if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const blocked = demoWriteBlock(orgId)
+  if (blocked) return blocked
 
   // Entitlement check
   const ent = await checkEntitlement(orgId, 'multi_pipeline')

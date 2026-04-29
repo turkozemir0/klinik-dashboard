@@ -538,7 +538,7 @@ export default function PipelineSettings() {
 
       {isLite && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
-          Çoklu pipeline özelliği Plus ve üzeri planlarda mevcuttur.{' '}
+          Çoklu pipeline özelliği Professional ve üzeri planlarda mevcuttur.{' '}
           <Link href="/dashboard/settings?tab=billing" className="font-medium underline">
             Plan yükselt
           </Link>

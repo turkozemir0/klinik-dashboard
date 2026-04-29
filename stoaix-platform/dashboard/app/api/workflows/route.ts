@@ -3,6 +3,8 @@ import { createClient as sbAdmin } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { checkEntitlement } from '@/lib/entitlements'
 import { getTemplate } from '@/lib/workflow-templates'
+import { checkChannelReady } from '@/lib/integration-health'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 function getServiceClient() {
   return sbAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -45,6 +47,10 @@ export async function POST(request: NextRequest) {
     .maybeSingle()
 
   if (!orgUser) return NextResponse.json({ error: 'No org' }, { status: 403 })
+
+  const blocked = demoWriteBlock(orgUser.organization_id)
+  if (blocked) return blocked
+
   if (!['admin', 'yönetici'].includes(orgUser.role ?? '')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -69,6 +75,23 @@ export async function POST(request: NextRequest) {
     }, { status: 403 })
   }
 
+  // Channel readiness check — only when activating
+  if (is_active) {
+    const channelCheck = await checkChannelReady(orgUser.organization_id, template.channel)
+    if (!channelCheck.ready) {
+      return NextResponse.json({
+        error:   'channel_not_ready',
+        missing: channelCheck.missing,
+        message: `Bu iş akışını aktifleştirmek için şu entegrasyonları tamamlayın: ${channelCheck.missing.join(', ')}`,
+      }, { status: 400 })
+    }
+  }
+
+  // Inject default sequence if template defines one and config doesn't have it
+  if (template.default_sequence && !config.sequence) {
+    config.sequence = template.default_sequence
+  }
+
   const service = getServiceClient()
   const { data, error } = await service
     .from('org_workflows')
@@ -83,5 +106,15 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Fire-and-forget: workflow activation event
+  if (is_active) {
+    service.from('org_events').insert({
+      org_id: orgUser.organization_id,
+      event_type: 'workflow_activated',
+      metadata: { template_id },
+    }).then(() => {})
+  }
+
   return NextResponse.json(data)
 }

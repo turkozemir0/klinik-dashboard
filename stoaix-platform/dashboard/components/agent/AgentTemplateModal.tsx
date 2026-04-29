@@ -1,20 +1,23 @@
 'use client'
 
 import { X, Mic, MessageSquare, Star, Info, CheckCircle2 } from 'lucide-react'
-import { AgentTemplate, VOICE_TEMPLATES, WHATSAPP_TEMPLATES } from '@/lib/agent-templates'
+import { AgentTemplate, getVoiceTemplates, getWhatsappTemplates } from '@/lib/agent-templates'
 
 interface Props {
   open: boolean
   channel: 'voice' | 'whatsapp'
   hasCalendar: boolean
+  clinicType?: string
   onClose: () => void
   onApply: (template: AgentTemplate) => void
 }
 
-export default function AgentTemplateModal({ open, channel, hasCalendar, onClose, onApply }: Props) {
+export default function AgentTemplateModal({ open, channel, hasCalendar, clinicType = 'other', onClose, onApply }: Props) {
   if (!open) return null
 
-  const templates = channel === 'voice' ? VOICE_TEMPLATES : WHATSAPP_TEMPLATES
+  const templates = channel === 'voice'
+    ? getVoiceTemplates(clinicType, hasCalendar)
+    : getWhatsappTemplates(clinicType, hasCalendar)
   const recommended = templates.find(t => t.recommended)
   const others = templates.filter(t => !t.recommended)
 

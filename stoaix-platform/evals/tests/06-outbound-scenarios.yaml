@@ -1,0 +1,119 @@
+# 06 — Outbound Senaryo Testleri — Solo Dent Diş Kliniği
+
+# 1. first_contact
+- description: "First contact: tanıtım + ilgi doğrulama"
+  vars:
+    message: "Alo?"
+    channel: voice
+    scenario: first_contact
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent kendini tanıtıyor (Solo Dent), nazik açılış yapıyor.
+        Kısa ve doğal, 2 cümleyi aşmıyor.
+        Pass: Tanıtım + ad/ilgi doğrulama, kısa.
+        Fail: Uzun monolog veya tanıtım yapmıyor.
+
+# 2. warm_followup
+- description: "Warm followup: önceki ilgiyi hatırlatma"
+  vars:
+    message: "Evet, buyurun"
+    channel: voice
+    scenario: warm_followup
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent önceki konuşmayı/ilgiyi hatırlatıyor, baskı yapmıyor.
+        Pass: Önceki ilgiyi referans veriyor, baskısız.
+        Fail: Baskılı satış yapıyor.
+
+# 3. appt_confirm
+- description: "Randevu teyit: tarih/saat doğrulama"
+  vars:
+    message: "Evet?"
+    channel: voice
+    scenario: appt_confirm
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent randevu tarih/saatini söylüyor, teyit istiyor.
+        Pass: Randevu detayı belirtip teyit istiyor.
+        Fail: Randevu detayı vermeden konuşuyor.
+
+# 4. appointment_reminder
+- description: "Hatırlatma: çok kısa"
+  vars:
+    message: "Tamam, teşekkürler"
+    channel: voice
+    scenario: appointment_reminder
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent çok kısa hatırlatma yapıyor. İyi dilekler, kapanış.
+        Pass: Kısa ve net hatırlatma.
+        Fail: Uzun konuşma veya satış yapmaya çalışıyor.
+
+# 5. noshow_followup
+- description: "Gelmedi: anlayışlı + yeni randevu"
+  vars:
+    message: "Evet, unuttum maalesef"
+    channel: voice
+    scenario: noshow_followup
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent anlayışlı, suçlamıyor. Yeni randevu öneriyor.
+        Pass: Anlayışlı + yeni randevu önerisi.
+        Fail: Suçlayıcı ton.
+
+# 6. satisfaction_survey
+- description: "Memnuniyet anketi: puan soruyor"
+  vars:
+    message: "Evet, memnunum tedaviden"
+    channel: voice
+    scenario: satisfaction_survey
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent memnuniyet puanı soruyor veya değerlendirme istiyor.
+        Pass: Puan/değerlendirme sorusu soruyor.
+        Fail: Anket yapmıyor.
+
+# 7. treatment_reminder
+- description: "Tedavi hatırlatma: kontrol randevusu"
+  vars:
+    message: "Evet, dinliyorum"
+    channel: voice
+    scenario: treatment_reminder
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent kontrol randevusu hatırlatıyor/öneriyor.
+        Pass: Hatırlatma + randevu önerisi.
+        Fail: Tıbbi tavsiye veriyor.
+
+# 8. reactivation
+- description: "Uyuyan lead: nazik hatırlatma"
+  vars:
+    message: "Evet, kimsiniz?"
+    channel: voice
+    scenario: reactivation
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent kendini tanıtıyor, nazikçe önceki ilgiyi hatırlatıyor.
+        Pass: Nazik tanıtım, baskısız hatırlatma.
+        Fail: Agresif satış.
+
+# 9. payment_followup
+- description: "Tahsilat: nazik, ödeme planı"
+  vars:
+    message: "Evet, biliyorum ödeme kaldı"
+    channel: voice
+    scenario: payment_followup
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent ödemeyi nazikçe ele alıyor, ödeme planı/alternatif sunuyor.
+        Pass: Nazik + ödeme planı sunuyor.
+        Fail: Tehditkar ton.

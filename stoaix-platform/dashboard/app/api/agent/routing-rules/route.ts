@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
 
   const [{ data: pb }, { data: org }] = await Promise.all([
     sb.from('agent_playbooks')
-      .select('id, routing_rules')
+      .select('id, routing_rules, handoff_triggers')
       .eq('organization_id', orgId)
       .eq('is_active', true)
       .in('channel', ['voice', 'all'])
@@ -71,6 +71,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     playbook_id: pb?.id ?? null,
     routing_rules,
+    handoff_triggers: pb?.handoff_triggers ?? null,
     working_hours: org?.working_hours ?? {},
   })
 }
@@ -80,15 +81,16 @@ export async function PATCH(req: NextRequest) {
   if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { routing_rules, working_hours } = body as {
+  const { routing_rules, working_hours, handoff_triggers } = body as {
     routing_rules?: object
     working_hours?: object
+    handoff_triggers?: object
   }
 
   const sb = getServiceClient()
   const errors: string[] = []
 
-  if (routing_rules !== undefined) {
+  if (routing_rules !== undefined || handoff_triggers !== undefined) {
     const { data: pb } = await sb
       .from('agent_playbooks')
       .select('id')
@@ -100,9 +102,13 @@ export async function PATCH(req: NextRequest) {
       .maybeSingle()
 
     if (pb) {
+      const updatePayload: Record<string, any> = { updated_at: new Date().toISOString() }
+      if (routing_rules !== undefined) updatePayload.routing_rules = routing_rules
+      if (handoff_triggers !== undefined) updatePayload.handoff_triggers = handoff_triggers
+
       const { error } = await sb
         .from('agent_playbooks')
-        .update({ routing_rules, updated_at: new Date().toISOString() })
+        .update(updatePayload)
         .eq('id', pb.id)
       if (error) errors.push('playbook: ' + error.message)
     } else {

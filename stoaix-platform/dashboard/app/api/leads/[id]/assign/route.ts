@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as sbAdmin } from '@supabase/supabase-js'
 
 // POST /api/leads/[id]/assign — Lead atama
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
@@ -43,6 +44,35 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const { error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Trigger sets moved_by=NULL (system). Override with actual user for manual moves.
+  if (status) {
+    try {
+      const svc = sbAdmin(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+      const orgId = orgUser?.organization_id
+      if (orgId) {
+        const { data: pipeline } = await svc
+          .from('pipelines')
+          .select('id')
+          .eq('organization_id', orgId)
+          .eq('is_default', true)
+          .maybeSingle()
+
+        if (pipeline) {
+          await svc
+            .from('lead_pipeline_stages')
+            .update({ moved_by: user.id, moved_at: new Date().toISOString() })
+            .eq('lead_id', params.id)
+            .eq('pipeline_id', pipeline.id)
+        }
+      }
+    } catch (_) {
+      // Non-critical: don't block main response
+    }
+  }
 
   return NextResponse.json({ ok: true })
 }

@@ -9,19 +9,19 @@ function getServiceClient() {
 }
 
 const PLAN_PRICES: Record<string, number> = {
-  lite: 79,
-  plus: 149,
-  advanced: 299,
-  agency: 499,
+  essential: 79,
+  professional: 149,
+  business: 299,
+  custom: 0,
   legacy: 0,
 }
 
 const PLAN_LABELS: Record<string, string> = {
   legacy: 'Legacy',
-  lite: 'Lite',
-  plus: 'Plus',
-  advanced: 'Advanced',
-  agency: 'Agency',
+  essential: 'Essential',
+  professional: 'Professional',
+  business: 'Business',
+  custom: 'Custom',
 }
 
 const STATUS_BADGE: Record<string, string> = {

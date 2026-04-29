@@ -42,13 +42,72 @@ interface MetaWebhookPayload {
   }>
 }
 
-// ─── Sector-aware vision prompts ──────────────────────────────────────────────
+// ─── Sector-aware vision prompts (language × sector) ─────────────────────────
 
-const VISION_PROMPTS: Record<string, string> = {
-  dental:     'Hangi diş bölgesi? Kırık, renk bozukluğu, eksik diş, dolgu, protez var mı? Kısa, klinik.',
-  hair:       'Dökülme alanı, yoğunluk, bölge? Norwood skalasına göre tahmin.',
-  aesthetics: 'Hangi bölge, ne tür endikasyon? Botoks, filler, ameliyat?',
-  default:    'Klinik açıdan önemli bir bilgi var mı? Kısa tut.',
+const VISION_PROMPTS: Record<string, Record<string, string>> = {
+  tr: {
+    dental:     'Hangi diş bölgesi? Kırık, renk bozukluğu, eksik diş, dolgu, protez var mı? Kısa, klinik.',
+    hair:       'Dökülme alanı, yoğunluk, bölge? Norwood skalasına göre tahmin.',
+    aesthetics: 'Hangi bölge, ne tür endikasyon? Botoks, filler, ameliyat?',
+    default:    'Klinik açıdan önemli bir bilgi var mı? Kısa tut.',
+  },
+  de: {
+    dental:     'Welcher Zahnbereich? Bruch, Verfärbung, fehlender Zahn, Füllung, Prothese? Kurz, klinisch.',
+    hair:       'Bereich des Haarausfalls, Dichte, Zone? Schätzung nach Norwood-Skala.',
+    aesthetics: 'Welcher Bereich, welche Indikation? Botox, Filler, OP?',
+    default:    'Gibt es klinisch relevante Informationen? Kurz halten.',
+  },
+  en: {
+    dental:     'Which dental area? Fracture, discoloration, missing tooth, filling, prosthesis? Brief, clinical.',
+    hair:       'Hair loss area, density, zone? Estimate on Norwood scale.',
+    aesthetics: 'Which area, what indication? Botox, filler, surgery?',
+    default:    'Any clinically relevant information? Keep it brief.',
+  },
+}
+
+// ─── Language-aware UI messages ──────────────────────────────────────────────
+
+const I18N: Record<string, { imageAck: string; imageError: string; unsupported: string }> = {
+  tr: {
+    imageAck:    'Fotoğrafınızı aldım, uzman ekibimiz inceleyecek. ✅',
+    imageError:  'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.',
+    unsupported: 'Üzgünüm, şu an yalnızca metin ve görsel mesajları anlayabiliyorum. Lütfen yazmak istediğinizi metin olarak iletin.',
+  },
+  de: {
+    imageAck:    'Vielen Dank für Ihr Foto! Unser Expertenteam wird es prüfen. ✅',
+    imageError:  'Beim Empfang Ihres Bildes ist ein Fehler aufgetreten. Bitte senden Sie es erneut.',
+    unsupported: 'Entschuldigung, ich kann derzeit nur Text- und Bildnachrichten verarbeiten. Bitte senden Sie Ihre Anfrage als Textnachricht.',
+  },
+  en: {
+    imageAck:    'Thank you for your photo! Our expert team will review it. ✅',
+    imageError:  'There was an issue receiving your image. Please send it again.',
+    unsupported: 'Sorry, I can only process text and image messages at the moment. Please send your request as a text message.',
+  },
+}
+
+function getI18n(lang: string) {
+  return I18N[lang] ?? I18N.tr
+}
+
+// ─── Resolve language: contact override → org default → 'tr' ────────────────
+
+async function resolveLanguage(
+  orgId:          string,
+  orgDefaultLang: string,
+  identifierKey:  string,
+  identifierVal:  string
+): Promise<string> {
+  try {
+    const supabase = getSupabase()
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('preferred_language')
+      .eq('organization_id', orgId)
+      .filter(`channel_identifiers->>${identifierKey}`, 'eq', identifierVal)
+      .maybeSingle()
+    if (contact?.preferred_language) return contact.preferred_language
+  } catch { /* ignore — fall through */ }
+  return orgDefaultLang || 'tr'
 }
 
 // ─── 360dialog send helper ────────────────────────────────────────────────────
@@ -131,7 +190,7 @@ async function handleHumanEcho(
     .from('contacts')
     .select('id')
     .eq('organization_id', orgId)
-    .filter("channel_identifiers->>'wa_id'", 'eq', customerWaId)
+    .filter('channel_identifiers->>wa_id', 'eq', customerWaId)
     .maybeSingle()
 
   if (!contact?.id) return
@@ -181,12 +240,15 @@ async function handleHumanEcho(
 async function handleImageMessage(
   phoneNumberId: string,
   message:       MetaMessage,
-  org:           { id: string; sector?: string | null },
+  org:           { id: string; sector?: string | null; default_language?: string },
   clientToken:   string,
   waId:          string
 ): Promise<void> {
   const mediaId = message.image?.id
   if (!mediaId) return
+
+  const lang = await resolveLanguage(org.id, (org as any).default_language ?? 'tr', 'wa_id', waId)
+  const msgs = getI18n(lang)
 
   // Fetch signed media URL from 360dialog
   const mediaRes = await fetch(`https://waba-v2.360dialog.io/${mediaId}`, {
@@ -194,31 +256,28 @@ async function handleImageMessage(
   })
   if (!mediaRes.ok) {
     console.error(`Media fetch failed ${mediaRes.status}`)
-    await send360dialogMessage(clientToken, waId,
-      'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.')
+    await send360dialogMessage(clientToken, waId, msgs.imageError)
     return
   }
 
   const mediaData = await mediaRes.json()
   const imageUrl  = mediaData.url
   if (!imageUrl) {
-    await send360dialogMessage(clientToken, waId,
-      'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.')
+    await send360dialogMessage(clientToken, waId, msgs.imageError)
     return
   }
 
-  const sector  = (org as any).sector ?? 'default'
-  const prompt  = VISION_PROMPTS[sector] ?? VISION_PROMPTS.default
-  const analysis = await callGPTVision(imageUrl, prompt)
+  const sector     = (org as any).sector ?? 'default'
+  const langPrompts = VISION_PROMPTS[lang] ?? VISION_PROMPTS.tr
+  const prompt     = langPrompts[sector] ?? langPrompts.default
+  const analysis   = await callGPTVision(imageUrl, prompt)
 
   const supabase = getSupabase()
   if (analysis) {
     await updateLeadWithVision(supabase, org.id, waId, analysis, message.id)
   }
 
-  // Acknowledge the image — do not run the full chat engine
-  await send360dialogMessage(clientToken, waId,
-    'Fotoğrafınızı aldım, uzman ekibimiz inceleyecek. ✅')
+  await send360dialogMessage(clientToken, waId, msgs.imageAck)
 }
 
 // ─── Main text message handler ────────────────────────────────────────────────
@@ -282,8 +341,8 @@ async function handleInbound(
 
     default: {
       // Audio, document, sticker, location, etc. — friendly fallback
-      await send360dialogMessage(clientToken, waId,
-        'Üzgünüm, şu an yalnızca metin ve görsel mesajları anlayabiliyorum. Lütfen yazmak istediğinizi metin olarak iletin.')
+      const lang = await resolveLanguage(org.id, org.default_language ?? 'tr', 'wa_id', waId)
+      await send360dialogMessage(clientToken, waId, getI18n(lang).unsupported)
       break
     }
   }
@@ -337,7 +396,7 @@ serve(async (req) => {
   const supabase = getSupabase()
   const { data: orgs } = await supabase
     .from('organizations')
-    .select('id, sector, channel_config')
+    .select('id, sector, default_language, channel_config')
     .eq('status', 'active')
 
   const tasks: Promise<void>[] = []

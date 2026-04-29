@@ -57,6 +57,34 @@ async function handleEvent(event: Stripe.Event, service: ReturnType<typeof getSe
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session
+
+      // Kart güncelleme (setup mode)
+      if (session.mode === 'setup') {
+        const setupIntent = session.setup_intent as string
+        if (setupIntent) {
+          const si = await getStripe().setupIntents.retrieve(setupIntent)
+          const pmId = si.payment_method as string
+          const customerId = session.customer as string
+          if (pmId && customerId) {
+            await getStripe().customers.update(customerId, {
+              invoice_settings: { default_payment_method: pmId },
+            })
+          }
+        }
+        break
+      }
+
+      // One-time addon purchase (credit packs)
+      if (session.mode === 'payment' && session.metadata?.addon_id) {
+        const orgId = session.metadata.organization_id
+        const featureKey = session.metadata.feature_key
+        const bonusAmount = parseInt(session.metadata.bonus_amount || '0', 10)
+        if (orgId && featureKey && bonusAmount > 0) {
+          await handleAddonPurchase(orgId, featureKey, bonusAmount, service)
+        }
+        break
+      }
+
       if (session.mode !== 'subscription') break
 
       const orgId = session.metadata?.organization_id
@@ -194,16 +222,14 @@ function getPlanIdFromSub(sub: Stripe.Subscription): string {
   // Price ID → plan eşleştirmesi (env var'lardan)
   const priceId = sub.items.data[0]?.price.id
   const priceMap: Record<string, string> = {
-    [process.env.STRIPE_PRICE_LITE_MONTHLY ?? '']:     'lite',
-    [process.env.STRIPE_PRICE_LITE_ANNUAL ?? '']:      'lite',
-    [process.env.STRIPE_PRICE_PLUS_MONTHLY ?? '']:     'plus',
-    [process.env.STRIPE_PRICE_PLUS_ANNUAL ?? '']:      'plus',
-    [process.env.STRIPE_PRICE_ADVANCED_MONTHLY ?? '']: 'advanced',
-    [process.env.STRIPE_PRICE_ADVANCED_ANNUAL ?? '']:  'advanced',
-    [process.env.STRIPE_PRICE_AGENCY_MONTHLY ?? '']:   'agency',
-    [process.env.STRIPE_PRICE_AGENCY_ANNUAL ?? '']:    'agency',
+    [process.env.STRIPE_PRICE_ESSENTIAL_MONTHLY ?? '']:    'essential',
+    [process.env.STRIPE_PRICE_ESSENTIAL_ANNUAL ?? '']:     'essential',
+    [process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY ?? '']: 'professional',
+    [process.env.STRIPE_PRICE_PROFESSIONAL_ANNUAL ?? '']:  'professional',
+    [process.env.STRIPE_PRICE_BUSINESS_MONTHLY ?? '']:     'business',
+    [process.env.STRIPE_PRICE_BUSINESS_ANNUAL ?? '']:      'business',
   }
-  return priceMap[priceId ?? ''] ?? 'lite'
+  return priceMap[priceId ?? ''] ?? 'essential'
 }
 
 async function getOrgIdByCustomer(customerId: string, service: ReturnType<typeof getServiceClient>): Promise<string | null> {
@@ -213,4 +239,51 @@ async function getOrgIdByCustomer(customerId: string, service: ReturnType<typeof
     .eq('stripe_customer_id', customerId)
     .maybeSingle()
   return data?.organization_id ?? null
+}
+
+// Addon credit purchase — org_entitlement_overrides.limit_override += bonus
+async function handleAddonPurchase(
+  orgId: string,
+  featureKey: string,
+  bonusAmount: number,
+  service: ReturnType<typeof getServiceClient>
+) {
+  // Mevcut override'ı oku
+  const { data: existing } = await service
+    .from('org_entitlement_overrides')
+    .select('limit_override')
+    .eq('organization_id', orgId)
+    .eq('feature_key', featureKey)
+    .maybeSingle()
+
+  // Plan default'u oku
+  const { data: sub } = await service
+    .from('org_subscriptions')
+    .select('plan_id')
+    .eq('organization_id', orgId)
+    .maybeSingle()
+  const planId = sub?.plan_id ?? 'legacy'
+
+  const { data: entRow } = await service
+    .from('plan_entitlements')
+    .select('limit_value')
+    .eq('plan_id', planId)
+    .eq('feature_key', featureKey)
+    .maybeSingle()
+  const planDefault = entRow?.limit_value ?? 0
+
+  // Yeni limit = mevcut effective limit + bonus
+  const currentLimit = existing?.limit_override ?? planDefault
+  const newLimit = currentLimit + bonusAmount
+
+  // Upsert override
+  await service.from('org_entitlement_overrides').upsert({
+    organization_id: orgId,
+    feature_key: featureKey,
+    enabled: true,
+    limit_override: newLimit,
+    reason: 'addon_purchase',
+  }, { onConflict: 'organization_id,feature_key' })
+
+  invalidateCache(orgId)
 }

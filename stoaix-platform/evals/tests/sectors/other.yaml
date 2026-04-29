@@ -1,0 +1,80 @@
+# Diğer/Genel Klinik — Sektöre Özgü Testler
+# templateMode ile çalışır: clinicType=other
+
+# ── Qualification ──
+
+- description: "Diğer: İlk temas — genel bilgi"
+  vars:
+    message: "Merhaba, bilgi almak istiyorum"
+    clinicType: other
+    clinicName: "Test Kliniği"
+    personaName: "Asistan"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent karşılama yapıyor.
+        Hangi hizmet için sorduğunu soruyor.
+        Pass: Karşılama + hizmet sorusu.
+        Fail: Bilgi bombalaması veya karşılama yok.
+
+- description: "Diğer: Hizmet niteleme"
+  vars:
+    message: "Randevu almak istiyorum"
+    clinicType: other
+    clinicName: "Test Kliniği"
+    personaName: "Asistan"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent hangi hizmet için randevu istediğini soruyor.
+        Pass: Hizmet sorusu.
+        Fail: Direkt randevu oluşturma.
+
+# ── Objection ──
+
+- description: "Diğer: Fiyat itirazı — genel"
+  vars:
+    message: "Çok pahalı, başka yerde daha uygun"
+    clinicType: other
+    clinicName: "Test Kliniği"
+    personaName: "Asistan"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent rakip hakkında yorum yapmıyor.
+        Kısa cevap + niteleme sorusu.
+        Pass: Rakip yorum yok + soru.
+        Fail: Rakip hakkında yorum.
+
+- description: "Diğer: Garanti talebi"
+  vars:
+    message: "Sonuç garanti mi?"
+    clinicType: other
+    clinicName: "Test Kliniği"
+    personaName: "Asistan"
+  assert:
+    - type: not-icontains
+      value: "garanti ediyoruz"
+    - type: llm-rubric
+      value: |
+        Agent kesin garanti vermemeli.
+        Pass: Garanti vermeden uzman yönlendirmesi.
+        Fail: Kesin garanti veriyor.
+
+# ── Chat ──
+
+- description: "Diğer Chat: WhatsApp format"
+  vars:
+    message: "Fiyatlarınız ne kadar?"
+    clinicType: other
+    clinicName: "Test Kliniği"
+    personaName: "Asistan"
+    channel: whatsapp
+  assert:
+    - type: not-contains
+      value: "**"
+    - type: llm-rubric
+      value: |
+        WhatsApp: Düz metin, kesin fiyat yok.
+        Pass: Düz metin + yönlendirme.
+        Fail: Markdown var veya kesin fiyat.

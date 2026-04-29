@@ -3,21 +3,23 @@
 import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  Save, Loader2, Plus, Trash2, Bot, Sparkles, Mic, MessageSquare, ListChecks,
+  Save, Loader2, Plus, Trash2, Bot, Mic, MessageSquare, ListChecks,
   FlaskConical, PhoneForwarded, Clock, ToggleLeft, ToggleRight, Lightbulb,
-  ArrowUpRight, CheckCircle2, BookOpen, AlertTriangle, X, Lock, Star,
-  ArrowLeft, ArrowRight, Info,
+  ArrowUpRight, CheckCircle2, BookOpen, AlertTriangle, X, Lock,
+  ArrowLeft, ArrowRight, Zap, Pencil, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import AgentTestPanel from '@/components/agent/AgentTestPanel'
-import { VOICE_TEMPLATES, WHATSAPP_TEMPLATES } from '@/lib/agent-templates'
+import { useIsDemo } from '@/lib/demo-context'
+import { useOrg } from '@/lib/org-context'
+import { getWhatsappTemplates, getVoiceTemplates } from '@/lib/agent-templates'
 import type { AgentTemplate } from '@/lib/agent-templates'
 import KnowledgeClient from '../knowledge/KnowledgeClient'
 import type { KnowledgeItem } from '@/lib/types'
 
 // ─── Knowledge tab content ────────────────────────────────────────────────────
 
-function KnowledgeTabSection({ orgId }: { orgId: string }) {
+function KnowledgeTabSection({ orgId, readOnly }: { orgId: string; readOnly?: boolean }) {
   const [items, setItems] = useState<KnowledgeItem[]>([])
   const [sector, setSector] = useState('other')
   const [loading, setLoading] = useState(true)
@@ -48,7 +50,7 @@ function KnowledgeTabSection({ orgId }: { orgId: string }) {
     )
   }
 
-  return <KnowledgeClient items={items} orgId={orgId} sector={sector} />
+  return <KnowledgeClient items={items} orgId={orgId} sector={sector} readOnly={readOnly} />
 }
 
 type Channel = 'voice' | 'whatsapp'
@@ -58,6 +60,7 @@ interface EditorView {
   channel: Channel
   templateId: string
   templateName: string
+  scenario?: string
 }
 
 interface RoutingRule {
@@ -84,6 +87,20 @@ interface WorkingHours {
   timezone?: string
 }
 
+interface HandoffConfig {
+  keywords: string[]
+  frustration_keywords: string[]
+  missing_required_after_turns: number
+  kb_empty_consecutive: number
+}
+
+interface WorkflowStatus {
+  id: string
+  name: string
+  channel: string
+  is_active: boolean
+}
+
 interface PlaybookState {
   id?: string
   systemPrompt: string
@@ -104,9 +121,10 @@ const TONE_OPTIONS = [
 interface IntakeField {
   key: string
   label: string
-  type: string
-  priority: 'must' | 'should'
+  type: 'text' | 'phone' | 'email' | 'number' | 'select'
+  priority: 'must' | 'should' | 'nice'
   voice_prompt?: string
+  options?: string[]
 }
 
 const EMPTY: PlaybookState = {
@@ -136,12 +154,10 @@ const VOICE_MODEL_OPTIONS = [
   { value: 'claude-sonnet-4-6',        label: 'Claude Sonnet 4.6 (Önerilen)' },
   { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (Hızlı)' },
   { value: 'gpt-4o-mini',              label: 'GPT-4o Mini' },
-  { value: 'gpt-4o',                   label: 'GPT-4o' },
 ]
 
 const CHAT_MODEL_OPTIONS = [
   { value: 'gpt-4o-mini',              label: 'GPT-4o Mini (Önerilen)' },
-  { value: 'gpt-4o',                   label: 'GPT-4o' },
   { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
   { value: 'claude-sonnet-4-6',        label: 'Claude Sonnet 4.6' },
 ]
@@ -165,6 +181,8 @@ function AgentPageInner() {
   const searchParams = useSearchParams()
   const initialPageTab = searchParams.get('tab') === 'knowledge' ? 'knowledge' : 'agent'
   const [pageTab, setPageTab] = useState<'agent' | 'knowledge'>(initialPageTab as 'agent' | 'knowledge')
+  const isDemo = useIsDemo()
+  const { orgId: ctxOrgId, isSuperAdmin } = useOrg()
 
   const [orgId, setOrgId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -176,24 +194,24 @@ function AgentPageInner() {
 
   const [voice, setVoice] = useState<PlaybookState>(EMPTY)
   const [whatsapp, setWhatsapp] = useState<PlaybookState>(EMPTY)
+  const [scenarioPlaybooks, setScenarioPlaybooks] = useState<Record<string, PlaybookState>>({})
 
   const [voiceIntake, setVoiceIntake]       = useState<IntakeField[]>([])
   const [whatsappIntake, setWhatsappIntake] = useState<IntakeField[]>([])
   const [voiceIntakeId, setVoiceIntakeId]   = useState<string | null>(null)
   const [waIntakeId, setWaIntakeId]         = useState<string | null>(null)
 
-  const [suggestions, setSuggestions]                   = useState<IntakeField[]>([])
-  const [selectedSuggestions, setSelectedSuggestions]   = useState<Set<string>>(new Set())
-  const [suggesting, setSuggesting]                     = useState(false)
   const [savingIntake, setSavingIntake]                 = useState<boolean>(false)
   const [intakeSaved, setIntakeSaved]                   = useState(false)
+  const [expandedIntakeIdx, setExpandedIntakeIdx]       = useState<number | null>(null)
+  const [addingIntake, setAddingIntake]                 = useState(false)
 
   const [kbCount, setKbCount]               = useState(0)
   const [activeTipIndex, setActiveTipIndex] = useState(0)
-  const [generating, setGenerating]         = useState(false)
   const [saving, setSaving]                 = useState(false)
   const [savedChannel, setSavedChannel]     = useState<Channel | null>(null)
   const [orgName, setOrgName]               = useState('')
+  const [clinicType, setClinicType]         = useState('other')
   const [voiceActive, setVoiceActive]       = useState(false)
   const [hasCalendar, setHasCalendar]       = useState(false)
   const [calendarWarning, setCalendarWarning] = useState(false)
@@ -202,6 +220,13 @@ function AgentPageInner() {
 
   // Routing state
   const [routingConfig, setRoutingConfig] = useState<RoutingConfig>({ transfer_numbers: {}, rules: [] })
+  const [handoffConfig, setHandoffConfig] = useState<HandoffConfig>({
+    keywords: ['insan', 'danışman', 'müdür', 'temsilci', 'yönetici'],
+    frustration_keywords: ['saçma', 'berbat', 'rezalet', 'şikayet'],
+    missing_required_after_turns: 10,
+    kb_empty_consecutive: 3,
+  })
+  const [workflows, setWorkflows] = useState<WorkflowStatus[]>([])
   const [workingHours, setWorkingHours]   = useState<WorkingHours>({
     weekdays: '09:30-19:00', saturday: '10:00-17:00', sunday: null, timezone: 'Europe/Istanbul',
   })
@@ -210,9 +235,17 @@ function AgentPageInner() {
 
   // Computed
   const activeChannel: Channel = editorView?.channel ?? 'voice'
-  const current    = activeChannel === 'voice' ? voice : whatsapp
-  const setCurrent = (fn: (prev: PlaybookState) => PlaybookState) =>
-    activeChannel === 'voice' ? setVoice(fn) : setWhatsapp(fn)
+  const activeScenario = editorView?.scenario ?? null
+  const current = activeScenario
+    ? (scenarioPlaybooks[activeScenario] ?? EMPTY)
+    : (activeChannel === 'voice' ? voice : whatsapp)
+  const setCurrent = (fn: (prev: PlaybookState) => PlaybookState) => {
+    if (activeScenario) {
+      setScenarioPlaybooks(prev => ({ ...prev, [activeScenario]: fn(prev[activeScenario] ?? EMPTY) }))
+    } else {
+      activeChannel === 'voice' ? setVoice(fn) : setWhatsapp(fn)
+    }
+  }
 
   const currentIntake    = activeChannel === 'voice' ? voiceIntake : whatsappIntake
   const setCurrentIntake = activeChannel === 'voice' ? setVoiceIntake : setWhatsappIntake
@@ -220,19 +253,11 @@ function AgentPageInner() {
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return
+    ;(async () => {
+      let resolvedOrgId = ctxOrgId ?? ''
 
-      let resolvedOrgId = ''
-      const { data: ou } = await supabase
-        .from('org_users')
-        .select('organization_id')
-        .eq('user_id', data.user.id)
-        .maybeSingle()
-
-      if (ou) {
-        resolvedOrgId = ou.organization_id
-      } else {
+      // Super admin without org — fall back to first active org
+      if (!resolvedOrgId && isSuperAdmin) {
         const { data: firstOrg } = await supabase
           .from('organizations')
           .select('id')
@@ -246,15 +271,51 @@ function AgentPageInner() {
       if (!resolvedOrgId) { setLoading(false); return }
       setOrgId(resolvedOrgId)
 
-      // Her iki kanalı da yükle
-      const { data: playbooks } = await supabase
-        .from('agent_playbooks')
-        .select('id, channel, system_prompt_template, opening_message, hard_blocks, features, few_shot_examples, fallback_responses')
-        .eq('organization_id', resolvedOrgId)
-        .eq('is_active', true)
-        .in('channel', ['voice', 'whatsapp', 'chat', 'all'])
-        .order('version', { ascending: false })
+      // Tüm bağımsız sorguları paralel çalıştır
+      const [
+        { data: playbooks },
+        { data: schemas },
+        { count },
+        { data: orgData },
+        routingResult,
+        billingResult,
+        workflowsResult,
+      ] = await Promise.all([
+        // 1. Playbooks
+        supabase
+          .from('agent_playbooks')
+          .select('id, channel, scenario, system_prompt_template, opening_message, hard_blocks, features, few_shot_examples, fallback_responses, handoff_triggers')
+          .eq('organization_id', resolvedOrgId)
+          .eq('is_active', true)
+          .in('channel', ['voice', 'whatsapp', 'chat', 'all'])
+          .order('version', { ascending: false }),
+        // 2. Intake schemas
+        supabase
+          .from('intake_schemas')
+          .select('id, channel, fields')
+          .eq('organization_id', resolvedOrgId)
+          .in('channel', ['voice', 'whatsapp']),
+        // 3. KB count
+        supabase
+          .from('knowledge_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', resolvedOrgId)
+          .eq('is_active', true),
+        // 4. Organization data
+        supabase
+          .from('organizations')
+          .select('name, channel_config, ai_persona')
+          .eq('id', resolvedOrgId)
+          .single(),
+        // 5. Routing rules
+        fetch('/api/agent/routing-rules').then(r => r.ok ? r.json() : null).catch(() => null),
+        // 6. Billing limits
+        fetch('/api/billing/limits').then(r => r.ok ? r.json() : null).catch(() => null),
+        // 7. Workflows
+        fetch('/api/workflows/templates').then(r => r.ok ? r.json() : null).catch(() => null),
+      ])
 
+      // Process playbooks
       const parsePlaybook = (pb: any): PlaybookState => ({
         id: pb.id,
         systemPrompt: pb.system_prompt_template || '',
@@ -272,19 +333,35 @@ function AgentPageInner() {
       })
 
       if (playbooks) {
-        const voicePb    = playbooks.find(p => p.channel === 'voice')    || playbooks.find(p => p.channel === 'all')
-        const whatsappPb = playbooks.find(p => p.channel === 'whatsapp') || playbooks.find(p => p.channel === 'chat') || playbooks.find(p => p.channel === 'all')
+        const mainPlaybooks = playbooks.filter(p => !p.scenario)
+        const scenarioPbs   = playbooks.filter(p => !!p.scenario)
+
+        const voicePb    = mainPlaybooks.find(p => p.channel === 'voice')    || mainPlaybooks.find(p => p.channel === 'all')
+        const whatsappPb = mainPlaybooks.find(p => p.channel === 'whatsapp') || mainPlaybooks.find(p => p.channel === 'chat') || mainPlaybooks.find(p => p.channel === 'all')
         if (voicePb)    setVoice(parsePlaybook(voicePb))
         if (whatsappPb) setWhatsapp(parsePlaybook(whatsappPb))
+
+        const spMap: Record<string, PlaybookState> = {}
+        for (const sp of scenarioPbs) {
+          spMap[sp.scenario] = parsePlaybook(sp)
+        }
+        setScenarioPlaybooks(spMap)
+
+        const activePb = voicePb || whatsappPb
+        if (activePb) {
+          const ht = (activePb as any).handoff_triggers as Record<string, any> | null
+          if (ht) {
+            setHandoffConfig({
+              keywords: Array.isArray(ht.keywords) ? ht.keywords : ['insan', 'danışman', 'müdür', 'temsilci', 'yönetici'],
+              frustration_keywords: Array.isArray(ht.frustration_keywords) ? ht.frustration_keywords : ['saçma', 'berbat', 'rezalet', 'şikayet'],
+              missing_required_after_turns: ht.missing_required_after_turns ?? 10,
+              kb_empty_consecutive: ht.kb_empty_consecutive ?? 3,
+            })
+          }
+        }
       }
 
-      // Intake schema yükle
-      const { data: schemas } = await supabase
-        .from('intake_schemas')
-        .select('id, channel, fields')
-        .eq('organization_id', resolvedOrgId)
-        .in('channel', ['voice', 'whatsapp'])
-
+      // Process intake schemas
       if (schemas) {
         const vs = schemas.find(s => s.channel === 'voice')
         const ws = schemas.find(s => s.channel === 'whatsapp')
@@ -292,68 +369,47 @@ function AgentPageInner() {
         if (ws) { setWhatsappIntake(ws.fields ?? []); setWaIntakeId(ws.id) }
       }
 
-      // KB item sayısını çek
-      const { count } = await supabase
-        .from('knowledge_items')
-        .select('id', { count: 'exact', head: true })
-        .eq('organization_id', resolvedOrgId)
-        .eq('is_active', true)
+      // Process KB count
       setKbCount(count ?? 0)
 
-      // Voice aktif mi? + ai_persona yükle
-      const { data: orgData } = await supabase
-        .from('organizations')
-        .select('name, channel_config, ai_persona')
-        .eq('id', resolvedOrgId)
-        .single()
+      // Process org data
       const cc = (orgData?.channel_config ?? {}) as Record<string, any>
       setVoiceActive(cc?.voice_inbound?.active === true || cc?.voice_outbound?.active === true)
       setHasCalendar(cc?.calendar?.provider != null)
       const ap = (orgData?.ai_persona ?? {}) as Record<string, any>
       setPersona({ name: ap.persona_name || '', tone: ap.tone || 'warm-professional' })
       setOrgName(orgData?.name || '')
+      setClinicType(ap.clinic_type || 'other')
 
-      // Routing config yükle
-      try {
-        const rRes = await fetch('/api/agent/routing-rules')
-        if (rRes.ok) {
-          const rData = await rRes.json()
-          if (rData.routing_rules) setRoutingConfig(rData.routing_rules)
-          if (rData.working_hours && Object.keys(rData.working_hours).length) setWorkingHours(rData.working_hours)
+      // Process routing config
+      if (routingResult) {
+        if (routingResult.routing_rules) setRoutingConfig(routingResult.routing_rules)
+        if (routingResult.working_hours && Object.keys(routingResult.working_hours).length) setWorkingHours(routingResult.working_hours)
+        if (routingResult.handoff_triggers) {
+          const ht = routingResult.handoff_triggers
+          setHandoffConfig({
+            keywords: Array.isArray(ht.keywords) ? ht.keywords : ['insan', 'danışman', 'müdür', 'temsilci', 'yönetici'],
+            frustration_keywords: Array.isArray(ht.frustration_keywords) ? ht.frustration_keywords : ['saçma', 'berbat', 'rezalet', 'şikayet'],
+            missing_required_after_turns: ht.missing_required_after_turns ?? 10,
+            kb_empty_consecutive: ht.kb_empty_consecutive ?? 3,
+          })
         }
-      } catch {}
+      }
 
-      // Billing entitlements
-      try {
-        const limRes = await fetch('/api/billing/limits')
-        if (limRes.ok) {
-          const limData = await limRes.json()
-          setHasVoiceEntitlement(limData.entitlements?.voice_agent_inbound?.enabled ?? true)
-        }
-      } catch {}
+      // Process billing entitlements
+      if (billingResult) {
+        setHasVoiceEntitlement(billingResult.entitlements?.voice_agent_inbound?.enabled ?? true)
+      }
+
+      // Process workflows
+      if (Array.isArray(workflowsResult)) {
+        setWorkflows(workflowsResult.map((w: any) => ({ id: w.id, name: w.name, channel: w.channel || 'multi', is_active: !!w.is_active })))
+      }
 
       setLoading(false)
-    })
-  }, [])
+    })()
+  }, [ctxOrgId, isSuperAdmin])
 
-  async function handleGenerate() {
-    setGenerating(true)
-    setError('')
-    try {
-      const res = await fetch('/api/agent/generate-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: activeChannel }),
-      })
-      if (!res.ok) throw new Error('Üretim başarısız')
-      const { system_prompt } = await res.json()
-      setCurrent(prev => ({ ...prev, systemPrompt: system_prompt }))
-    } catch {
-      setError('Prompt üretilemedi. Lütfen tekrar deneyin.')
-    } finally {
-      setGenerating(false)
-    }
-  }
 
   async function handleSave() {
     if (!orgId) return
@@ -377,17 +433,19 @@ function AgentPageInner() {
 
     const supabase = createClient()
 
-    // Persona (org-level) kaydet
-    const { data: orgRow } = await supabase
-      .from('organizations')
-      .select('ai_persona')
-      .eq('id', orgId)
-      .single()
-    const existingPersona = (orgRow?.ai_persona ?? {}) as Record<string, any>
-    await supabase
-      .from('organizations')
-      .update({ ai_persona: { ...existingPersona, persona_name: persona.name, tone: persona.tone } })
-      .eq('id', orgId)
+    // Persona (org-level) kaydet — sadece ana playbook'lar için
+    if (!activeScenario) {
+      const { data: orgRow } = await supabase
+        .from('organizations')
+        .select('ai_persona')
+        .eq('id', orgId)
+        .single()
+      const existingPersona = (orgRow?.ai_persona ?? {}) as Record<string, any>
+      await supabase
+        .from('organizations')
+        .update({ ai_persona: { ...existingPersona, persona_name: persona.name, tone: persona.tone } })
+        .eq('id', orgId)
+    }
 
     if (current.id) {
       const { error: err } = await supabase
@@ -404,12 +462,16 @@ function AgentPageInner() {
         .eq('id', current.id)
       if (err) { setError('Kaydedilemedi.'); setSaving(false); return }
     } else {
+      const playbookName = activeScenario
+        ? (editorView?.templateName ?? activeScenario)
+        : (activeChannel === 'voice' ? 'Sesli Asistan' : 'WhatsApp/Chat Asistanı')
       const { data: inserted, error: err } = await supabase
         .from('agent_playbooks')
         .insert({
           organization_id: orgId,
           channel: activeChannel,
-          name: activeChannel === 'voice' ? 'Sesli Asistan' : 'WhatsApp/Chat Asistanı',
+          name: playbookName,
+          scenario: activeScenario || null,
           system_prompt_template: current.systemPrompt,
           opening_message: current.openingMessage || null,
           hard_blocks,
@@ -430,45 +492,59 @@ function AgentPageInner() {
     setTimeout(() => setSavedChannel(null), 3000)
   }
 
-  async function handleSuggestIntake() {
-    setSuggesting(true)
-    setSuggestions([])
-    setSelectedSuggestions(new Set())
-    try {
-      const res = await fetch('/api/agent/suggest-intake', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: activeChannel }),
-      })
-      if (!res.ok) throw new Error()
-      const { fields } = await res.json()
-      setSuggestions(fields ?? [])
-      setSelectedSuggestions(new Set((fields ?? []).map((f: IntakeField) => f.key)))
-    } catch {
-      setError('Öneri üretilemedi. Lütfen tekrar deneyin.')
-    } finally {
-      setSuggesting(false)
-    }
-  }
-
-  function addSelectedSuggestions() {
-    const existingKeys = new Set(currentIntake.map(f => f.key))
-    const toAdd = suggestions.filter(f => selectedSuggestions.has(f.key) && !existingKeys.has(f.key))
-    setCurrentIntake(prev => [...prev, ...toAdd])
-    setSuggestions([])
-    setSelectedSuggestions(new Set())
-  }
 
   function removeIntakeField(i: number) {
     setCurrentIntake(prev => prev.filter((_, idx) => idx !== i))
+    if (expandedIntakeIdx === i) { setExpandedIntakeIdx(null); setAddingIntake(false) }
+    else if (expandedIntakeIdx !== null && expandedIntakeIdx > i) setExpandedIntakeIdx(expandedIntakeIdx - 1)
+  }
+
+  function toSnakeKey(label: string): string {
+    return label
+      .toLowerCase()
+      .replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ı/g, 'i')
+      .replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ü/g, 'u')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+  }
+
+  function updateIntakeField(i: number, partial: Partial<IntakeField>) {
+    setCurrentIntake(prev => prev.map((f, idx) => idx === i ? { ...f, ...partial } : f))
+  }
+
+  function togglePriority(i: number) {
+    setCurrentIntake(prev => prev.map((f, idx) => {
+      if (idx !== i) return f
+      return { ...f, priority: f.priority === 'must' ? 'should' : 'must' }
+    }))
+  }
+
+  function addIntakeField() {
+    const newField: IntakeField = { key: '', label: '', type: 'text', priority: 'should' }
+    setCurrentIntake(prev => [...prev, newField])
+    setExpandedIntakeIdx(currentIntake.length)
+    setAddingIntake(true)
+  }
+
+  function collapseIntakeField() {
+    if (addingIntake && expandedIntakeIdx !== null) {
+      const field = currentIntake[expandedIntakeIdx]
+      if (!field || !field.label.trim()) {
+        setCurrentIntake(prev => prev.filter((_, idx) => idx !== expandedIntakeIdx))
+      }
+    }
+    setExpandedIntakeIdx(null)
+    setAddingIntake(false)
   }
 
   async function handleSaveIntake() {
     if (!orgId) return
+    // Collapse any open accordion & remove empty fields
+    collapseIntakeField()
     setSavingIntake(true)
     const supabase = createClient()
     const ch      = activeChannel
-    const fields  = currentIntake
+    const fields  = currentIntake.filter(f => f.label.trim())
 
     if (currentIntakeId) {
       await supabase
@@ -501,7 +577,11 @@ function AgentPageInner() {
       const res = await fetch('/api/agent/routing-rules', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ routing_rules: routingConfig, working_hours: workingHours }),
+        body: JSON.stringify({
+          routing_rules: routingConfig,
+          working_hours: workingHours,
+          handoff_triggers: handoffConfig,
+        }),
       })
       if (!res.ok) throw new Error()
       setRoutingSaved(true)
@@ -530,9 +610,133 @@ function AgentPageInner() {
     if (ch === 'whatsapp') setWhatsapp(prev => ({ ...prev, ...data }))
   }
 
+  async function quickActivate(channel: Channel, t: AgentTemplate) {
+    if (!orgId) return
+    setSaving(true)
+    setError('')
+
+    const data = { ...t.playbook }
+    if (t.requiresCalendar && !hasCalendar) {
+      data.features = { ...data.features, calendar_booking: false }
+    }
+    const sub = (s: string) =>
+      s.replace(/\{PERSONA_ADI\}/g, persona.name || '{PERSONA_ADI}')
+       .replace(/\{KLINIK_ADI\}/g,  orgName      || '{KLINIK_ADI}')
+    data.systemPrompt   = sub(data.systemPrompt)
+    data.openingMessage = sub(data.openingMessage)
+
+    const hard_blocks = data.blocks
+      .filter(b => b.keywords.trim())
+      .map((b, i) => ({
+        trigger_id: `block_${i}`,
+        action: 'soft_block',
+        keywords: b.keywords.split(',').map(k => k.trim()).filter(Boolean),
+        response: b.response.trim(),
+      }))
+
+    const few_shot_examples = data.fewShots
+      .filter(ex => ex.user.trim() && ex.assistant.trim())
+      .map(ex => ({ user: ex.user.trim(), assistant: ex.assistant.trim() }))
+
+    const supabase = createClient()
+    const scenarioVal = t.scenario || null
+
+    // Mevcut playbook var mı kontrol et
+    const existingId = scenarioVal
+      ? scenarioPlaybooks[scenarioVal]?.id
+      : (channel === 'voice' ? voice.id : whatsapp.id)
+
+    let resultId = existingId
+    if (existingId) {
+      // UPDATE — mevcut playbook'u template ile güncelle
+      const { error: err } = await supabase
+        .from('agent_playbooks')
+        .update({
+          name: t.name,
+          system_prompt_template: data.systemPrompt,
+          opening_message: data.openingMessage || null,
+          hard_blocks,
+          features: data.features,
+          few_shot_examples,
+          fallback_responses: { no_kb_match: data.noKbMatch.trim() || null },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingId)
+      if (err) { setError('Aktifleştirilemedi.'); setSaving(false); return }
+    } else {
+      // INSERT — yeni playbook
+      const { data: inserted, error: err } = await supabase
+        .from('agent_playbooks')
+        .insert({
+          organization_id: orgId,
+          channel,
+          name: t.name,
+          scenario: scenarioVal,
+          system_prompt_template: data.systemPrompt,
+          opening_message: data.openingMessage || null,
+          hard_blocks,
+          features: data.features,
+          few_shot_examples,
+          fallback_responses: { no_kb_match: data.noKbMatch.trim() || null },
+          version: 1,
+          is_active: true,
+        })
+        .select('id')
+        .single()
+      if (err) { setError('Aktifleştirilemedi.'); setSaving(false); return }
+      resultId = inserted?.id
+    }
+
+    const newState: PlaybookState = { ...EMPTY, ...data, id: resultId }
+    if (scenarioVal) {
+      setScenarioPlaybooks(prev => ({ ...prev, [scenarioVal]: newState }))
+    } else {
+      if (channel === 'voice') setVoice(newState)
+      if (channel === 'whatsapp') setWhatsapp(newState)
+    }
+
+    setSaving(false)
+    setSavedChannel(channel)
+    setTimeout(() => setSavedChannel(null), 3000)
+  }
+
   function openEditor(channel: Channel, t: AgentTemplate | 'custom') {
     if (t !== 'custom') {
-      applyTemplate(t as AgentTemplate, channel)
+      const tpl = t as AgentTemplate
+      const tplScenario = tpl.scenario
+
+      if (tplScenario) {
+        // Senaryo şablonu — ana playbook'a dokunma
+        if (scenarioPlaybooks[tplScenario]?.id) {
+          // Zaten DB'de kayıtlı — mevcut veriyle aç (template uygulamadan)
+        } else {
+          // Henüz kayıtlı değil — template defaults'ı yaz
+          const data = { ...tpl.playbook }
+          if (tpl.requiresCalendar && !hasCalendar) {
+            data.features = { ...data.features, calendar_booking: false }
+            setCalendarWarning(true)
+          }
+          const sub = (s: string) =>
+            s.replace(/\{PERSONA_ADI\}/g, persona.name || '{PERSONA_ADI}')
+             .replace(/\{KLINIK_ADI\}/g,  orgName      || '{KLINIK_ADI}')
+          data.systemPrompt   = sub(data.systemPrompt)
+          data.openingMessage = sub(data.openingMessage)
+          setScenarioPlaybooks(prev => ({ ...prev, [tplScenario]: { ...EMPTY, ...data } }))
+        }
+        setEditorView({ channel, templateId: tpl.id, templateName: tpl.name, scenario: tplScenario })
+        setEditorTab('settings')
+        return
+      }
+
+      // Ana şablon (receptionist vb.) — eski davranış
+      const existingId = channel === 'voice' ? voice.id : whatsapp.id
+      if (existingId) {
+        const ok = window.confirm(
+          'Dikkat: Mevcut asistan ayarlarınız bu şablonla değiştirilecek. Devam etmek istiyor musunuz?'
+        )
+        if (!ok) return
+      }
+      applyTemplate(tpl, channel)
     }
     const name = t === 'custom' ? 'Özelleştirilmiş' : (t as AgentTemplate).name
     const id   = t === 'custom' ? 'custom' : (t as AgentTemplate).id
@@ -544,12 +748,6 @@ function AgentPageInner() {
     setEditorView(null)
   }
 
-  function updateRule(idx: number, patch: Partial<RoutingRule>) {
-    setRoutingConfig(prev => ({
-      ...prev,
-      rules: prev.rules.map((r, i) => i === idx ? { ...r, ...patch } : r),
-    }))
-  }
 
   function addBlock() {
     setCurrent(prev => ({ ...prev, blocks: [...prev.blocks, { keywords: '', response: '' }] }))
@@ -700,7 +898,7 @@ function AgentPageInner() {
               ))}
             </div>
           </div>
-          <KnowledgeTabSection orgId={orgId} />
+          <KnowledgeTabSection orgId={orgId} readOnly={isDemo} />
         </div>
       )
     }
@@ -727,62 +925,102 @@ function AgentPageInner() {
           </div>
         </div>
 
-        {/* Yapılandırılmış asistanlar */}
-        {(voice.id || whatsapp.id) && (
-          <section className="space-y-3">
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-              Yapılandırılmış Asistanlar
-            </h2>
-            <div className="flex flex-wrap gap-4">
-              {voice.id && (
-                <ConfiguredCard channel="voice" onClick={() => openEditor('voice', 'custom')} />
-              )}
-              {whatsapp.id && (
-                <ConfiguredCard channel="whatsapp" onClick={() => openEditor('whatsapp', 'custom')} />
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* Sesli şablonlar */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700">Sesli Görüşme</h2>
-            {!hasVoiceEntitlement && (
-              <a
-                href="/dashboard/billing"
-                className="text-xs text-brand-600 font-medium flex items-center gap-1 hover:text-brand-700"
-              >
-                <Lock size={11} /> Paketi Yükselt
-              </a>
-            )}
+        {/* ── Ana Asistanlar ─────────────────────────────────────────── */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Bot size={16} className="text-brand-500" />
+            <h2 className="text-sm font-bold text-slate-800">Ana Asistanlar</h2>
           </div>
-          <div className="flex flex-wrap gap-4">
-            {VOICE_TEMPLATES.map(t => (
-              <Phase1Card
-                key={t.id}
-                template={t}
-                locked={!hasVoiceEntitlement}
-                hasCalendar={hasCalendar}
-                onClick={() => openEditor('voice', t)}
+          <div className="flex flex-wrap gap-3">
+            {/* Sesli Resepsiyonist */}
+            {!hasVoiceEntitlement
+              ? <VoiceUpgradeCard />
+              : voice.id ? (
+                <ConfiguredCard
+                  channel="voice"
+                  label="Sesli Resepsiyonist"
+                  subtitle="Gelen aramaları karşılar, lead niteler"
+                  onEdit={() => openEditor('voice', 'custom')}
+                  onTest={() => { openEditor('voice', 'custom'); setEditorTab('test') }}
+                />
+              ) : (
+                <ConfiguredCard
+                  channel="voice"
+                  label="Sesli Resepsiyonist"
+                  subtitle="Gelen aramaları karşılar, lead niteler"
+                  unconfigured
+                  onEdit={() => {
+                    const tpl = getVoiceTemplates(clinicType, hasCalendar).find(t => !t.scenario)
+                    if (tpl) openEditor('voice', tpl)
+                    else openEditor('voice', 'custom')
+                  }}
+                  onTest={() => {}}
+                />
+              )
+            }
+            {/* Mesajlaşma Asistanı */}
+            {whatsapp.id ? (
+              <ConfiguredCard
+                channel="whatsapp"
+                label="Mesajlaşma Asistanı"
+                subtitle="WhatsApp & Instagram mesajlarını yanıtlar"
+                onEdit={() => openEditor('whatsapp', 'custom')}
+                onTest={() => { openEditor('whatsapp', 'custom'); setEditorTab('test') }}
               />
-            ))}
+            ) : (
+              <ConfiguredCard
+                channel="whatsapp"
+                label="Mesajlaşma Asistanı"
+                subtitle="WhatsApp & Instagram mesajlarını yanıtlar"
+                unconfigured
+                onEdit={() => {
+                  const tpl = getWhatsappTemplates(clinicType, hasCalendar).find(t => !t.scenario)
+                  if (tpl) openEditor('whatsapp', tpl)
+                  else openEditor('whatsapp', 'custom')
+                }}
+                onTest={() => {}}
+              />
+            )}
           </div>
         </section>
 
-        {/* WA şablonlar */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-700">Mesajlaşma (WhatsApp)</h2>
+        {/* ── Outbound Sesli Senaryolar ────────────────────────────────── */}
+        <section className="space-y-4 relative">
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1 bg-slate-100" />
+            <p className="text-xs text-slate-400 font-medium shrink-0 flex items-center gap-1.5">
+              <PhoneForwarded size={12} /> Outbound Sesli Senaryolar
+            </p>
+            <div className="h-px flex-1 bg-slate-100" />
+          </div>
+          <p className="text-xs text-slate-500">Giden aramalar için ek asistan senaryoları</p>
+
+          {!hasVoiceEntitlement && (
+            <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-2 bg-white/80 backdrop-blur-[2px] z-10">
+              <Lock size={16} className="text-slate-400" />
+              <span className="text-xs text-slate-500 font-medium">Sesli asistan paketinize dahil değil</span>
+              <a href="/dashboard/billing" className="text-xs font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1">
+                Paketi Yükselt <ArrowUpRight size={11} />
+              </a>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-4">
-            {WHATSAPP_TEMPLATES.map(t => (
-              <Phase1Card
-                key={t.id}
-                template={t}
-                locked={false}
-                hasCalendar={hasCalendar}
-                onClick={() => openEditor('whatsapp', t)}
-              />
-            ))}
+            {getVoiceTemplates(clinicType, hasCalendar)
+              .filter(t => !!t.scenario)
+              .map(t => (
+                <ScenarioCard
+                  key={t.id}
+                  template={t}
+                  isActive={!!scenarioPlaybooks[t.scenario!]?.id}
+                  locked={!hasVoiceEntitlement}
+                  onActivate={() => quickActivate('voice', t)}
+                  onEdit={() => openEditor('voice', t)}
+                  onTest={() => { openEditor('voice', t); setEditorTab('test') }}
+                  activating={saving}
+                />
+              ))
+            }
           </div>
         </section>
       </div>
@@ -822,7 +1060,7 @@ function AgentPageInner() {
               </span>
             </h1>
           </div>
-          {editorTab !== 'test' && (
+          {editorTab !== 'test' && !isDemo && (
             <button
               onClick={onSaveClick}
               disabled={saveBusy}
@@ -872,8 +1110,8 @@ function AgentPageInner() {
               </div>
             )}
 
-            {/* Asistan Kimliği */}
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
+            {/* Asistan Kimliği — senaryo playbook'larında gizle */}
+            {!activeScenario && <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
               <div>
                 <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                   <Bot size={15} className="text-brand-500" /> Asistan Kimliği
@@ -905,7 +1143,7 @@ function AgentPageInner() {
                   </select>
                 </div>
               </div>
-            </div>
+            </div>}
 
             {/* İlk Karşılama Mesajı — sadece voice */}
             {editorView.channel === 'voice' && (
@@ -937,14 +1175,10 @@ function AgentPageInner() {
                       : 'Asistanın kimliğini, görevini ve mesajlaşma davranışını tanımlar.'}
                   </p>
                 </div>
-                <button
-                  onClick={handleGenerate}
-                  disabled={generating}
-                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 border border-brand-200 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
-                >
-                  {generating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                  {generating ? 'Üretiliyor...' : 'AI ile Oluştur'}
-                </button>
+                <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <CheckCircle2 size={13} className="text-emerald-600" />
+                  <span className="text-xs font-medium text-emerald-700">23.000+ senaryoda test edildi</span>
+                </div>
               </div>
               <textarea
                 value={current.systemPrompt}
@@ -964,8 +1198,8 @@ function AgentPageInner() {
               )}
             </div>
 
-            {/* Veri Toplama Alanları */}
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
+            {/* Veri Toplama Alanları — senaryo playbook'larında gizle */}
+            {!activeScenario && <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
@@ -978,14 +1212,10 @@ function AgentPageInner() {
                   </p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
-                  <button
-                    onClick={handleSuggestIntake}
-                    disabled={suggesting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-brand-200 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
-                  >
-                    {suggesting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                    {suggesting ? 'Üretiliyor...' : 'AI Öner'}
-                  </button>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <CheckCircle2 size={13} className="text-emerald-600" />
+                    <span className="text-xs font-medium text-emerald-700">Optimize edilmiş</span>
+                  </div>
                   <button
                     onClick={handleSaveIntake}
                     disabled={savingIntake}
@@ -997,75 +1227,148 @@ function AgentPageInner() {
                 </div>
               </div>
 
-              {currentIntake.length === 0 ? (
-                <p className="text-sm text-slate-400 py-1">Henüz alan eklenmemiş. AI Öner butonunu kullanın.</p>
+              {currentIntake.length === 0 && !addingIntake ? (
+                <p className="text-sm text-slate-400 py-1">Henüz alan eklenmemiş. Aşağıdan ekleyin veya AI Öner butonunu kullanın.</p>
               ) : (
                 <div className="space-y-2">
-                  {currentIntake.map((field, i) => (
-                    <div key={field.key} className="flex items-center gap-3 px-3 py-2.5 border border-slate-100 rounded-lg bg-slate-50">
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm text-slate-700">{field.label}</span>
-                        <span className="ml-2 text-xs text-slate-400">{field.key}</span>
+                  {currentIntake.map((field, i) => {
+                    const isExpanded = expandedIntakeIdx === i
+                    return (
+                      <div key={`${field.key || 'new'}-${i}`} className="border border-slate-100 rounded-lg bg-slate-50 overflow-hidden">
+                        {/* Collapsed row */}
+                        <div className="flex items-center gap-3 px-3 py-2.5">
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm text-slate-700">{field.label || <span className="italic text-slate-400">Yeni alan...</span>}</span>
+                            {field.key && <span className="ml-2 text-xs text-slate-400 font-mono">{field.key}</span>}
+                          </div>
+                          <button
+                            onClick={() => togglePriority(i)}
+                            title="Önceliği değiştir"
+                            className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 cursor-pointer transition-colors ${
+                              field.priority === 'must'
+                                ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                : field.priority === 'nice'
+                                  ? 'bg-slate-50 text-slate-400 hover:bg-slate-100'
+                                  : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                            }`}
+                          >
+                            {field.priority === 'must' ? 'Zorunlu' : field.priority === 'nice' ? 'Bonus' : 'Opsiyonel'}
+                          </button>
+                          <button
+                            onClick={() => isExpanded ? collapseIntakeField() : (setExpandedIntakeIdx(i), setAddingIntake(false))}
+                            className="text-slate-400 hover:text-brand-500 transition-colors flex-shrink-0"
+                            title={isExpanded ? 'Kapat' : 'Düzenle'}
+                          >
+                            {isExpanded ? <ChevronUp size={14} /> : <Pencil size={14} />}
+                          </button>
+                          <button onClick={() => removeIntakeField(i)} className="text-slate-300 hover:text-red-400 transition-colors flex-shrink-0">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+
+                        {/* Expanded accordion */}
+                        {isExpanded && (
+                          <div className="border-t border-slate-100 px-4 py-3 space-y-3 bg-white">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs text-slate-500 mb-1">Etiket</label>
+                                <input
+                                  value={field.label}
+                                  onChange={e => {
+                                    const label = e.target.value
+                                    const autoKey = toSnakeKey(label)
+                                    updateIntakeField(i, { label, key: autoKey })
+                                  }}
+                                  placeholder="örn: Alerji Bilgisi"
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                  autoFocus={addingIntake}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-slate-500 mb-1">Anahtar</label>
+                                <div className="flex gap-1.5">
+                                  <input
+                                    value={field.key}
+                                    onChange={e => updateIntakeField(i, { key: e.target.value })}
+                                    placeholder="alerji_bilgisi"
+                                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                  />
+                                  <button
+                                    onClick={() => updateIntakeField(i, { key: toSnakeKey(field.label) })}
+                                    title="Etiketten otomatik oluştur"
+                                    className="px-2 py-2 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors text-slate-500"
+                                  >
+                                    Auto
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs text-slate-500 mb-1">Tip</label>
+                                <select
+                                  value={field.type}
+                                  onChange={e => updateIntakeField(i, { type: e.target.value as IntakeField['type'] })}
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                                >
+                                  <option value="text">Metin</option>
+                                  <option value="phone">Telefon</option>
+                                  <option value="email">E-posta</option>
+                                  <option value="number">Sayı</option>
+                                  <option value="select">Seçim listesi</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs text-slate-500 mb-1">Öncelik</label>
+                                <select
+                                  value={field.priority}
+                                  onChange={e => updateIntakeField(i, { priority: e.target.value as IntakeField['priority'] })}
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                                >
+                                  <option value="must">Zorunlu</option>
+                                  <option value="should">Opsiyonel</option>
+                                  <option value="nice">Bonus</option>
+                                </select>
+                              </div>
+                            </div>
+                            {editorView?.channel === 'voice' && (
+                              <div>
+                                <label className="block text-xs text-slate-500 mb-1">Soru (ses)</label>
+                                <input
+                                  value={field.voice_prompt || ''}
+                                  onChange={e => updateIntakeField(i, { voice_prompt: e.target.value })}
+                                  placeholder="örn: Herhangi bir alerjiniz var mı?"
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                />
+                              </div>
+                            )}
+                            {field.type === 'select' && (
+                              <div>
+                                <label className="block text-xs text-slate-500 mb-1">Seçenekler <span className="text-slate-400">(virgülle ayır)</span></label>
+                                <input
+                                  value={(field.options || []).join(', ')}
+                                  onChange={e => updateIntakeField(i, { options: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                                  placeholder="örn: Evet, Hayır, Bilmiyorum"
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
-                        field.priority === 'must' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {field.priority === 'must' ? 'Zorunlu' : 'Opsiyonel'}
-                      </span>
-                      <button onClick={() => removeIntakeField(i)} className="text-slate-300 hover:text-red-400 transition-colors flex-shrink-0">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
-              {suggestions.length > 0 && (
-                <div className="border border-brand-100 rounded-xl p-4 bg-brand-50 space-y-3">
-                  <p className="text-xs font-semibold text-brand-700">
-                    AI Önerileri — eklemek istediklerini seç:
-                  </p>
-                  <div className="space-y-2">
-                    {suggestions.map(f => (
-                      <label key={f.key} className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedSuggestions.has(f.key)}
-                          onChange={e => {
-                            const next = new Set(selectedSuggestions)
-                            e.target.checked ? next.add(f.key) : next.delete(f.key)
-                            setSelectedSuggestions(next)
-                          }}
-                          className="rounded border-brand-300 text-brand-600"
-                        />
-                        <span className="text-sm text-slate-700 flex-1">{f.label}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          f.priority === 'must' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'
-                        }`}>
-                          {f.priority === 'must' ? 'Zorunlu' : 'Opsiyonel'}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={addSelectedSuggestions}
-                      disabled={selectedSuggestions.size === 0}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors"
-                    >
-                      <Plus size={13} />
-                      Seçilenleri Ekle ({selectedSuggestions.size})
-                    </button>
-                    <button
-                      onClick={() => { setSuggestions([]); setSelectedSuggestions(new Set()) }}
-                      className="px-3 py-1.5 text-slate-500 hover:text-slate-700 text-xs font-medium"
-                    >
-                      İptal
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+              <button
+                onClick={addIntakeField}
+                className="flex items-center gap-1.5 text-sm text-brand-600 font-medium hover:text-brand-700"
+              >
+                <Plus size={15} /> Yeni Alan Ekle
+              </button>
+
+            </div>}
 
             {/* Koruma Blokları */}
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
@@ -1308,6 +1611,42 @@ function AgentPageInner() {
               </select>
             </div>
 
+            {/* İlgili İş Akışları */}
+            {workflows.length > 0 && (() => {
+              const channelFilter = editorView.channel === 'voice' ? 'voice' : 'whatsapp'
+              const relevant = workflows.filter(w => w.channel === channelFilter || w.channel === 'multi')
+              if (relevant.length === 0) return null
+              return (
+                <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                      <Zap size={15} className="text-brand-500" /> İlgili İş Akışları
+                    </h3>
+                    <a
+                      href="/dashboard/workflows"
+                      className="text-xs text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
+                    >
+                      İş Akışlarını Yönet <ArrowUpRight size={11} />
+                    </a>
+                  </div>
+                  <div className="space-y-2">
+                    {relevant.map(w => (
+                      <div key={w.id} className="flex items-center justify-between py-1.5">
+                        <span className="text-sm text-slate-700">{w.name}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          w.is_active
+                            ? 'bg-emerald-50 text-emerald-600'
+                            : 'bg-slate-100 text-slate-400'
+                        }`}>
+                          {w.is_active ? 'Aktif' : 'Pasif'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+
             {error && (
               <p className="text-sm text-red-600 bg-red-50 px-4 py-3 rounded-lg">{error}</p>
             )}
@@ -1318,44 +1657,6 @@ function AgentPageInner() {
         {editorTab === 'routing' && editorView.channel === 'voice' && (
           <div className="space-y-5">
 
-            {/* Transfer Numaraları */}
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-                  <PhoneForwarded size={15} className="text-brand-500" /> Transfer Numaraları
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Tier 1 kurallar tetiklendiğinde arama bu numaraya aktarılır.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Call Center (Transfer)</label>
-                  <input
-                    value={routingConfig.transfer_numbers.primary ?? ''}
-                    onChange={e => setRoutingConfig(prev => ({
-                      ...prev,
-                      transfer_numbers: { ...prev.transfer_numbers, primary: e.target.value },
-                    }))}
-                    placeholder="02122446600"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Voice Agent Hattı</label>
-                  <input
-                    value={routingConfig.transfer_numbers.voice_agent ?? ''}
-                    onChange={e => setRoutingConfig(prev => ({
-                      ...prev,
-                      transfer_numbers: { ...prev.transfer_numbers, voice_agent: e.target.value },
-                    }))}
-                    placeholder="02127098709"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-              </div>
-            </div>
-
             {/* Mesai Saatleri */}
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
               <div>
@@ -1363,7 +1664,7 @@ function AgentPageInner() {
                   <Clock size={15} className="text-brand-500" /> Mesai Saatleri
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Mesai içinde Tier 1 kurallar transfere, mesai dışında callback vaadiyle notlara yönlenir.
+                  Mesai dışında AI geri arama sözü verir ve not oluşturur.
                 </p>
               </div>
               <div className="space-y-3">
@@ -1408,99 +1709,91 @@ function AgentPageInner() {
               </div>
             </div>
 
-            {/* Yönlendirme Kuralları */}
+            {/* Devir Anahtar Kelimeleri */}
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
               <div>
-                <h2 className="text-sm font-semibold text-slate-800">Yönlendirme Kuralları</h2>
+                <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                  <PhoneForwarded size={15} className="text-brand-500" /> Devir Anahtar Kelimeleri
+                </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Tier 1 kurallar çağrıyı aktarır, Tier 2 kurallar not alıp geri arama yapar.
+                  Bu kelimeler algılandığında AI konuşmayı nazikçe kapatır ve danışmana devir oluşturur.
                 </p>
               </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Anahtar kelimeler <span className="text-slate-400">(virgülle ayır)</span></label>
+                <input
+                  value={handoffConfig.keywords.join(', ')}
+                  onChange={e => setHandoffConfig(prev => ({
+                    ...prev,
+                    keywords: e.target.value.split(',').map(k => k.trim()).filter(Boolean),
+                  }))}
+                  placeholder="insan, danışman, müdür, temsilci, yönetici"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+            </div>
 
-              {routingConfig.rules.length === 0 && (
-                <p className="text-sm text-slate-400 py-2">Henüz yönlendirme kuralı eklenmemiş.</p>
-              )}
+            {/* Frustrasyon Kelimeleri */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">Frustrasyon Kelimeleri</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Müşteri sinirli/kızgın olduğunda otomatik devir tetiklenir.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Kelimeler <span className="text-slate-400">(virgülle ayır)</span></label>
+                <input
+                  value={handoffConfig.frustration_keywords.join(', ')}
+                  onChange={e => setHandoffConfig(prev => ({
+                    ...prev,
+                    frustration_keywords: e.target.value.split(',').map(k => k.trim()).filter(Boolean),
+                  }))}
+                  placeholder="saçma, berbat, rezalet, şikayet"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+            </div>
 
-              <div className="space-y-3">
-                {routingConfig.rules.map((rule, idx) => {
-                  const tierLabel = rule.tier === 1 ? 'Transfer' : 'Not Al'
-                  const tierColor = rule.tier === 1 ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'
-                  const typeLabels: Record<string, string> = {
-                    kb_fallback:    'KB Fallback',
-                    intent:         'Niyet',
-                    topic_note:     'Konu',
-                    sentiment_note: 'Duygu',
-                  }
-                  const isTier1 = rule.tier === 1
-
-                  return (
-                    <div key={rule.id} className={`border rounded-xl p-4 space-y-3 transition-colors ${rule.active ? 'border-slate-100 bg-slate-50' : 'border-slate-100 bg-white opacity-50'}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => updateRule(idx, { active: !rule.active })}
-                            className={`relative inline-flex h-5 w-9 rounded-full transition-colors flex-shrink-0 ${rule.active ? 'bg-brand-500' : 'bg-slate-200'}`}
-                          >
-                            <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${rule.active ? 'translate-x-4' : ''}`} />
-                          </button>
-                          <span className="text-sm font-medium text-slate-800">
-                            {typeLabels[rule.type] ?? rule.type}
-                          </span>
-                          <span className="text-xs text-slate-400 font-mono">{rule.id}</span>
-                        </div>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tierColor}`}>
-                          Tier {rule.tier} — {tierLabel}
-                        </span>
-                      </div>
-
-                      {rule.keywords && rule.keywords.length > 0 && (
-                        <div>
-                          <label className="block text-xs text-slate-500 mb-1">Anahtar kelimeler <span className="text-slate-400">(virgülle ayır)</span></label>
-                          <input
-                            value={rule.keywords.join(', ')}
-                            onChange={e => updateRule(idx, {
-                              keywords: e.target.value.split(',').map(k => k.trim()).filter(Boolean),
-                            })}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                          />
-                        </div>
-                      )}
-
-                      {isTier1 ? (
-                        <>
-                          <div>
-                            <label className="block text-xs text-slate-500 mb-1">Mesai içi mesajı</label>
-                            <textarea
-                              value={rule.transition_message ?? ''}
-                              onChange={e => updateRule(idx, { transition_message: e.target.value })}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-slate-500 mb-1">Mesai dışı mesajı</label>
-                            <textarea
-                              value={rule.after_hours_message ?? ''}
-                              onChange={e => updateRule(idx, { after_hours_message: e.target.value })}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <div>
-                          <label className="block text-xs text-slate-500 mb-1">Geri arama mesajı</label>
-                          <textarea
-                            value={rule.note_message ?? ''}
-                            onChange={e => updateRule(idx, { note_message: e.target.value })}
-                            rows={2}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+            {/* Otomatik Devir Eşikleri */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">Otomatik Devir Eşikleri</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Belirli koşullar sağlandığında AI konuşmayı otomatik danışmana devreder.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Zorunlu bilgi toplanamadı (tur)</label>
+                  <input
+                    type="number"
+                    min={3}
+                    max={20}
+                    value={handoffConfig.missing_required_after_turns}
+                    onChange={e => setHandoffConfig(prev => ({
+                      ...prev,
+                      missing_required_after_turns: parseInt(e.target.value) || 10,
+                    }))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">X turda zorunlu bilgi alınamazsa devret</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Art arda KB eşleşme yok</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={handoffConfig.kb_empty_consecutive}
+                    onChange={e => setHandoffConfig(prev => ({
+                      ...prev,
+                      kb_empty_consecutive: parseInt(e.target.value) || 3,
+                    }))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">Art arda X kez KB boş gelirse devret</p>
+                </div>
               </div>
             </div>
 
@@ -1530,6 +1823,7 @@ function AgentPageInner() {
                   ? voice.systemPrompt.length
                   : whatsapp.systemPrompt.length
               }
+              scenario={editorView?.scenario}
             />
           </div>
         )}
@@ -1610,72 +1904,191 @@ function AgentPageInner() {
 
 // ─── HELPER COMPONENTS ────────────────────────────────────────────────────────
 
-function Phase1Card({
+function ScenarioCard({
   template,
+  isActive,
   locked,
-  hasCalendar,
-  onClick,
+  onActivate,
+  onEdit,
+  onTest,
+  activating,
 }: {
   template: AgentTemplate
+  isActive: boolean
   locked: boolean
-  hasCalendar: boolean
-  onClick: () => void
+  onActivate: () => void
+  onEdit: () => void
+  onTest: () => void
+  activating?: boolean
 }) {
+  const borderColor = isActive ? 'border-emerald-200' : 'border-slate-100'
+  const bgColor = isActive ? 'bg-emerald-50/40' : 'bg-white'
   return (
-    <button
-      onClick={locked ? undefined : onClick}
-      disabled={locked}
-      className="relative flex-shrink-0 w-40 min-h-[190px] rounded-xl border-2 border-slate-100 bg-white p-4
-        text-left flex flex-col gap-2 transition-all
-        hover:border-brand-200 hover:shadow-sm disabled:cursor-not-allowed"
+    <div
+      className={`relative flex-shrink-0 w-52 min-h-[200px] rounded-xl border-2 ${borderColor} ${bgColor} p-4
+        text-left flex flex-col gap-2 transition-all hover:shadow-sm`}
     >
       {locked && (
-        <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-1.5 bg-white/80 backdrop-blur-[1px]">
+        <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-1.5 bg-white/80 backdrop-blur-[1px] z-10">
           <Lock size={14} className="text-slate-400" />
           <span className="text-xs text-slate-400">Paket gerekli</span>
         </div>
       )}
-      {template.recommended && (
-        <span className="text-[10px] font-semibold text-amber-600 flex items-center gap-0.5">
-          <Star size={10} className="fill-amber-400 text-amber-400" /> Önerilen
-        </span>
-      )}
-      <p className="text-sm font-semibold text-slate-800 leading-tight">{template.name}</p>
-      <p className="text-xs text-slate-400 leading-relaxed line-clamp-4 flex-1">{template.description}</p>
-      {template.requiresCalendar && !hasCalendar && (
-        <p className="text-[10px] text-amber-500 flex items-center gap-0.5 mt-auto">
-          <Info size={9} /> Takvim gerekir
-        </p>
-      )}
-    </button>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-slate-800 leading-tight">{template.name}</p>
+        {isActive && (
+          <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> Aktif
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-slate-400 leading-relaxed line-clamp-3 flex-1">{template.description}</p>
+      <div className="flex gap-1.5 mt-auto pt-1">
+        {isActive ? (
+          <>
+            <button
+              onClick={locked ? undefined : onTest}
+              disabled={locked}
+              className="flex-1 text-[11px] font-medium px-2 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+            >
+              <FlaskConical size={11} /> Test Et
+            </button>
+            <button
+              onClick={locked ? undefined : onEdit}
+              disabled={locked}
+              className="flex-1 text-[11px] font-medium px-2 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+            >
+              Düzenle <ArrowRight size={11} />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={locked ? undefined : onActivate}
+              disabled={locked || activating}
+              className="flex-1 text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+            >
+              {activating ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
+              Aktifleştir
+            </button>
+            <button
+              onClick={locked ? undefined : onEdit}
+              disabled={locked}
+              className="text-[11px] font-medium px-2 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors disabled:opacity-50"
+            >
+              Özelleştir
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
 function ConfiguredCard({
   channel,
-  onClick,
+  onEdit,
+  onTest,
+  label,
+  subtitle,
+  unconfigured,
 }: {
   channel: 'voice' | 'whatsapp'
-  onClick: () => void
+  onEdit: () => void
+  onTest: () => void
+  label?: string
+  subtitle?: string
+  unconfigured?: boolean
 }) {
+  const isVoice = channel === 'voice'
+  const borderColor = unconfigured ? 'border-amber-200' : 'border-emerald-100'
+  const bgColor = unconfigured ? 'bg-amber-50/40' : 'bg-emerald-50/40'
+  const iconBg = unconfigured ? 'bg-amber-100' : 'bg-emerald-100'
+  const iconColor = unconfigured ? 'text-amber-600' : 'text-emerald-600'
   return (
-    <button
-      onClick={onClick}
-      className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border-2 border-brand-100 bg-brand-50/40 hover:border-brand-300 transition-all w-64"
-    >
-      <div className="flex items-center gap-2">
-        {channel === 'voice'
-          ? <Mic size={15} className="text-brand-500" />
-          : <MessageSquare size={15} className="text-brand-500" />}
-        <div className="text-left">
-          <p className="text-sm font-medium text-slate-800">
-            {channel === 'voice' ? 'Sesli Görüşme' : 'Mesajlaşma'}
-          </p>
-          <p className="text-xs text-slate-400">Özelleştirilmiş yapılandırma</p>
+    <div className={`flex-1 min-w-[220px] rounded-2xl border-2 ${borderColor} ${bgColor} p-4 flex flex-col gap-3`}>
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <div className={`p-2 rounded-lg ${iconBg}`}>
+            {isVoice
+              ? <Mic size={16} className={iconColor} />
+              : <MessageSquare size={16} className={iconColor} />}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-800">
+              {label ?? (isVoice ? 'Sesli Resepsiyonist' : 'Mesajlaşma Asistanı')}
+            </p>
+            <p className="text-xs text-slate-500">
+              {subtitle ?? (isVoice ? 'Gelen aramaları karşılar, lead niteler' : 'WhatsApp & Instagram mesajlarını yanıtlar')}
+            </p>
+          </div>
         </div>
+        {unconfigured ? (
+          <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full shrink-0">
+            Yapılandırılmadı
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> Aktif
+          </span>
+        )}
       </div>
-      <ArrowRight size={14} className="text-slate-400 flex-shrink-0" />
-    </button>
+      <div className="flex gap-2 mt-1">
+        {unconfigured ? (
+          <button
+            onClick={onEdit}
+            className="flex-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1"
+          >
+            Yapılandır <ArrowRight size={12} />
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={onTest}
+              className="flex-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors flex items-center justify-center gap-1"
+            >
+              <FlaskConical size={12} /> Test Et
+            </button>
+            <button
+              onClick={onEdit}
+              className="flex-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white transition-colors flex items-center justify-center gap-1"
+            >
+              Düzenle <ArrowRight size={12} />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function VoiceUpgradeCard() {
+  return (
+    <div className="flex-1 min-w-[220px] rounded-2xl border-2 border-amber-100 bg-amber-50/40 p-4 flex flex-col gap-3">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <div className="p-2 rounded-lg bg-amber-100">
+            <Mic size={16} className="text-amber-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-800">Sesli Asistan</p>
+            <p className="text-xs text-slate-500">Gelen aramaları otomatik karşılar</p>
+          </div>
+        </div>
+        <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full shrink-0">
+          <Lock size={9} /> Kilitli
+        </span>
+      </div>
+      <p className="text-xs text-slate-500 leading-relaxed">
+        Mevcut paketinizde sesli asistan özelliği bulunmuyor. Aktif etmek için planınızı yükseltin.
+      </p>
+      <a
+        href="/dashboard/billing"
+        className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1"
+      >
+        Paketi Yükselt <ArrowUpRight size={12} />
+      </a>
+    </div>
   )
 }
 

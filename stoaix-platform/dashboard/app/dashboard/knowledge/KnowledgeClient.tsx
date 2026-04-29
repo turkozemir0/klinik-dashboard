@@ -11,6 +11,7 @@ interface Props {
   items: KnowledgeItem[]
   orgId: string
   sector: string
+  readOnly?: boolean
 }
 
 const typeColors: Record<string, string> = {
@@ -43,7 +44,7 @@ function getItemSubtitle(item: KnowledgeItem): string {
   return ''
 }
 
-export default function KnowledgeClient({ items: initialItems, orgId, sector }: Props) {
+export default function KnowledgeClient({ items: initialItems, orgId, sector, readOnly }: Props) {
   const t = useT()
   const [items, setItems] = useState<KnowledgeItem[]>(initialItems)
   const [search, setSearch] = useState('')
@@ -97,20 +98,24 @@ export default function KnowledgeClient({ items: initialItems, orgId, sector }: 
         <h1 className="text-xl font-bold text-slate-900">{t.knowledgeTitle}</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-500">{items.length} kayıt</span>
-          <button
-            onClick={() => setScraperOpen(true)}
-            className="flex items-center gap-1.5 border border-slate-200 hover:border-brand-400 hover:text-brand-600 text-slate-600 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            <Globe size={15} />
-            Web'den İçe Aktar
-          </button>
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus size={15} />
-            Yeni Ekle
-          </button>
+          {!readOnly && (
+            <>
+              <button
+                onClick={() => setScraperOpen(true)}
+                className="flex items-center gap-1.5 border border-slate-200 hover:border-brand-400 hover:text-brand-600 text-slate-600 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                <Globe size={15} />
+                Web'den İçe Aktar
+              </button>
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                <Plus size={15} />
+                Yeni Ekle
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -135,7 +140,7 @@ export default function KnowledgeClient({ items: initialItems, orgId, sector }: 
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.title}</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.tags}</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Güncellendi</th>
-              <th className="px-5 py-3" />
+              {!readOnly && <th className="px-5 py-3" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -165,25 +170,27 @@ export default function KnowledgeClient({ items: initialItems, orgId, sector }: 
                   <td className="px-5 py-3 text-xs text-slate-400">
                     {new Date(item.updated_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                   </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button
-                        onClick={() => openEdit(item)}
-                        className="text-slate-400 hover:text-brand-600 transition-colors"
-                        title="Düzenle"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        disabled={deletingId === item.id}
-                        className="text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40"
-                        title="Sil"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
+                  {!readOnly && (
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2 justify-end">
+                        <button
+                          onClick={() => openEdit(item)}
+                          className="text-slate-400 hover:text-brand-600 transition-colors"
+                          title="Düzenle"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          disabled={deletingId === item.id}
+                          className="text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40"
+                          title="Sil"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               )
             })}

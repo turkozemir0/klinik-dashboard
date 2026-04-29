@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as sbAdmin } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import { checkChannelReady } from '@/lib/integration-health'
+import { getTemplate } from '@/lib/workflow-templates'
 
 function getServiceClient() {
   return sbAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -27,6 +29,31 @@ export async function PATCH(
 
   const body = await request.json()
   const { is_active, config } = body
+
+  // Channel readiness check when activating
+  if (is_active === true) {
+    const service = getServiceClient()
+    const { data: workflow } = await service
+      .from('org_workflows')
+      .select('template_id')
+      .eq('id', params.id)
+      .eq('organization_id', orgUser.organization_id)
+      .maybeSingle()
+
+    if (workflow) {
+      const template = getTemplate(workflow.template_id)
+      if (template) {
+        const channelCheck = await checkChannelReady(orgUser.organization_id, template.channel)
+        if (!channelCheck.ready) {
+          return NextResponse.json({
+            error:   'channel_not_ready',
+            missing: channelCheck.missing,
+            message: `Bu iş akışını aktifleştirmek için şu entegrasyonları tamamlayın: ${channelCheck.missing.join(', ')}`,
+          }, { status: 400 })
+        }
+      }
+    }
+  }
 
   const updates: Record<string, any> = { updated_at: new Date().toISOString() }
   if (typeof is_active === 'boolean') updates.is_active = is_active

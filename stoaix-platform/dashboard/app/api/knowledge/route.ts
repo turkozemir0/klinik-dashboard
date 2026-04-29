@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 import { checkEntitlement, incrementUsage } from '@/lib/entitlements'
 import { getSchema } from '@/lib/kb-schemas'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 function getOpenAI() { return new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) }
 
@@ -59,6 +60,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'title ve organization_id zorunlu' }, { status: 400 })
   }
 
+  const blocked = demoWriteBlock(organization_id)
+  if (blocked) return blocked
+
   const ent = await checkEntitlement(organization_id, 'kb_write')
   if (!ent.enabled) return NextResponse.json({ error: 'upgrade_required', feature: 'kb_write' }, { status: 403 })
   if (ent.remaining !== null && ent.remaining <= 0) {
@@ -97,5 +101,13 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   await incrementUsage(organization_id, 'kb_write')
+
+  // Fire-and-forget: kb item added event
+  service.from('org_events').insert({
+    org_id: organization_id,
+    event_type: 'kb_item_added',
+    metadata: { item_type: item_type || 'faq', title },
+  }).then(() => {})
+
   return NextResponse.json(data)
 }

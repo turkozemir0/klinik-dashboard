@@ -30,6 +30,7 @@ interface ColState {
 interface Props {
   orgId: string
   pipeline: Pipeline | null
+  readOnly?: boolean
 }
 
 // Default pipeline — static columns matching leads.status
@@ -48,7 +49,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   qualified: 'Randevu', converted: 'Dönüştü', lost: 'Kayıp',
 }
 
-const PAGE_SIZE = 30
+const PAGE_SIZE = 20
 
 function ScoreBadge({ score }: { score: number }) {
   const color =
@@ -213,7 +214,7 @@ function AddLeadToStageModal({
 
 // ── Default Pipeline Board ─────────────────────────────────────────────────────
 
-function DefaultKanban({ orgId }: { orgId: string }) {
+function DefaultKanban({ orgId, readOnly }: { orgId: string; readOnly?: boolean }) {
   const [cols, setCols] = useState<Record<string, ColState>>(() =>
     Object.fromEntries(DEFAULT_COLUMNS.map(c => [c.key, initCol()]))
   )
@@ -294,7 +295,7 @@ function DefaultKanban({ orgId }: { orgId: string }) {
         <select
           value={lead.status}
           onChange={e => moveToStatus(lead.id, colId, e.target.value as LeadStatus)}
-          disabled={movingId === lead.id}
+          disabled={readOnly || movingId === lead.id}
           className="text-[10px] border border-slate-200 rounded px-1 py-1 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-brand-400 disabled:opacity-50"
         >
           {DEFAULT_COLUMNS.map(c => (
@@ -308,7 +309,7 @@ function DefaultKanban({ orgId }: { orgId: string }) {
 
 // ── Custom Pipeline Board ──────────────────────────────────────────────────────
 
-function CustomKanban({ orgId, pipeline }: { orgId: string; pipeline: Pipeline }) {
+function CustomKanban({ orgId, pipeline, readOnly }: { orgId: string; pipeline: Pipeline; readOnly?: boolean }) {
   const stages = (pipeline.stages ?? []).slice().sort((a, b) => a.position - b.position)
 
   const [cols, setCols] = useState<Record<string, ColState>>(() =>
@@ -407,12 +408,12 @@ function CustomKanban({ orgId, pipeline }: { orgId: string; pipeline: Pipeline }
         movingId={movingId}
         onSearch={handleSearch}
         onLoadMore={loadMore}
-        onAddClick={(stageId, stageName) => setAddModal({ stageId, stageName })}
+        onAddClick={readOnly ? undefined : (stageId, stageName) => setAddModal({ stageId, stageName })}
         renderMoveControl={(lead, colId) => (
           <select
             value={colId}
             onChange={e => moveToStage(lead.id, colId, e.target.value)}
-            disabled={movingId === lead.id}
+            disabled={readOnly || movingId === lead.id}
             className="text-[10px] border border-slate-200 rounded px-1 py-1 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-brand-400 disabled:opacity-50"
           >
             {stages.map(s => (
@@ -595,9 +596,9 @@ function KanbanGrid({
 
 // ── Main Export ────────────────────────────────────────────────────────────────
 
-export default function KanbanBoard({ orgId, pipeline }: Props) {
+export default function KanbanBoard({ orgId, pipeline, readOnly }: Props) {
   if (!pipeline || pipeline.is_default) {
-    return <DefaultKanban orgId={orgId} />
+    return <DefaultKanban orgId={orgId} readOnly={readOnly} />
   }
-  return <CustomKanban orgId={orgId} pipeline={pipeline} />
+  return <CustomKanban orgId={orgId} pipeline={pipeline} readOnly={readOnly} />
 }

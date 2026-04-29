@@ -1,10 +1,15 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { Users, Flame, TrendingUp, ArrowRight, Star, CalendarDays } from 'lucide-react'
+import { Users, Flame, TrendingUp, ArrowRight, Star, CalendarDays, Plus } from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import TrendChart from '@/components/TrendChart'
 import LeadBadge from '@/components/LeadBadge'
-import SetupBanner from '@/components/setup/SetupBanner'
+import SetupCommandCenter from '@/components/setup/SetupCommandCenter'
+import Avatar from '@/components/Avatar'
+import ChannelBadge from '@/components/ChannelBadge'
+import Card from '@/components/Card'
+import TopBar from '@/components/TopBar'
+import GlobalSearch from '@/components/GlobalSearch'
 import { getT } from '@/lib/i18n'
 import { cookies } from 'next/headers'
 import { formatDuration } from '@/lib/types'
@@ -19,7 +24,6 @@ async function getOrgId(supabase: any, userId: string) {
     .maybeSingle()
 
   if (superAdmin) {
-    // Super admin: use first active org or null for all
     const { data: firstOrg } = await supabase
       .from('organizations')
       .select('id')
@@ -33,9 +37,18 @@ async function getOrgId(supabase: any, userId: string) {
     .from('org_users')
     .select('organization_id')
     .eq('user_id', userId)
+    .order('created_at', { ascending: false })
     .maybeSingle()
 
   return orgUser?.organization_id ?? null
+}
+
+function computeWoWDelta(trendData: DailyTrend[], key: keyof DailyTrend): number {
+  if (trendData.length < 14) return 0
+  const prev = trendData.slice(0, 7).reduce((s, d) => s + (Number(d[key]) || 0), 0)
+  const curr = trendData.slice(7).reduce((s, d) => s + (Number(d[key]) || 0), 0)
+  if (prev === 0) return curr > 0 ? 100 : 0
+  return Math.round(((curr - prev) / prev) * 100)
 }
 
 export default async function DashboardPage() {
@@ -117,23 +130,40 @@ export default async function DashboardPage() {
 
   const handoffRate = totalLeads > 0 ? Math.round((totalHandoffs / totalLeads) * 100) : 0
 
+  // Week-over-week deltas from trend data
+  const convDelta = computeWoWDelta(trendData, 'conversations')
+  const hotDelta = computeWoWDelta(trendData, 'hot_leads')
+  const handoffDelta = computeWoWDelta(trendData, 'handoffs')
+
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">{t.dashboardTitle}</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Genel performans özeti</p>
-      </div>
+      <TopBar
+        title={t.dashboardTitle}
+        subtitle={lang === 'tr' ? 'Genel performans özeti' : 'Performance overview'}
+        primaryCta={
+          <div className="flex items-center gap-3">
+            <GlobalSearch />
+            <Link
+              href="/dashboard/crm"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-brand-500 to-sky-400 hover:from-brand-600 hover:to-sky-500 text-white text-sm font-semibold rounded-xl transition-all shadow-sm"
+            >
+              <Plus size={16} />
+              {lang === 'tr' ? 'Müşteri Kayıt' : 'Add Lead'}
+            </Link>
+          </div>
+        }
+      />
 
-      <SetupBanner />
+      <SetupCommandCenter />
 
       <div id="dashboard-main-content" className="space-y-6 transition-all duration-300">
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard title={t.totalLeads} value={totalLeads} icon={Users} color="blue" />
-        <StatCard title={t.hotLeads} value={hotLeads} icon={Flame} color="red" />
+        <StatCard title={t.totalLeads} value={totalLeads} icon={Users} color="blue" delta={convDelta} />
+        <StatCard title={t.hotLeads} value={hotLeads} icon={Flame} color="red" delta={hotDelta} />
         <StatCard title={t.warmLeads} value={warmLeads} icon={TrendingUp} color="amber" />
-        <StatCard title={t.handoffs} value={totalHandoffs} icon={ArrowRight} color="purple" />
+        <StatCard title={t.handoffs} value={totalHandoffs} icon={ArrowRight} color="purple" delta={handoffDelta} />
         <StatCard title={t.avgScore} value={avgScore} icon={Star} color="green" subtitle="/ 100" />
         <StatCard title={t.todayNew} value={todayNew} icon={CalendarDays} color="slate" />
       </div>
@@ -141,15 +171,18 @@ export default async function DashboardPage() {
       {/* Charts row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Trend chart */}
-        <div className="xl:col-span-2 bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-4">{t.last14Days}</h2>
+        <Card title={t.last14Days} className="xl:col-span-2">
+          <div className="flex items-center gap-4 mb-4">
+            <span className="flex items-center gap-1.5 text-xs text-slate-500"><span className="w-2 h-2 rounded-full bg-sky-500 inline-block" /> {lang === 'tr' ? 'Konuşmalar' : 'Conversations'}</span>
+            <span className="flex items-center gap-1.5 text-xs text-slate-500"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Hot Leads</span>
+            <span className="flex items-center gap-1.5 text-xs text-slate-500"><span className="w-2 h-2 rounded-full bg-purple-500 inline-block" /> Handoffs</span>
+          </div>
           <TrendChart data={trendData} />
-        </div>
+        </Card>
 
         {/* Distribution + Handoff rate */}
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-            <h2 className="text-sm font-semibold text-slate-700 mb-4">{t.leadDistribution}</h2>
+          <Card title={t.leadDistribution}>
             <div className="space-y-2.5">
               {[
                 { label: 'HOT', count: hotLeads, color: 'bg-red-500', pct: totalLeads > 0 ? Math.round(hotLeads / totalLeads * 100) : 0 },
@@ -167,26 +200,27 @@ export default async function DashboardPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
 
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-            <h2 className="text-sm font-semibold text-slate-700 mb-2">{t.handoffRate}</h2>
+          <Card title={t.handoffRate}>
             <p className="text-4xl font-bold text-slate-900">{handoffRate}<span className="text-lg text-slate-400">%</span></p>
             <p className="text-xs text-slate-400 mt-1">{totalHandoffs} / {totalLeads} lead</p>
-          </div>
+          </Card>
         </div>
       </div>
 
       {/* Recent rows */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {/* Recent Leads */}
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-50">
-            <h2 className="text-sm font-semibold text-slate-700">{t.recentConversations}</h2>
+        <Card
+          title={t.recentConversations}
+          action={
             <Link href="/dashboard/conversations" className="text-xs text-brand-500 hover:text-brand-600 font-medium">
-              Tümü &rarr;
+              {lang === 'tr' ? 'Tümü' : 'All'} &rarr;
             </Link>
-          </div>
+          }
+          noPadding
+        >
           <div className="divide-y divide-slate-50">
             {recentLeads.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-slate-400">{t.noData}</p>
@@ -196,31 +230,34 @@ export default async function DashboardPage() {
                 href={`/dashboard/conversations/${lead.id}`}
                 className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600 flex-shrink-0">
-                  {(lead.contact?.full_name || lead.contact?.phone || '?').charAt(0).toUpperCase()}
-                </div>
+                <Avatar name={lead.contact?.full_name || lead.contact?.phone || '?'} size={32} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">
                     {lead.contact?.full_name || lead.contact?.phone || 'Bilinmeyen'}
                   </p>
-                  <p className="text-xs text-slate-400 truncate">
-                    {lead.collected_data?.target_country || lead.collected_data?.city || lead.source_channel}
-                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {lead.source_channel && <ChannelBadge channel={lead.source_channel} size="sm" />}
+                    <span className="text-xs text-slate-400 truncate">
+                      {lead.collected_data?.target_country || lead.collected_data?.city || ''}
+                    </span>
+                  </div>
                 </div>
                 <LeadBadge score={lead.qualification_score} />
               </Link>
             ))}
           </div>
-        </div>
+        </Card>
 
         {/* Recent Calls */}
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-50">
-            <h2 className="text-sm font-semibold text-slate-700">{t.recentCalls}</h2>
+        <Card
+          title={t.recentCalls}
+          action={
             <Link href="/dashboard/calls" className="text-xs text-brand-500 hover:text-brand-600 font-medium">
-              Tümü &rarr;
+              {lang === 'tr' ? 'Tümü' : 'All'} &rarr;
             </Link>
-          </div>
+          }
+          noPadding
+        >
           <div className="divide-y divide-slate-50">
             {recentCalls.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-slate-400">{t.noData}</p>
@@ -239,7 +276,7 @@ export default async function DashboardPage() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
 
       </div> {/* dashboard-main-content */}

@@ -9,18 +9,18 @@ import { createClient as createSupabase } from '@supabase/supabase-js'
 
 const PLAN_LABELS: Record<string, string> = {
   legacy: 'Legacy',
-  lite: 'Lite',
-  plus: 'Plus',
-  advanced: 'Advanced',
-  agency: 'Agency',
+  essential: 'Essential',
+  professional: 'Professional',
+  business: 'Business',
+  custom: 'Custom',
 }
 
 const PLAN_BADGE: Record<string, string> = {
   legacy: 'bg-slate-100 text-slate-500',
-  lite: 'bg-sky-100 text-sky-700',
-  plus: 'bg-violet-100 text-violet-700',
-  advanced: 'bg-orange-100 text-orange-700',
-  agency: 'bg-rose-100 text-rose-700',
+  essential: 'bg-sky-100 text-sky-700',
+  professional: 'bg-violet-100 text-violet-700',
+  business: 'bg-orange-100 text-orange-700',
+  custom: 'bg-rose-100 text-rose-700',
 }
 
 const REASON_LABELS: Record<string, string> = {
@@ -104,7 +104,7 @@ export default function OrgBillingPage() {
 
   // Offer modal state
   const [showOfferModal, setShowOfferModal] = useState(false)
-  const [offerForm, setOfferForm] = useState({ plan_id: 'plus', interval: 'monthly', discount_percent: '' })
+  const [offerForm, setOfferForm] = useState({ plan_id: 'professional', interval: 'monthly', discount_percent: '' })
   const [offerLoading, setOfferLoading] = useState(false)
   const [offerUrl, setOfferUrl] = useState<string | null>(null)
   const [offerCopied, setOfferCopied] = useState(false)
@@ -308,7 +308,7 @@ export default function OrgBillingPage() {
         <div className="flex items-center gap-2">
           {planId === 'legacy' && (
             <button
-              onClick={() => { setOfferUrl(null); setOfferForm({ plan_id: 'plus', interval: 'monthly', discount_percent: '' }); setShowOfferModal(true) }}
+              onClick={() => { setOfferUrl(null); setOfferForm({ plan_id: 'professional', interval: 'monthly', discount_percent: '' }); setShowOfferModal(true) }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
             >
               Plan Teklifi Gönder
@@ -459,10 +459,10 @@ export default function OrgBillingPage() {
                   onChange={e => setOfferForm(f => ({ ...f, plan_id: e.target.value }))}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="lite">Lite — $79/ay</option>
-                  <option value="plus">Plus — $149/ay</option>
-                  <option value="advanced">Advanced — $299/ay</option>
-                  <option value="agency">Agency — $499/ay</option>
+                  <option value="essential">Essential — $79/ay</option>
+                  <option value="professional">Professional — $149/ay</option>
+                  <option value="business">Business — $299/ay</option>
+                  <option value="custom">Custom — Görüşmeli</option>
                 </select>
               </div>
 

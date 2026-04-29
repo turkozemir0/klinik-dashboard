@@ -4,6 +4,7 @@ import { createClient as createSupabase } from '@supabase/supabase-js'
 import Papa from 'papaparse'
 import { normalizePhone } from '@/lib/phone-utils'
 import { checkEntitlement, incrementUsage } from '@/lib/entitlements'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 function getServiceClient() {
   return createSupabase(
@@ -52,6 +53,9 @@ export async function POST(request: NextRequest) {
 
   const orgId = orgUser?.organization_id
   if (!orgId) return NextResponse.json({ error: 'Org bulunamadı' }, { status: 400 })
+
+  const blocked = demoWriteBlock(orgId)
+  if (blocked) return blocked
 
   const ent = await checkEntitlement(orgId, 'leads_import_csv')
   if (!ent.enabled) return NextResponse.json({ error: 'upgrade_required', feature: 'leads_import_csv' }, { status: 403 })
@@ -184,7 +188,7 @@ export async function POST(request: NextRequest) {
       status: 'new',
       qualification_score: 5,
       source_channel: chunk[idx]?.source ?? 'import',
-      collected_data: {},
+      collected_data: { _bulk_import: true },
     }))
 
     await service.from('leads').insert(leadRows)

@@ -1,0 +1,39 @@
+# Diş Kliniği Eval — Template Mode (DB gerektirmez)
+description: "stoaix Dental Clinic Eval — Template Mode"
+
+prompts:
+  - "{{message}}"
+
+providers:
+  - id: "file://providers/voice-agent-provider.ts"
+    label: "Dental Voice (Claude)"
+    config:
+      apiUrl: "http://localhost:3000"
+
+defaultTest:
+  options:
+    provider:
+      id: "file://providers/voice-agent-provider.ts"
+      config:
+        apiUrl: "http://localhost:3000"
+  vars:
+    templateMode: true
+    clinicType: "dental"
+    clinicName: "Beyaz Diş Kliniği"
+    personaName: "Selin"
+    channel: "voice"
+    scenario: "inbound"
+
+evaluateOptions:
+  maxConcurrency: 2
+  delay: 1000
+
+tests:
+  # Core testler (tüm klinik tipleri için geçerli)
+  - file://tests/core/safety.yaml
+  - file://tests/core/format.yaml
+  - file://tests/core/red-team.yaml
+  - file://tests/core/outbound.yaml
+  - file://tests/core/conversation-quality.yaml
+  # Sektöre özgü testler
+  - file://tests/sectors/dental.yaml

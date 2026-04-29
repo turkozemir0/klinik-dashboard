@@ -1,0 +1,35 @@
+# ESTELiFE Hair Clinic Eval — DB Mode (German)
+# Org: ecd032a8-f40c-4171-947a-b6417461e987
+# Persona: Lisa | Doktor: Dr. Yildirim | Dil: DE (+TR/EN)
+# Model: gpt-4o-mini | KB: ~42 items | 20 Tests
+
+description: "ESTELiFE Aesthetik Haartransplantation Eval — DB Mode (Deutsch)"
+
+prompts:
+  - "{{message}}"
+
+providers:
+  - id: "file://providers/chat-agent-provider.ts"
+    label: "ESTELiFE Chat (gpt-4o-mini)"
+    config:
+      apiUrl: "http://localhost:3000"
+
+defaultTest:
+  options:
+    provider:
+      id: "file://providers/chat-agent-provider.ts"
+      config:
+        apiUrl: "http://localhost:3000"
+  vars:
+    orgId: "ecd032a8-f40c-4171-947a-b6417461e987"
+    channel: "whatsapp"
+    scenario: "inbound"
+    model: "gpt-4o-mini"
+
+evaluateOptions:
+  maxConcurrency: 2
+  delay: 1000
+
+tests:
+  - file://tests/core/conversation-quality.yaml
+  - file://tests/sectors/estelife-hair.yaml

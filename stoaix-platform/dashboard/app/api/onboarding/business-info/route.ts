@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 export async function PATCH(request: NextRequest) {
   const supabase = createClient()
@@ -19,6 +20,9 @@ export async function PATCH(request: NextRequest) {
     .maybeSingle()
 
   if (!orgUser) return NextResponse.json({ error: 'Org bulunamadı' }, { status: 404 })
+
+  const blocked = demoWriteBlock(orgUser.organization_id)
+  if (blocked) return blocked
 
   const { error } = await service
     .from('organizations')

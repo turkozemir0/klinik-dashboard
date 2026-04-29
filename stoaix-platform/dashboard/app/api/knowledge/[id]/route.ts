@@ -3,6 +3,7 @@ import { createServiceClient, createClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 import { checkEntitlement, decrementUsage } from '@/lib/entitlements'
 import { getSchema } from '@/lib/kb-schemas'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 function getOpenAI() { return new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) }
 
@@ -34,6 +35,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   const body = await request.json()
   const orgId = body.organization_id as string | undefined
+
+  const blocked = demoWriteBlock(orgId)
+  if (blocked) return blocked
+
   if (orgId) {
     const ent = await checkEntitlement(orgId, 'kb_write')
     if (!ent.enabled) return NextResponse.json({ error: 'upgrade_required', feature: 'kb_write' }, { status: 403 })
@@ -101,12 +106,15 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
   const service = createServiceClient()
 
-  // Silmeden önce org_id'yi çek (usage decrement için)
+  // Silmeden önce org_id'yi çek (usage decrement + demo check için)
   const { data: item } = await service
     .from('knowledge_items')
     .select('organization_id')
     .eq('id', params.id)
     .single()
+
+  const demoBlock = demoWriteBlock(item?.organization_id)
+  if (demoBlock) return demoBlock
 
   const { error } = await service
     .from('knowledge_items')

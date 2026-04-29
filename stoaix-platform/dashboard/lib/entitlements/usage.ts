@@ -75,3 +75,15 @@ export async function getUsage(
 
   return data?.used_value ?? 0
 }
+
+// Batch version: all usage counters in one query (for /api/billing/limits)
+export async function getAllUsage(orgId: string, period?: string) {
+  const sb = getServiceClient()
+  const billingPeriod = period ?? currentBillingPeriod()
+  const { data } = await sb
+    .from('usage_counters')
+    .select('metric, used_value')
+    .eq('organization_id', orgId)
+    .eq('billing_period', billingPeriod)
+  return data ?? []
+}

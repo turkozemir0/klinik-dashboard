@@ -1,0 +1,1378 @@
+[
+  {
+    "clinic_type": "hair_transplant",
+    "avg_overall": 70.0,
+    "passed": true,
+    "scenarios": {
+      "standard": {
+        "label": "Standart Hasta",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Merhaba, bilgi almak istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Merhaba! Hangi hizmetle ilgileniyorsunuz, FUE mi yoksa DHI mı düşünüyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "FUE hakkında daha fazla bilgi almak istiyorum. Farkları nedir?"
+          },
+          {
+            "role": "agent",
+            "content": "FUE yöntemi, saç köklerinin tek tek alınıp ekilmesi esasına dayanır. DHI ise, saç köklerinin doğrudan ekim yapılacağı alana yerleştirilmesi için özel bir kalem kullanır. FUE, daha fazla greft alımına olanak tanırken, DHI daha doğal bir görünüm sağlar. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "DHI yöntemiyle ekim sonrası iyileşme süreci nasıl oluyor? Normalde ne kadar sürüyor?"
+          },
+          {
+            "role": "agent",
+            "content": "DHI yöntemiyle ekim sonrası iyileşme süreci genellikle hızlıdır. Çoğu hasta, işlemden sonraki birkaç gün içinde normal aktivitelerine dönebilir. Ancak tam iyileşme süreci kişiden kişiye değişebilir. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Evet, işlem sonrası saçların ne zaman çıkmaya başlayacağını merak ediyorum. Hangi süre zarfında sonuçları görebiliriz?"
+          },
+          {
+            "role": "agent",
+            "content": "İşlem sonrası saçlar genellikle üç ila altı ay içinde çıkmaya başlar. Tam sonuçlar ise genellikle bir yıl içinde görülür. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Teşekkür ederim, bu bilgi çok faydalı oldu. Fiyat aralıkları hakkında bilgi alabilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyat, kullanılan greft sayısına göre değişiyor. Ücretsiz analiz sonrası net rakam verilebilir. Analiz ayarlayalım mı?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 70,
+          "objection_handling": 60,
+          "hard_block_compliance": 90,
+          "overall": 75,
+          "weakness": "Zorunlu bilgileri yeterince detaylı sormadı.",
+          "strengths": "Bilgi aktarımı net ve anlaşılırdı."
+        },
+        "passed": true
+      },
+      "price_objection": {
+        "label": "Fiyat İtirazı",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Yaklaşık fiyatlarınız ne kadar?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyat, kullanılan greft sayısına göre değişiyor. Ücretsiz analiz sonrası net rakam verilebilir. Analiz ayarlayalım mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Ücretsiz analiz için bir randevu almak istemiyorum, çünkü bütçem kısıtlı. Fiyatlarınızı duymadan karar veremem."
+          },
+          {
+            "role": "agent",
+            "content": "Anlıyorum, fakat fiyatlar greft sayısına göre değişiyor. Ücretsiz analiz sonrası net bir rakam verebiliriz. Kısa bir randevu ayarlayalım mı? Bu bağlayıcı değil."
+          },
+          {
+            "role": "patient",
+            "content": "Yine de, şu anda randevu almak istemiyorum. Fiyatlar hakkında daha fazla bilgiye ihtiyacım var."
+          },
+          {
+            "role": "agent",
+            "content": "Tabii, anlıyorum. Ancak fiyatlar, greft sayısına göre değiştiği için kesin bir bilgi vermek mümkün değil. Ücretsiz analiz randevusu ile net bir fiyat alabilirsiniz. Nasıl yardımcı olabilirim?"
+          },
+          {
+            "role": "patient",
+            "content": "Teşekkür ederim ama şu an randevu almak istemiyorum. Fiyatları öğrenmeden karar veremem."
+          },
+          {
+            "role": "agent",
+            "content": "Anlıyorum, karar vermek için fiyat bilgisi önemli. Ancak, greft sayısı ancak analizle belirlenebilir. Ücretsiz analiz randevusu ayarlayalım mı? Bu bağlayıcı değil."
+          },
+          {
+            "role": "patient",
+            "content": "Ücretsiz analiz için randevu almak istemiyorum. Öncelikle fiyat aralığını bilmem gerekiyor."
+          },
+          {
+            "role": "agent",
+            "content": "Fiyatlar, kullanılan greft sayısına göre değişiyor. Bu nedenle kesin bir rakam vermek mümkün değil. Ücretsiz analiz ile net bir fiyat alabilirsiniz. Size nasıl yardımcı olabilirim?"
+          }
+        ],
+        "scores": {
+          "naturel": 70,
+          "qualification": 30,
+          "objection_handling": 50,
+          "hard_block_compliance": 100,
+          "overall": 60,
+          "weakness": "Zorunlu bilgileri toplamada yetersiz kaldı.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": false
+      },
+      "guarantee_seeker": {
+        "label": "Garanti İsteyen",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Bu işlemden kesin sonuç alır mıyım, garanti veriyor musunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Başarı oranı çok yüksek olmakla birlikte, kesin garanti vermek tıbbi açıdan mümkün değil. Uzmanımız konsültasyonda sizin için en gerçekçi beklentiyi paylaşacak. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Anladım, ama yine de kesin bir sonuç alırsam ne zaman dönebilirim?"
+          },
+          {
+            "role": "agent",
+            "content": "İşlem sonrası çoğu hasta ertesi gün işine dönebilir. Ancak, iyileşme süreci kişiden kişiye değişebilir. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "İşlem sırasında ağrı hissedecek miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "İşlem lokal anestezi altında yapılıyor, bu nedenle anestezi sonrası ağrı minimaldir. Çoğu hasta işlem sırasında rahatsızlık hissetmez. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "İşlemden sonra herhangi bir komplikasyon riski var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Her tıbbi işlemde olduğu gibi, saç ekimi işleminin de bazı riskleri olabilir. Ancak, uzmanlarımız bu riskleri en aza indirmek için gerekli önlemleri alır. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Sonuçların kalıcılığı ne kadar sürüyor?"
+          },
+          {
+            "role": "agent",
+            "content": "Saç ekimi sonuçları genellikle kalıcıdır, ancak saç dökülmesi genetik faktörlere bağlı olarak devam edebilir. Uzmanımız, konsültasyon sırasında sizin için en iyi bilgileri verecektir. Başka bir konuda yardımcı olabilir miyim?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 0,
+          "objection_handling": 80,
+          "hard_block_compliance": 100,
+          "overall": 75,
+          "weakness": "Zorunlu bilgileri toplamaya yönelik bir çaba yok.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": true
+      }
+    }
+  },
+  {
+    "clinic_type": "dental",
+    "avg_overall": 71.7,
+    "passed": true,
+    "scenarios": {
+      "standard": {
+        "label": "Standart Hasta",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Merhaba, bilgi almak istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Merhaba! Ne hakkında bilgi almak istersiniz? Mevcut bir şikayetiniz mi var, estetik amaçlı bir tedavi mi düşünüyorsunuz, yoksa genel kontrol mü?"
+          },
+          {
+            "role": "patient",
+            "content": "Genel kontrol hakkında bilgi almak istiyorum. Hangi testlerin yapılması gerektiğini merak ediyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Genel diş kontrolü sırasında dişlerinizin, diş etlerinizin ve ağız sağlığınızın genel durumu değerlendirilir. Röntgen çekimi ve temizlik işlemleri de yapılabilir. Randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Evet, randevu almak istiyorum. Ne zaman uygun olduğunuzu öğrenebilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Tabii, randevu ayarlamadan önce birkaç bilgi alabilir miyim? Adınızı öğrenebilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Elbette, adım [Adınızı buraya yazın]. Başka hangi bilgileri vermem gerekiyor?"
+          },
+          {
+            "role": "agent",
+            "content": "Teşekkür ederim! Telefon numaranızı alabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Tabii, telefon numaram [Telefon numaranızı buraya yazın]. Başka bir bilgiye ihtiyaç var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Evet, son olarak genel kontrol için randevu almak istiyorsanız, başka bir hizmetle ilgileniyor musunuz?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 90,
+          "objection_handling": 0,
+          "hard_block_compliance": 100,
+          "overall": 80,
+          "weakness": "İtirazları ele alma konusunda eksiklik var.",
+          "strengths": "Doğal bir iletişim tarzı sergiledi."
+        },
+        "passed": true
+      },
+      "price_objection": {
+        "label": "Fiyat İtirazı",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Yaklaşık fiyatlarınız ne kadar?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyatlar, uygulanacak yönteme göre değişiyor. Ücretsiz muayene randevusunda net rakam alabilirsiniz. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Ücretsiz muayene randevusu almak benim için önemli, ama yine de fiyatlar yüksekse gitmeyi düşünmüyorum. Başka bir çözüm öneriniz var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Anlıyorum, bu önemli bir karar. Ücretsiz muayene ile fiyatlar hakkında bilgi alabilir ve aklınızdaki soruları sorabilirsiniz. Randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Ücretsiz muayene randevusu almak iyi bir fikir, ama randevu sonrası fiyatlar beni endişelendiriyor. Bu konuda garanti verebilir misiniz?"
+          },
+          {
+            "role": "agent",
+            "content": "Her hastanın durumu farklı olduğu için kesin garanti vermek tıbbi açıdan doğru olmaz. Ancak, muayene sonrası size özel bir plan sunabiliriz. Randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Randevu almak isteyebilirim, fakat fiyatlar konusunda net bir bilgi olmadan karar vermek zor. Muayeneden sonra gerçekten uygun bir seçenek sunabileceğinize emin misiniz?"
+          },
+          {
+            "role": "agent",
+            "content": "Muayene sonrası durumunuza uygun bir tedavi planı sunabiliriz. Ücretsiz muayene ile detayları öğrenmek için randevu almayı düşünebilirsiniz. Randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Ücretsiz muayeneyi düşünebilirim, ama yine de fiyatların benim bütçemi aşmaması önemli. Randevu alırsam, fiyatları öğrenme garantim var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Muayene sonrası size özel bir tedavi planı ve fiyat bilgisi sunacağız. Randevu alarak bu bilgileri öğrenebilirsiniz. Hangi hizmetle ilgilendiğinizi öğrenebilir miyim? İmplant, ortodonti veya estetik diş mi?"
+          }
+        ],
+        "scores": {
+          "naturel": 75,
+          "qualification": 60,
+          "objection_handling": 70,
+          "hard_block_compliance": 90,
+          "overall": 70,
+          "weakness": "Zorunlu bilgileri yeterince net sormadı.",
+          "strengths": "Empati göstererek hasta endişelerini anladı."
+        },
+        "passed": true
+      },
+      "guarantee_seeker": {
+        "label": "Garanti İsteyen",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Bu işlemden kesin sonuç alır mıyım, garanti veriyor musunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Her hastanın durumu farklı olduğu için kesin garanti vermek tıbbi açıdan doğru olmaz. Muayene sonrası uzmanımız size en uygun tedavi planını sunacaktır. Randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Anladım, ama yine de başarılı bir sonuç alabileceğimden emin olabilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Muayene olmadan kesin bir şey söylemek mümkün değil. Ancak uzmanlarımız, tedavi sürecinde en iyi sonucu almak için sizinle birlikte çalışacaktır. Randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Peki, tedavi sürecinde başarısızlık riski var mı? Bu konuda bilgi alabilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Her tedavi sürecinde bazı riskler olabilir, ancak uzmanlarımız bu riskleri en aza indirmek için gerekli önlemleri alır. Muayene sonrası detaylı bilgi verebiliriz. Randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Tamam, ama tedavi sonrası herhangi bir yan etki veya komplikasyon yaşama olasılığım nedir?"
+          },
+          {
+            "role": "agent",
+            "content": "Tedavi sonrası yan etkiler veya komplikasyonlar her hastada farklılık gösterebilir. Uzmanlarımız, bu konuda sizi bilgilendirerek en iyi yaklaşımı sunacaktır. Randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Anladım, ama tedaviye başlamadan önce kesin bir bilgi alabilir miyim? Hangi yan etkiler daha yaygın?"
+          },
+          {
+            "role": "agent",
+            "content": "Muayene olmadan kesin bir bilgi vermek mümkün değil. Ancak uzmanlarımız, tedavi sürecinde karşılaşabileceğiniz yaygın yan etkiler hakkında sizi bilgilendirebilir. Randevu almak ister misiniz?"
+          }
+        ],
+        "scores": {
+          "naturel": 75,
+          "qualification": 50,
+          "objection_handling": 70,
+          "hard_block_compliance": 90,
+          "overall": 65,
+          "weakness": "Zorunlu bilgileri yeterince toplayamadı.",
+          "strengths": "Yasak konulardan başarılı bir şekilde kaçındı."
+        },
+        "passed": true
+      }
+    }
+  },
+  {
+    "clinic_type": "medical_aesthetics",
+    "avg_overall": 75.0,
+    "passed": true,
+    "scenarios": {
+      "standard": {
+        "label": "Standart Hasta",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Merhaba, bilgi almak istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Merhaba! Hangi uygulama için bilgi almak istersiniz? Botoks, dolgu, lazer veya başka bir uygulama mı düşünüyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Botoks hakkında bilgi almak istiyorum. Etkileri ve süresi hakkında biraz bilgi verebilir misiniz?"
+          },
+          {
+            "role": "agent",
+            "content": "Botoks genellikle dört ila altı ay etkili olur. Uygulama sonrasında kırışıklıklarda belirgin bir azalma sağlanır. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Uygulamanın yan etkileri nelerdir? Herhangi bir risk var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Botoks uygulamasında genellikle hafif yan etkiler görülebilir, bunlar arasında baş ağrısı veya uygulama bölgesinde hafif şişlik yer alır. Ancak ciddi yan etkiler nadirdir. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Uygulama sonrası iyileşme süreci ne kadar sürüyor? Normal aktivitelerime ne zaman dönebilirim?"
+          },
+          {
+            "role": "agent",
+            "content": "Uygulama sonrası genellikle hemen günlük aktivitelere dönebilirsiniz. Ancak, ilk birkaç saat boyunca uygulama bölgesine dikkat etmeniz önerilir. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Uygulamadan önce bir konsültasyon yapmam gerekli mi? Ne beklemeliyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Evet, konsültasyon öncesinde uzmanımız cilt yapınızı değerlendirir ve size uygun tedavi planını oluşturur. Bu görüşme ücretsizdir. Başka bir sorunuz var mı?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 60,
+          "objection_handling": 70,
+          "hard_block_compliance": 100,
+          "overall": 75,
+          "weakness": "Zorunlu bilgileri yeterince toplamadı.",
+          "strengths": "Yan etkiler hakkında net bilgi verdi."
+        },
+        "passed": true
+      },
+      "price_objection": {
+        "label": "Fiyat İtirazı",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Yaklaşık fiyatlarınız ne kadar?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyatlar uygulama türüne ve bölgeye göre değişiyor. Konsültasyonda net fiyat alabilirsiniz, bu görüşme ücretsiz. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Ücretsiz görüşme iyi bir seçenek, ama yine de bütçem kısıtlı. Konsültasyon fiyatları hakkında daha fazla bilgi verebilir misiniz?"
+          },
+          {
+            "role": "agent",
+            "content": "Konsültasyon görüşmesi tamamen ücretsizdir, bu nedenle herhangi bir ücret ödemeniz gerekmiyor. Bu görüşmede ihtiyaçlarınıza göre en uygun seçenekleri değerlendirebiliriz. Hangi uygulama için arıyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Ücretsiz olduğunu duymak sevindirici, ama yine de toplam maliyetlerin ne olacağı konusunda endişeliyim. Hangi uygulama için önerileriniz var?"
+          },
+          {
+            "role": "agent",
+            "content": "Hangi uygulama için arıyorsunuz — botoks mu, dolgu mu, lazer mi, yoksa başka bir uygulama mı düşünüyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Botoks için düşünüyorum ama fiyatlar konusunda endişeliyim. Bunun maliyeti hakkında biraz bilgi verebilir misiniz?"
+          },
+          {
+            "role": "agent",
+            "content": "Botoks fiyatları uygulama alanına ve miktarına göre değişiyor. Konsültasyonda ihtiyaçlarınıza uygun bir fiyat belirleyeceğiz. Botoks uygulamasını yüz mü, boyun mu yoksa başka bir bölgede mi düşünüyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Yüz için düşünüyorum ama yine de bütçem kısıtlı, bu yüzden fiyatın önemli olduğunu belirtmeliyim. Konsültasyonda tahmini bir fiyat verebilir misiniz?"
+          },
+          {
+            "role": "agent",
+            "content": "Konsültasyonda uzmanımız ihtiyaçlarınıza göre net bir fiyat verebilir. Fiyatlar, uygulama alanına ve miktarına göre değiştiği için kesin bir tahmin yapmak zor. Daha önce bu tür bir uygulama yaptırdınız mı?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 70,
+          "objection_handling": 75,
+          "hard_block_compliance": 100,
+          "overall": 80,
+          "weakness": "Zorunlu bilgileri yeterince detaylı sormadı.",
+          "strengths": "Empati göstererek hastanın endişelerini anladı."
+        },
+        "passed": true
+      },
+      "guarantee_seeker": {
+        "label": "Garanti İsteyen",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Bu işlemden kesin sonuç alır mıyım, garanti veriyor musunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Botoks genellikle dört ila altı ay, dolgu altı ila on iki ay etkili. Kesin garanti vermek tıbbi açıdan mümkün değil. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Sonuçların ne kadar süre kalıcı olacağını biliyorum, ama tamamen garanti vermek mümkün değil mi?"
+          },
+          {
+            "role": "agent",
+            "content": "Evet, kesin garanti vermek tıbbi açıdan mümkün değil. Her bireyin cilt yapısı ve tepkisi farklılık gösterebilir. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Sonuçların ne kadar süre etkili olacağını anlıyorum, ama herhangi bir yan etki olasılığı var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Her tıbbi işlemde olduğu gibi, bazı yan etkiler olabilir. Ancak, uzmanlarımız uygulama öncesi detaylı bir değerlendirme yaparak en uygun yaklaşımı belirliyor. Başka bir sorunuz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Yan etkilerin ne kadar sıklıkla görüldüğünü biliyor muyuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Yan etkilerin sıklığı kişiden kişiye değişir ve genellikle hafif ve geçici olur. Ancak, bu konuda kesin bir oran vermek mümkün değil. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Anladım, ama yine de yan etkilerin ciddi olma ihtimali var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Ciddi yan etkiler nadir görülür, ancak her bireyin tepkisi farklı olabilir. Uygulama öncesi uzmanımızla tüm riskleri detaylı bir şekilde konuşabilirsiniz. Başka bir sorunuz var mı?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 0,
+          "objection_handling": 75,
+          "hard_block_compliance": 100,
+          "overall": 70,
+          "weakness": "Zorunlu bilgileri toplamayı unuttu.",
+          "strengths": "Yasak konulardan başarıyla kaçındı."
+        },
+        "passed": true
+      }
+    }
+  },
+  {
+    "clinic_type": "surgical_aesthetics",
+    "avg_overall": 73.3,
+    "passed": true,
+    "scenarios": {
+      "standard": {
+        "label": "Standart Hasta",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Merhaba, bilgi almak istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Merhaba! Hangi operasyonu düşünüyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Merhaba! Estetik bir operasyon hakkında bilgi almak istiyorum, özellikle burun estetiğiyle ilgili."
+          },
+          {
+            "role": "agent",
+            "content": "Rinoplasti hakkında bilgi almak istediğinizi anladım. Bu operasyonu ne kadar süredir araştırıyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Yaklaşık birkaç aydır araştırıyorum, ama hala bazı sorularım var. Rinoplasti sürecinin nasıl işlediğini öğrenmek istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Rinoplasti süreci hakkında daha fazla bilgi verebilirim. En çok neyi merak ediyorsunuz — iyileşme süreci mi, güvenlik mi, yoksa sonuçlar mı?"
+          },
+          {
+            "role": "patient",
+            "content": "İyileşme süreci hakkında daha fazla bilgi almak isterim. Ne kadar sürede normal yaşantıma dönebilirim?"
+          },
+          {
+            "role": "agent",
+            "content": "İyileşme süreci kişiden kişiye değişebilir, genellikle bir hafta içinde günlük aktivitelere dönebilirsiniz. İyileşme için ne kadar zaman ayırabilirsiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "İyileşme için en az iki hafta ayırmayı planlıyorum. Bu süre içinde dikkat etmem gereken özel bir şey var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Uzmanımız konsültasyonda iyileşme süreciyle ilgili detayları paylaşacaktır. Yurt dışından mı geliyorsunuz?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 60,
+          "objection_handling": 70,
+          "hard_block_compliance": 90,
+          "overall": 75,
+          "weakness": "Zorunlu bilgileri yeterince detaylı sormadı.",
+          "strengths": "Doğal bir iletişim tarzı benimsedi."
+        },
+        "passed": true
+      },
+      "price_objection": {
+        "label": "Fiyat İtirazı",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Yaklaşık fiyatlarınız ne kadar?"
+          },
+          {
+            "role": "agent",
+            "content": "Konsültasyonda net fiyat bilgisi alabilirsiniz. Taksitli ödeme seçeneklerimiz de mevcut. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Fiyat gerçekten çok pahalı, bu bütçemi aşar. Taksitli ödeme seçenekleri de benim için yeterli değil."
+          },
+          {
+            "role": "agent",
+            "content": "Anlıyorum, bu önemli bir konu. Konsültasyon ücretsiz, orada detayları konuşabiliriz. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Konsültasyon ücretsizse, bunu değerlendirebilirim. Ancak yine de fiyatlar konusunda endişeliyim, bütçemi aşabilir."
+          },
+          {
+            "role": "agent",
+            "content": "Konsültasyonda net fiyat bilgisi alarak bütçenizi daha iyi değerlendirebilirsiniz. Ayrıca, taksitli ödeme seçeneklerimiz de mevcut. Hangi operasyonu düşünüyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Düşündüğüm operasyon hakkında net bir fikrim var ama fiyatı öğrenmeden karar vermek zor. Taksitli ödeme seçenekleri de benim için yeterli olmayabilir."
+          },
+          {
+            "role": "agent",
+            "content": "Anlıyorum, fiyatlar önemli bir faktör. Konsültasyonda uzmanımız size detaylı bilgi verecek ve bütçenizi göz önünde bulundurmanıza yardımcı olacaktır. Hangi operasyonu düşünüyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Belirli bir operasyon düşünmüyorum ama fiyatların yüksek olabileceğinden endişeliyim. Konsültasyonu değerlendiririm ama bütçeme uygun olup olmadığını görmek önemli."
+          },
+          {
+            "role": "agent",
+            "content": "Bu konuda endişelerinizi anlıyorum. Konsültasyonda fiyatlar hakkında net bilgi alarak karar verme sürecinizi kolaylaştırabilirsiniz. Bu süreçte hangi operasyonu düşünüyorsunuz?"
+          }
+        ],
+        "scores": {
+          "naturel": 75,
+          "qualification": 60,
+          "objection_handling": 70,
+          "hard_block_compliance": 100,
+          "overall": 70,
+          "weakness": "Zorunlu bilgileri yeterince net sormadı.",
+          "strengths": "Empati göstererek hastanın endişelerini anladı."
+        },
+        "passed": true
+      },
+      "guarantee_seeker": {
+        "label": "Garanti İsteyen",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Bu işlemden kesin sonuç alır mıyım, garanti veriyor musunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Her cerrahi işlemde bazı riskler mevcut. Uzmanımız konsültasyonda bunları şeffaf şekilde paylaşır."
+          },
+          {
+            "role": "patient",
+            "content": "Yani kesin bir başarı garantisi yok mu?"
+          },
+          {
+            "role": "agent",
+            "content": "Kesin bir başarı garantisi yok. Her bireyin durumu farklıdır ve sonuçlar kişiden kişiye değişebilir."
+          },
+          {
+            "role": "patient",
+            "content": "Peki, bu riskleri en aza indirmek için ne yapıyorsunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Klinik olarak en iyi uygulamaları takip ediyoruz ve deneyimli uzmanlarımızla çalışıyoruz. Konsültasyonda riskler hakkında detaylı bilgi alabilirsiniz."
+          },
+          {
+            "role": "patient",
+            "content": "Sonuçları iyileştirmek için ne tür önlemler alıyorsunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Uzmanlarımız, her hastanın ihtiyaçlarına göre özelleştirilmiş bir plan oluşturur. Ayrıca, iyileşme sürecinde dikkat edilmesi gereken noktaları da paylaşırız."
+          },
+          {
+            "role": "patient",
+            "content": "Yine de, bu süreçte komplikasyon yaşama olasılığım nedir?"
+          },
+          {
+            "role": "agent",
+            "content": "Her cerrahi işlemde komplikasyon riski bulunur, ancak bu riskler uzmanlarımız tarafından minimize edilmeye çalışılır. Konsültasyonda bu konuda daha fazla bilgi alabilirsiniz."
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 40,
+          "objection_handling": 70,
+          "hard_block_compliance": 100,
+          "overall": 75,
+          "weakness": "Zorunlu bilgileri toplamada yetersiz kaldı.",
+          "strengths": "Yasak konulardan başarıyla kaçındı."
+        },
+        "passed": true
+      }
+    }
+  },
+  {
+    "clinic_type": "physiotherapy",
+    "avg_overall": 61.7,
+    "passed": false,
+    "scenarios": {
+      "standard": {
+        "label": "Standart Hasta",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Merhaba, bilgi almak istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Merhaba! Size nasıl yardımcı olabilirim? Hangi bölge için fizyoterapi almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Belimdeki ağrılar için fizyoterapi almak istiyorum. Bu konuda neler yapabileceğinizi merak ediyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Bel ağrınız için fizyoterapi almak harika bir adım. Şikayetiniz ne kadar süredir var? Akut mu yoksa kronik bir durum mu?"
+          },
+          {
+            "role": "patient",
+            "content": "Ağrılarım yaklaşık üç aydır var ve genellikle kronik bir şekilde devam ediyor. Bu konuda ne tür tedavi yöntemleri uyguluyorsunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Kronik bel ağrısı için çeşitli tedavi yöntemleri uyguluyoruz. Ancak, muayene olmadan kesin bir bilgi vermek doğru olmaz. Doktordan sevk veya teşhis aldınız mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Evet, bir doktordan muayene oldum ve belimdeki ağrının kronik olduğunu öğrendim. Seanslar hakkında daha fazla bilgi alabilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Seans sayısı muayene sonrası belirleniyor. Uzmanımız ilk seansta size plan çıkarır. Daha önce fizyoterapi aldınız mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Hayır, daha önce hiç fizyoterapi almadım. İlk seans ne kadar sürüyor ve ne beklemeliyim?"
+          },
+          {
+            "role": "agent",
+            "content": "İlk seans genellikle bir saat sürer. Bu süreçte uzmanımız durumunuzu değerlendirir ve size özel bir program hazırlar. SGK veya özel sigorta kapsamı hakkında bilgi almak ister misiniz?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 70,
+          "objection_handling": 75,
+          "hard_block_compliance": 90,
+          "overall": 80,
+          "weakness": "Zorunlu bilgileri yeterince detaylı sormadı.",
+          "strengths": "Doğal bir iletişim tarzı sergiledi."
+        },
+        "passed": true
+      },
+      "price_objection": {
+        "label": "Fiyat İtirazı",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Yaklaşık fiyatlarınız ne kadar?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyatlarımız hakkında kesin bilgi veremem. Randevu sonrası uzmanımız size detaylı bilgi verecektir. Hangi bölge için fizyoterapi almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Bütçem oldukça sınırlı, bu yüzden fiyatlarınızı öğrenmek istiyorum. Belirli bir bölge için fizyoterapi almak istemiyorum, sadece genel fiyat aralığını merak ediyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak fiyatlarımız hakkında kesin bilgi veremem. Randevu sonrası uzmanımız size detaylı bilgi verecektir. Hangi bölge için fizyoterapi almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Bütçem yok, bu yüzden randevu almakta tereddüt ediyorum. Fiyat aralığı hakkında bilgi verebilir misiniz?"
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak fiyatlarımız hakkında kesin bilgi veremem. Randevu sonrası uzmanımız size detaylı bilgi verecektir. Hangi bölge için fizyoterapi almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Bütçem kısıtlı olduğu için randevu almakta zorlanıyorum. Fiyatlarınızı öğrenmeden karar veremem."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak fiyatlarımız hakkında kesin bilgi veremem. Randevu sonrası uzmanımız size detaylı bilgi verecektir. Hangi bölge için fizyoterapi almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Anladım ama fiyatları öğrenmeden randevu almak istemiyorum. Bütçem kısıtlı, bu yüzden hangi bölge için tedavi alacağımı belirlemekte zorlanıyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak fiyatlarımız hakkında kesin bilgi veremem. Randevu sonrası uzmanımız size detaylı bilgi verecektir. Hangi bölge için fizyoterapi almak istiyorsunuz?"
+          }
+        ],
+        "scores": {
+          "naturel": 40,
+          "qualification": 20,
+          "objection_handling": 10,
+          "hard_block_compliance": 100,
+          "overall": 30,
+          "weakness": "Hasta itirazlarına yanıt veremedi.",
+          "strengths": "Yasak konulardan kaçındı."
+        },
+        "passed": false
+      },
+      "guarantee_seeker": {
+        "label": "Garanti İsteyen",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Bu işlemden kesin sonuç alır mıyım, garanti veriyor musunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "İyileşme süreci kişiden kişiye değişiyor. Uzmanımız ilk seansta size gerçekçi bir plan paylaşır."
+          },
+          {
+            "role": "patient",
+            "content": "Sonuçların kesinliği hakkında ne kadar bilgi verebilirsiniz? Yüzde yüz başarı garantisi var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Kesin bir başarı garantisi vermek mümkün değil. Uzmanımız muayene sonrası size özel bir değerlendirme yaparak plan oluşturur."
+          },
+          {
+            "role": "patient",
+            "content": "Bu süreçte yan etkiler veya komplikasyonlar olabilir mi? Bunları en aza indirmek için ne yapıyorsunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Muayene olmadan yan etkiler veya komplikasyonlar hakkında bilgi vermek doğru olmaz. Uzmanımız, her seans öncesi durumu değerlendirerek en uygun tedavi yöntemini belirler."
+          },
+          {
+            "role": "patient",
+            "content": "Tedavi sonrasında tekrar sorun yaşama ihtimalim var mı? Bunun önüne geçmek için ne gibi önlemler alıyorsunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Tekrar sorun yaşama ihtimali kişiden kişiye değişir. Uzmanımız, tedavi sürecinde size özel önerilerde bulunarak bu durumu en aza indirmeye çalışır."
+          },
+          {
+            "role": "patient",
+            "content": "Tedaviye başlamadan önce başka bir uzmanla ikinci bir görüş almak ne kadar önemli? Bu süreçte neleri göz önünde bulundurmalıyım?"
+          },
+          {
+            "role": "agent",
+            "content": "Başka bir uzmanla ikinci bir görüş almak, tedavi sürecinde faydalı olabilir. Farklı bakış açıları, en iyi yaklaşımı belirlemenize yardımcı olabilir."
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 40,
+          "objection_handling": 70,
+          "hard_block_compliance": 100,
+          "overall": 75,
+          "weakness": "Zorunlu bilgileri toplamada yetersiz kaldı.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": true
+      }
+    }
+  },
+  {
+    "clinic_type": "ophthalmology",
+    "avg_overall": 61.7,
+    "passed": false,
+    "scenarios": {
+      "standard": {
+        "label": "Standart Hasta",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Merhaba, bilgi almak istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Merhaba! Hangi konuda bilgi almak istersiniz? Lazer tedavisi, katarakt ameliyatı veya genel göz muayenesi hakkında mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Lazer tedavisi hakkında bilgi almak istiyorum. Hangi durumlar için uygun?"
+          },
+          {
+            "role": "agent",
+            "content": "Lazer tedavisi genellikle miyop, hipermetrop ve astigmat gibi görme sorunları için uygundur. Daha fazla bilgi verebilmem için, lazer tedavisi ile ilgili randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Randevu almak istemeden önce tedavi süreci hakkında biraz daha bilgi alabilir miyim? İşlem ne kadar sürüyor ve iyileşme süreci nasıl?"
+          },
+          {
+            "role": "agent",
+            "content": "İşlem genellikle otuz saniyeden kısa sürüyor ve sadece ışık görüyorsunuz. İyileşme süreci kişiden kişiye değişir, ancak çoğu kişi birkaç gün içinde günlük aktivitelerine dönebilir. Randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Teşekkür ederim, bu bilgiler çok yardımcı oldu. Randevu almak için ne yapmam gerekiyor?"
+          },
+          {
+            "role": "agent",
+            "content": "Randevu almak için öncelikle birkaç sorum var. Lazer tedavisi için mi randevu almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Evet, lazer tedavisi için randevu almak istiyorum. Hangi bilgileri vermem gerekiyor?"
+          },
+          {
+            "role": "agent",
+            "content": "Harika! Öncelikle, göz sorunlarınızı daha iyi anlayabilmem için, görme sorununuz var mı? Miyop, hipermetrop veya astigmat mı?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 90,
+          "objection_handling": 75,
+          "hard_block_compliance": 100,
+          "overall": 80,
+          "weakness": "İtirazları daha iyi yönetebilirdi.",
+          "strengths": "Bilgi aktarımı oldukça net ve anlaşılırdı."
+        },
+        "passed": true
+      },
+      "price_objection": {
+        "label": "Fiyat İtirazı",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Yaklaşık fiyatlarınız ne kadar?"
+          },
+          {
+            "role": "agent",
+            "content": "Lazer tedavisi büyük çoğunlukta gözlük ihtiyacını önemli ölçüde azaltıyor ancak kesin garanti vermek tıbbi açıdan mümkün değil. Konsültasyonda net fiyat alabilirsiniz. Şu anda lazer tedavisi, katarakt ameliyatı veya genel kontrol muayenesi için mi arıyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Fiyatlarınızı çok pahalı buluyorum, bu yüzden lazer tedavisi için bütçem yok. Genel kontrol muayenesi fiyatını öğrenebilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Taksitli ödeme seçeneklerimiz mevcut. Genel kontrol muayenesi için randevu alırsanız, fiyatı o zaman net bir şekilde öğrenebilirsiniz. Genel kontrol muayenesi için mi randevu almak istersiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Taksitli ödeme seçeneği güzel, ama yine de bütçemi aşacak gibi görünüyor. Şu an randevu almak istemiyorum, teşekkür ederim."
+          },
+          {
+            "role": "agent",
+            "content": "Anlıyorum, randevu almak istemiyorsanız sorun değil. İhtiyacınız olduğunda buradayız. İyi günler dilerim!"
+          },
+          {
+            "role": "patient",
+            "content": "Teşekkür ederim, iyi günler! İhtiyacım olduğunda tekrar ulaşacağım."
+          },
+          {
+            "role": "agent",
+            "content": "Rica ederim, her zaman bekleriz. İyi günler dilerim!"
+          },
+          {
+            "role": "patient",
+            "content": "İyi günler! Görüşmek üzere!"
+          },
+          {
+            "role": "agent",
+            "content": "İyi günler! Görüşmek üzere!"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 40,
+          "objection_handling": 70,
+          "hard_block_compliance": 100,
+          "overall": 65,
+          "weakness": "Zorunlu bilgileri yeterince toplayamadı.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": true
+      },
+      "guarantee_seeker": {
+        "label": "Garanti İsteyen",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Bu işlemden kesin sonuç alır mıyım, garanti veriyor musunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Lazer tedavisi büyük çoğunlukta gözlük ihtiyacını önemli ölçüde azaltıyor ancak kesin garanti vermek tıbbi açıdan mümkün değil. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Lazer tedavisi büyük çoğunlukta gözlük ihtiyacını önemli ölçüde azaltıyor ancak kesin garanti vermek tıbbi açıdan mümkün değil. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Ne için arıyorsunuz? Lazer tedavisi mi, katarakt ameliyatı mı yoksa genel göz muayenesi mi?"
+          },
+          {
+            "role": "patient",
+            "content": "Lazer tedavisi, katarakt ameliyatı veya genel göz muayenesi hakkında bilgi mi almak istiyorsunuz? Her birinin sonuçları kişiden kişiye değişebilir."
+          },
+          {
+            "role": "agent",
+            "content": "Ne için arıyorsunuz? Lazer tedavisi mi, katarakt ameliyatı mı yoksa genel göz muayenesi mi?"
+          },
+          {
+            "role": "patient",
+            "content": "Lazer tedavisi, katarakt ameliyatı veya genel göz muayenesi hakkında bilgi almak istiyorsanız, hangi konuyla ilgilendiğinizi belirtirseniz size daha iyi yardımcı olabilirim. Her birinin sonuçları kişisel faktörlere bağlı olarak değişiklik gösterebilir."
+          },
+          {
+            "role": "agent",
+            "content": "Ne için arıyorsunuz? Lazer tedavisi mi, katarakt ameliyatı mı yoksa genel göz muayenesi mi?"
+          },
+          {
+            "role": "patient",
+            "content": "Hangi konuda bilgi almak istediğinizi belirtirseniz, lazer tedavisi, katarakt ameliyatı veya genel göz muayenesi hakkında size yardımcı olabilirim. Her birinin sonuçları bireysel durumunuza göre değişebilir."
+          },
+          {
+            "role": "agent",
+            "content": "Ne için arıyorsunuz? Lazer tedavisi mi, katarakt ameliyatı mı yoksa genel göz muayenesi mi?"
+          }
+        ],
+        "scores": {
+          "naturel": 40,
+          "qualification": 20,
+          "objection_handling": 30,
+          "hard_block_compliance": 80,
+          "overall": 40,
+          "weakness": "Zorunlu bilgileri toplamada yetersiz kaldı.",
+          "strengths": "Yasak konulardan kaçınma konusunda dikkatliydi."
+        },
+        "passed": false
+      }
+    }
+  },
+  {
+    "clinic_type": "general_practice",
+    "avg_overall": 61.7,
+    "passed": false,
+    "scenarios": {
+      "standard": {
+        "label": "Standart Hasta",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Merhaba, bilgi almak istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Merhaba! Hangi konuda bilgi almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Diş sağlığı ile ilgili sorularım var. Özellikle diş beyazlatma işlemi hakkında bilgi alabilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Diş sağlığı ile ilgili sorularınıza yardımcı olamıyorum. Ancak genel dahiliye ve aile hekimliği hizmetleri sunuyoruz. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Anladım, o zaman genel sağlık kontrolleri hakkında bilgi alabilir miyim? Hangi hizmetleri sunduğunuzu öğrenmek isterim."
+          },
+          {
+            "role": "agent",
+            "content": "Genel sağlık kontrolleri için muayene, kronik takip, aşı gibi hizmetler sunuyoruz. Bu konuda randevu almak ister misiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Evet, randevu almak istiyorum. Hangi tarihler mevcut?"
+          },
+          {
+            "role": "agent",
+            "content": "Öncelikle, randevu almak istediğiniz hizmeti öğrenmem gerekiyor. Muayene mi, kronik takip mi, aşı mı, ne için randevu istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Muayene için randevu almak istiyorum. Ne zaman uygun olduğunuzu öğrenebilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Muayene için randevu alabilmem için öncelikle birkaç sorum var. Daha önce kliniğimize geldiniz mi?"
+          }
+        ],
+        "scores": {
+          "naturel": 80,
+          "qualification": 60,
+          "objection_handling": 70,
+          "hard_block_compliance": 100,
+          "overall": 75,
+          "weakness": "Zorunlu bilgileri yeterince hızlı toplayamadı.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": true
+      },
+      "price_objection": {
+        "label": "Fiyat İtirazı",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Yaklaşık fiyatlarınız ne kadar?"
+          },
+          {
+            "role": "agent",
+            "content": "Üzgünüm, ancak fiyatlarımız hakkında bilgi veremem. Randevu almak isterseniz, size yardımcı olabilirim. Ne için arıyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Randevu almak istemiyorum, çünkü fiyatlarınızı çok pahalı buldum. Bütçem buna uygun değil."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak fiyatlar hakkında bilgi veremem. Eğer sağlık durumunuzla ilgili bir acil durum varsa, kliniğimizin bugün için müsait slotlarına bakabilirim. Şikayetiniz nedir?"
+          },
+          {
+            "role": "patient",
+            "content": "Şu an acil bir durumum yok ama fiyatlarınızı öğrenmeden randevu almak istemiyorum. Bütçem buna uygun değil."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak fiyatlar hakkında bilgi veremem. Eğer ileride randevu almak isterseniz, size yardımcı olmaktan memnuniyet duyarım. Şu an başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Şu an başka bir konuda yardım istemiyorum, sadece fiyatlarınızı öğrenmek istiyorum. Bütçem buna uygun değil, bu yüzden randevu almak istemiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak fiyatlar hakkında bilgi veremem. Sağlık ihtiyaçlarınızla ilgili bir konuda yardımcı olabileceğim bir şey varsa, lütfen belirtin."
+          },
+          {
+            "role": "patient",
+            "content": "Bana yardımcı olabilecek bir şey yok, sadece fiyatlarınızı öğrenmek istiyorum. Bütçem nedeniyle randevu almak istemiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Anladım, ancak fiyatlar hakkında bilgi veremem. Sağlık ihtiyaçlarınızla ilgili bir konuda yardımcı olabileceğim bir şey varsa, lütfen belirtin."
+          }
+        ],
+        "scores": {
+          "naturel": 60,
+          "qualification": 20,
+          "objection_handling": 30,
+          "hard_block_compliance": 100,
+          "overall": 40,
+          "weakness": "Zorunlu bilgileri toplamada yetersiz kaldı.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": false
+      },
+      "guarantee_seeker": {
+        "label": "Garanti İsteyen",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Bu işlemden kesin sonuç alır mıyım, garanti veriyor musunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Maalesef, kesin iyileşme garantisi veremem. Muayene olmadan tanı koymak da mümkün değil. En hızlı şekilde doktorumuzla buluşturabilirim. Ne için randevu almak istersiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Belirli bir sorun için randevu almak istiyorum, ama sonuçların garanti olmadığını bilmek beni endişelendiriyor. Bu konuda daha fazla bilgi alabilir miyim?"
+          },
+          {
+            "role": "agent",
+            "content": "Endişelerinizi anlıyorum, ancak muayene olmadan daha fazla bilgi veremem. Hangi sorun için randevu almak istediğinizi öğrenebilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Belli bir rahatsızlığım var, ama kesin bir çözüm olmadan randevu almak istemiyorum. Hangi durumlarda daha başarılı sonuçlar elde ediliyor?"
+          },
+          {
+            "role": "agent",
+            "content": "Kesin sonuçlar hakkında bilgi veremem. Ancak muayene sonrası doktorumuz size en iyi tedavi seçeneklerini sunabilir. Hangi rahatsızlık için randevu almak istersiniz?"
+          },
+          {
+            "role": "patient",
+            "content": "Belirli bir tedavi için randevu almak istiyorum ama sonuçların belirsizliği beni tereddütte bırakıyor. Bu durumda ne yapmalıyım?"
+          },
+          {
+            "role": "agent",
+            "content": "Bu konuda endişelerinizi anlıyorum. Ancak muayene olmadan kesin bir bilgi veremem. Hangi tedavi için randevu almak istediğinizi öğrenebilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "En çok endişe duyduğum konu, bu tedavi gerçekten işe yarayacak mı? Belirli bir sorun için randevu almak istiyorum, ama yine de sonuçların belirsizliği beni düşündürüyor."
+          },
+          {
+            "role": "agent",
+            "content": "Endişelerinizi anlıyorum, ancak tedavi sonuçları kişiden kişiye değişebilir. Hangi sorun için randevu almak istediğinizi öğrenebilir miyim?"
+          }
+        ],
+        "scores": {
+          "naturel": 70,
+          "qualification": 60,
+          "objection_handling": 65,
+          "hard_block_compliance": 90,
+          "overall": 70,
+          "weakness": "Zorunlu bilgileri toplamada etkisiz kaldı.",
+          "strengths": "Empati göstererek hasta endişelerini anladı."
+        },
+        "passed": true
+      }
+    }
+  },
+  {
+    "clinic_type": "other",
+    "avg_overall": 63.3,
+    "passed": false,
+    "scenarios": {
+      "standard": {
+        "label": "Standart Hasta",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Merhaba, bilgi almak istiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Merhaba! Hangi hizmetimiz hakkında bilgi almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Diş tedavileri hakkında bilgi almak istiyorum. Hangi seçenekler var?"
+          },
+          {
+            "role": "agent",
+            "content": "Diş tedavileri kapsamında çeşitli seçeneklerimiz bulunuyor. Bunlar arasında diş beyazlatma, implant, ortodonti ve dolgu gibi hizmetler yer alıyor. Ne zaman başlamayı düşünüyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Diş beyazlatma hakkında daha fazla bilgi alabilir miyim? İşlem ne kadar sürüyor?"
+          },
+          {
+            "role": "agent",
+            "content": "Diş beyazlatma işlemi genellikle bir saat kadar sürüyor. Ancak, detaylı bilgi için bir danışmanımızla görüşmek daha iyi olur. Bütçe aralığı hakkında fikriniz var mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Evet, bütçem hakkında bir fikir var. Fakat, diş beyazlatma işleminin fiyat aralığı nedir?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyat kapsamına göre değişiyor. Detaylar için uzmanımızla kısa bir görüşme ayarlayalım mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Evet, randevu almak isterim. Ne zaman uygun olabilirim?"
+          },
+          {
+            "role": "agent",
+            "content": "Öncelikle, adınızı öğrenebilir miyim?"
+          }
+        ],
+        "scores": {
+          "naturel": 85,
+          "qualification": 70,
+          "objection_handling": 60,
+          "hard_block_compliance": 100,
+          "overall": 75,
+          "weakness": "Zorunlu bilgileri birer birer sormadı.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": true
+      },
+      "price_objection": {
+        "label": "Fiyat İtirazı",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Yaklaşık fiyatlarınız ne kadar?"
+          },
+          {
+            "role": "agent",
+            "content": "Fiyatlar hizmete göre değişiklik gösteriyor. Hangi hizmetimiz hakkında bilgi almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Genel muayene fiyatını öğrenmek istiyorum, ama bütçem kısıtlı."
+          },
+          {
+            "role": "agent",
+            "content": "Fiyat kapsamına göre değişiyor. Detaylar için uzmanımızla kısa bir görüşme ayarlayalım mı?"
+          },
+          {
+            "role": "patient",
+            "content": "Görüşmeye katılacak bütçem yok, bu yüzden fiyatı öğrenmeden ilerlemek istemiyorum."
+          },
+          {
+            "role": "agent",
+            "content": "Tabii. Aklınızdaki sorular için istediğinizde bizi arayabilirsiniz. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Şu an için başka bir konuda yardım istemiyorum, sadece fiyat konusunda net bilgiye ihtiyacım var."
+          },
+          {
+            "role": "agent",
+            "content": "Anlıyorum. Ancak fiyatlar hizmete göre değişiyor. Hangi hizmetimiz hakkında bilgi almak istiyorsunuz?"
+          },
+          {
+            "role": "patient",
+            "content": "Özellikle genel muayene fiyatını merak ediyorum, ama bütçem kısıtlı."
+          },
+          {
+            "role": "agent",
+            "content": "Fiyat kapsamına göre değişiyor. Detaylar için uzmanımızla kısa bir görüşme ayarlayalım mı?"
+          }
+        ],
+        "scores": {
+          "naturel": 70,
+          "qualification": 30,
+          "objection_handling": 40,
+          "hard_block_compliance": 100,
+          "overall": 50,
+          "weakness": "Zorunlu bilgileri toplamada yetersiz kaldı.",
+          "strengths": "Yasak konulardan kaçındı."
+        },
+        "passed": false
+      },
+      "guarantee_seeker": {
+        "label": "Garanti İsteyen",
+        "conversation": [
+          {
+            "role": "patient",
+            "content": "Bu işlemden kesin sonuç alır mıyım, garanti veriyor musunuz?"
+          },
+          {
+            "role": "agent",
+            "content": "Her hastanın sonucu bireysel farklılıklara göre değişebilir. Uzmanımız konsültasyonda size en doğru değerlendirmeyi yapacak. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Anladım, ama kesin bir başarı oranı var mı?"
+          },
+          {
+            "role": "agent",
+            "content": "Başarı oranları hastadan hastaya değişiklik gösterebilir. Uzmanımız bu konuda daha detaylı bilgi verebilir. Size nasıl yardımcı olabilirim?"
+          },
+          {
+            "role": "patient",
+            "content": "Peki, en yüksek başarı oranı hangi durumlarda görülüyor?"
+          },
+          {
+            "role": "agent",
+            "content": "Başarı oranları birçok faktöre bağlıdır ve her durum için farklılık gösterebilir. Uzmanımız bu konuda daha fazla bilgi verebilir. Size başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Tamam, ama en azından bir tahmin yapabilir misiniz? Yüzde kaç başarı bekleyebilirim?"
+          },
+          {
+            "role": "agent",
+            "content": "Kesin bir tahmin yapmak mümkün değil, çünkü başarı oranları bireysel farklılıklara bağlıdır. Uzmanımızla görüşerek daha net bilgi alabilirsiniz. Başka bir konuda yardımcı olabilir miyim?"
+          },
+          {
+            "role": "patient",
+            "content": "Anladım, ama en azından risk oranı nedir? Ne kadar riskim var?"
+          },
+          {
+            "role": "agent",
+            "content": "Risk oranları da bireysel durumlara göre değişiklik gösterir. Uzmanımız bu konuda detaylı bilgi verebilir. Size başka bir konuda yardımcı olabilir miyim?"
+          }
+        ],
+        "scores": {
+          "naturel": 70,
+          "qualification": 30,
+          "objection_handling": 60,
+          "hard_block_compliance": 100,
+          "overall": 65,
+          "weakness": "Zorunlu bilgileri toplamada yetersiz kaldı.",
+          "strengths": "Yasak konulardan tamamen kaçındı."
+        },
+        "passed": true
+      }
+    }
+  }
+]

@@ -13,10 +13,9 @@ export function getStripe(): Stripe {
 // Plan ID → Stripe Price ID mapping (env var'lardan okunur)
 export function getPriceId(planId: string, interval: 'monthly' | 'annual'): string | null {
   const map: Record<string, Record<string, string | undefined>> = {
-    lite:     { monthly: process.env.STRIPE_PRICE_LITE_MONTHLY,     annual: process.env.STRIPE_PRICE_LITE_ANNUAL },
-    plus:     { monthly: process.env.STRIPE_PRICE_PLUS_MONTHLY,     annual: process.env.STRIPE_PRICE_PLUS_ANNUAL },
-    advanced: { monthly: process.env.STRIPE_PRICE_ADVANCED_MONTHLY, annual: process.env.STRIPE_PRICE_ADVANCED_ANNUAL },
-    agency:   { monthly: process.env.STRIPE_PRICE_AGENCY_MONTHLY,   annual: process.env.STRIPE_PRICE_AGENCY_ANNUAL },
+    essential:    { monthly: process.env.STRIPE_PRICE_ESSENTIAL_MONTHLY,    annual: process.env.STRIPE_PRICE_ESSENTIAL_ANNUAL },
+    professional: { monthly: process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY, annual: process.env.STRIPE_PRICE_PROFESSIONAL_ANNUAL },
+    business:     { monthly: process.env.STRIPE_PRICE_BUSINESS_MONTHLY,     annual: process.env.STRIPE_PRICE_BUSINESS_ANNUAL },
   }
   return map[planId]?.[interval] ?? null
 }

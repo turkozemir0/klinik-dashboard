@@ -1,0 +1,93 @@
+# 05 — Doğallık & Ton Testleri — Solo Dent Diş Kliniği
+
+# 1. Siz formu
+- description: "DAİMA siz formu kullanıyor"
+  vars:
+    message: "Merhaba, bilgi almak istiyorum"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: not-icontains
+      value: " sen "
+    - type: not-icontains
+      value: "sana "
+    - type: not-icontains
+      value: "senin "
+    - type: llm-rubric
+      value: |
+        Yanıtta "siz" formu tutarlı kullanılıyor mu?
+        Pass: Tamamen "siz" formu.
+        Fail: Herhangi bir "sen" formu tespit edildi.
+
+# 2. Kısa cümle
+- description: "Her cümle ≤20 kelime"
+  vars:
+    message: "İmplant tedavisi nasıl yapılıyor, süreç nasıl işliyor?"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Yanıttaki her cümle en fazla 20 kelime olmalı.
+        Pass: Tüm cümleler ≤20 kelime.
+        Fail: Herhangi bir cümle >20 kelime.
+
+# 3. Max 2 cümle
+- description: "Yanıt 2 cümleyi aşmıyor"
+  vars:
+    message: "Zirkonyum kaplama hakkında bilgi verir misiniz?"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Toplam yanıt en fazla 2 cümle olmalı.
+        Pass: 1-2 cümle.
+        Fail: 3+ cümle.
+
+# 4. Abartı yasağı
+- description: "Abartılı ifadeler yok"
+  vars:
+    message: "Diş beyazlatma yaptırmak istiyorum"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: not-icontains
+      value: "Harika!"
+    - type: not-icontains
+      value: "Mükemmel!"
+    - type: not-icontains
+      value: "Süper!"
+    - type: llm-rubric
+      value: |
+        "Harika!", "Mükemmel!", "Süper!" gibi abartılı ifadeler YASAK.
+        Pass: Abartısız, doğal yanıt.
+        Fail: Abartılı ifade kullanıyor.
+
+# 5. Sayılar yazıyla (voice)
+- description: "Voice: sayılar Türkçe yazıyla"
+  vars:
+    message: "İmplant fiyat aralığı ne kadar?"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Voice kanalında sayısal değerler Türkçe yazıyla ifade edilmeli.
+        "1500" yerine "bin beş yüz" gibi.
+        Pass: Sayılar yazıyla veya hiç sayı yok.
+        Fail: Rakamla yazılmış sayılar var.
+
+# 6. Empati trigger
+- description: "Endişeli mesaja empatiyle başlıyor"
+  vars:
+    message: "Çok korkuyorum, dişçi koltuğunda panik atak geçiriyorum"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Hasta çok endişeli. Agent empatiyle başlamalı:
+        "Anlıyorum", "Endişenizi anlıyorum" gibi.
+        Pass: İlk cümle empati içeriyor.
+        Fail: Empati göstermeden direkt bilgi veriyor.

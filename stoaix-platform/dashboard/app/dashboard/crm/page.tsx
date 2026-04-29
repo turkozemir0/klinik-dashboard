@@ -7,14 +7,24 @@ import {
   ChevronLeft, ChevronRight, FileText, Wallet, Send, Clock, AlertCircle,
   CalendarDays, Plus, X, Check,
 } from 'lucide-react'
+import Avatar from '@/components/Avatar'
+import ChannelBadge from '@/components/ChannelBadge'
+import TopBar from '@/components/TopBar'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import KanbanBoard from '../leads/KanbanBoard'
+import { useIsDemo } from '@/lib/demo-context'
+import { useOrg } from '@/lib/org-context'
 import PipelineSelector from '@/components/crm/PipelineSelector'
 import StatCard from '@/components/StatCard'
 import type { Pipeline } from '@/lib/types'
 import ManualTasksPanel from '@/components/followup/ManualTasksPanel'
 import FollowupTabs from '@/components/followup/FollowupTabs'
+import dynamic from 'next/dynamic'
+
+const LeadFormsTab = dynamic(() => import('@/components/leadgen/LeadFormsTab'), {
+  loading: () => <div className="flex items-center gap-2 text-slate-400 py-12 justify-center"><Loader2 size={16} className="animate-spin" /> Yükleniyor...</div>,
+})
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,7 +74,7 @@ const REENGAGEMENT_STAGES = ['re_contact_1','re_contact_2','re_contact_3']
 
 // ─── Leads Tab ────────────────────────────────────────────────────────────────
 
-type FilterStatus = 'all' | 'handed_off' | 'in_progress' | 'new'
+type FilterStatus = 'all' | 'handed_off' | 'in_progress' | 'new' | 'hot' | 'warm' | 'cold' | 'today'
 type DateRange = 'all' | '7d' | '30d' | 'this_month'
 type DateField = 'updated_at' | 'created_at'
 
@@ -91,13 +101,14 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 function LeadsTab({ orgId }: { orgId: string }) {
+  const isDemo = useIsDemo()
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterStatus>('all')
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table')
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
-  const [statusCounts, setStatusCounts] = useState({ all: 0, new: 0, handed_off: 0, in_progress: 0 })
+  const [statusCounts, setStatusCounts] = useState({ all: 0, new: 0, handed_off: 0, in_progress: 0, hot: 0, warm: 0, cold: 0, today: 0 })
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
   const [activePipelineId, setActivePipelineId] = useState<string>('')
 
@@ -117,13 +128,13 @@ function LeadsTab({ orgId }: { orgId: string }) {
   useEffect(() => {
     async function loadCounts() {
       const supabase = createClient()
-      const [all, newC, handedOff, inProgress] = await Promise.all([
-        supabase.from('leads').select('*', { count: 'exact', head: true }).eq('organization_id', orgId),
-        supabase.from('leads').select('*', { count: 'exact', head: true }).eq('organization_id', orgId).eq('status', 'new'),
-        supabase.from('leads').select('*', { count: 'exact', head: true }).eq('organization_id', orgId).eq('status', 'handed_off'),
-        supabase.from('leads').select('*', { count: 'exact', head: true }).eq('organization_id', orgId).eq('status', 'in_progress'),
-      ])
-      setStatusCounts({ all: all.count ?? 0, new: newC.count ?? 0, handed_off: handedOff.count ?? 0, in_progress: inProgress.count ?? 0 })
+      const { data } = await supabase.rpc('get_lead_counts', { p_org_id: orgId })
+      if (data) {
+        setStatusCounts({
+          all: data.all ?? 0, new: data.new ?? 0, handed_off: data.handed_off ?? 0, in_progress: data.in_progress ?? 0,
+          hot: data.hot ?? 0, warm: data.warm ?? 0, cold: data.cold ?? 0, today: data.today ?? 0,
+        })
+      }
     }
     loadCounts()
   }, [orgId])
@@ -153,7 +164,17 @@ function LeadsTab({ orgId }: { orgId: string }) {
       .order('qualification_score', { ascending: false })
       .order('updated_at', { ascending: false })
       .range(from, to)
-    if (filter !== 'all') query = query.eq('status', filter)
+    if (filter === 'hot') {
+      query = query.gte('qualification_score', 70)
+    } else if (filter === 'warm') {
+      query = query.gte('qualification_score', 40).lt('qualification_score', 70)
+    } else if (filter === 'cold') {
+      query = query.lt('qualification_score', 40)
+    } else if (filter === 'today') {
+      query = query.gte('created_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+    } else if (filter !== 'all') {
+      query = query.eq('status', filter)
+    }
     const dateFrom = getDateFrom(dateRange)
     if (dateFrom) query = query.gte(dateField, dateFrom)
     const { data, count } = await query
@@ -205,13 +226,15 @@ function LeadsTab({ orgId }: { orgId: string }) {
               onChange={setActivePipelineId}
             />
           )}
-          <Link
-            href="/dashboard/admin/import"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors"
-          >
-            <Plus size={13} />
-            Import
-          </Link>
+          {!isDemo && (
+            <Link
+              href="/dashboard/admin/import"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors"
+            >
+              <Plus size={13} />
+              Import
+            </Link>
+          )}
           <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
             <button
               onClick={() => setViewMode('table')}
@@ -233,6 +256,7 @@ function LeadsTab({ orgId }: { orgId: string }) {
         <KanbanBoard
           orgId={orgId}
           pipeline={pipelines.find(p => p.id === activePipelineId) ?? null}
+          readOnly={isDemo}
         />
       ) : (
         <>
@@ -261,19 +285,22 @@ function LeadsTab({ orgId }: { orgId: string }) {
             </div>
           </div>
 
-          {/* Status filter row */}
+          {/* Status filter chips */}
           <div className="flex gap-2 mb-5 flex-wrap">
-            {([['all','Tümü'],['new','Yeni'],['handed_off','Temsilci Talep'],['in_progress','Aktif']] as const).map(([key, label]) => (
+            {([
+              ['all', 'Tümü'], ['hot', '🔥 HOT'], ['warm', '🟡 WARM'], ['cold', '🔵 COLD'],
+              ['today', '📅 Bugün'], ['new', 'Yeni'], ['handed_off', 'Temsilci Talep'], ['in_progress', 'Aktif'],
+            ] as const).map(([key, label]) => (
               <button
                 key={key}
-                onClick={() => handleFilter(key)}
+                onClick={() => handleFilter(key as FilterStatus)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  filter === key ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  filter === key ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 {label}
-                <span className={`ml-1.5 text-xs ${filter === key ? 'text-brand-200' : 'text-slate-400'}`}>
-                  {statusCounts[key]}
+                <span className={`ml-1.5 text-xs ${filter === key ? 'text-slate-400' : 'text-slate-400'}`}>
+                  {statusCounts[key as keyof typeof statusCounts] ?? 0}
                 </span>
               </button>
             ))}
@@ -379,17 +406,18 @@ function LeadsTab({ orgId }: { orgId: string }) {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${channel === 'whatsapp' ? 'bg-green-100 text-green-600' : channel === 'instagram' ? 'bg-pink-100 text-pink-600' : 'bg-slate-100 text-slate-500'}`}>
-                                {channel === 'whatsapp' ? 'W' : channel === 'instagram' ? 'IG' : '?'}
-                              </span>
-                              <span className="font-medium text-slate-800">
-                                {name || <span className="text-slate-400 font-normal">İsimsiz</span>}
-                              </span>
+                              <Avatar name={name || '?'} size={28} />
+                              <div className="min-w-0">
+                                <span className="font-medium text-slate-800 block truncate">
+                                  {name || <span className="text-slate-400 font-normal">İsimsiz</span>}
+                                </span>
+                                {channel && <ChannelBadge channel={channel} size="sm" />}
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3">
                             {phone ? (
-                              <a href={`tel:${phone}`} className="font-mono text-sm text-slate-800 hover:text-brand-600">{phone}</a>
+                              <span className="font-mono text-sm text-slate-800">{phone}</span>
                             ) : <span className="text-xs text-slate-400">—</span>}
                           </td>
                           <td className="px-4 py-3"><ScoreBadge score={lead.qualification_score} /></td>
@@ -400,16 +428,9 @@ function LeadsTab({ orgId }: { orgId: string }) {
                           </td>
                           <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{updatedAt}</td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 justify-end">
-                              {phone && (
-                                <a href={`tel:${phone}`} className="flex items-center gap-1 px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs font-medium hover:bg-brand-700 transition-colors">
-                                  <Phone size={12} /> Ara
-                                </a>
-                              )}
-                              <Link href={`/dashboard/leads/${lead.id}`} className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors">
-                                <MessageSquare size={12} /> Detay
-                              </Link>
-                            </div>
+                            <Link href={`/dashboard/leads/${lead.id}`} className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors">
+                              <MessageSquare size={12} /> Detay
+                            </Link>
                           </td>
                         </tr>
                       )
@@ -781,46 +802,27 @@ function FollowupTab({ orgId }: { orgId: string }) {
 
 // ─── CRM Page ─────────────────────────────────────────────────────────────────
 
-type CRMTab = 'leads' | 'proposals' | 'followup'
+type CRMTab = 'leads' | 'leadforms' | 'proposals' | 'followup'
 
 function CRMPageInner() {
   const searchParams = useSearchParams()
   const initialTab = (searchParams.get('tab') as CRMTab) ?? 'leads'
   const [activeTab, setActiveTab] = useState<CRMTab>(
-    ['leads', 'proposals', 'followup'].includes(initialTab) ? initialTab : 'leads'
+    ['leads', 'leadforms', 'proposals', 'followup'].includes(initialTab) ? initialTab : 'leads'
   )
-  const [orgId, setOrgId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    async function loadOrg() {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      const { data: orgUser } = await supabase
-        .from('org_users')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (orgUser) setOrgId(orgUser.organization_id)
-      setLoading(false)
-    }
-    loadOrg()
-  }, [])
+  const { orgId } = useOrg()
+  const loading = false
 
   const tabs: { key: CRMTab; label: string }[] = [
     { key: 'leads',     label: 'Leads' },
+    { key: 'leadforms', label: 'Lead Formlar' },
     { key: 'proposals', label: 'Teklifler & Ödemeler' },
     { key: 'followup',  label: 'Takip' },
   ]
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <Target size={22} className="text-brand-600" />
-        <h1 className="text-xl font-semibold text-slate-800">CRM</h1>
-      </div>
+      <TopBar title="CRM" subtitle="Lead yönetimi ve satış takibi" />
 
       {/* Tab nav */}
       <div className="flex gap-1 mb-6 bg-slate-100 p-1 rounded-xl w-fit">
@@ -848,6 +850,7 @@ function CRMPageInner() {
       ) : (
         <>
           {activeTab === 'leads'     && <LeadsTab orgId={orgId} />}
+          {activeTab === 'leadforms' && <LeadFormsTab />}
           {activeTab === 'proposals' && <ProposalsPaymentsTab orgId={orgId} />}
           {activeTab === 'followup'  && <FollowupTab orgId={orgId} />}
         </>

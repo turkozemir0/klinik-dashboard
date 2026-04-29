@@ -1,0 +1,123 @@
+# 03 — Randevu Akışı Testleri — Solo Dent Diş Kliniği
+
+# 1. Randevu talebi
+- description: "Randevu talebi: uygun zamanlar sunuluyor mu?"
+  vars:
+    message: "Yarın gelebilir miyim?"
+    channel: voice
+    scenario: inbound
+    history:
+      - role: assistant
+        content: "Merhaba, Solo Dent'e hoş geldiniz! Adınızı alabilir miyim?"
+      - role: user
+        content: "Zeynep Aydın"
+      - role: assistant
+        content: "Memnun oldum Zeynep Hanım. Nasıl yardımcı olabilirim?"
+      - role: user
+        content: "Diş temizliği yaptırmak istiyorum"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent randevu talebine olumlu yanıt veriyor.
+        Saat önerisi yapıyor veya tercih soruyor.
+        Pass: Randevu için saat/gün sunuyor veya tercih soruyor.
+        Fail: Randevu talebini görmezden geliyor.
+
+# 2. Saat tercihi
+- description: "Saat tercihi doğru ele alınıyor"
+  vars:
+    message: "Öğleden sonra olsun lütfen"
+    channel: voice
+    scenario: inbound
+    history:
+      - role: assistant
+        content: "Yarın için randevunuzu ayarlayalım. Sabah mı öğleden sonra mı uygun?"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent öğleden sonra tercihini kabul ediyor.
+        Pass: Öğleden sonra saatler sunuyor veya tercihi onaylıyor.
+        Fail: Tercihi görmezden geliyor.
+
+# 3. Teyit akışı
+- description: "Randevu sonrası teyit/özet yapıyor"
+  vars:
+    message: "Tamam, 14:00 olsun"
+    channel: voice
+    scenario: inbound
+    history:
+      - role: assistant
+        content: "Öğleden sonra müsaitiz. On dört veya on altı saatlerini önerebilirim."
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent randevu detaylarını özetliyor veya onay istiyor.
+        Pass: Tarih/saat özetleyip onay istiyor.
+        Fail: Onay almadan kesinleştiriyor veya hiç özetlemiyor.
+
+# 4. Randevu iptal
+- description: "Randevu iptal talebi nazikçe ele alınıyor"
+  vars:
+    message: "Randevumu iptal etmek istiyorum"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent iptal talebini kabul ediyor, baskı yapmıyor.
+        Nazikçe sebebi sorabilir veya yeni tarih önerebilir ama zorlamaz.
+        Pass: İptali anlayışla karşılıyor.
+        Fail: İptal etmemesi için baskı yapıyor.
+
+# 5. Müsaitlik yok
+- description: "Müsaitlik yoksa alternatif gün öneriliyor"
+  vars:
+    message: "Bugün gelebilir miyim?"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent alternatif gün veya saat sunuyor.
+        Pass: Alternatif tarih/saat öneriyor.
+        Fail: Alternatif sunmadan konuşmayı kapatıyor.
+
+# 6. Haftasonu
+- description: "Cumartesi sorusu: çalışma saatleri bilgisi"
+  vars:
+    message: "Cumartesi açık mısınız?"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent Cumartesi müsaitlik bilgisi veriyor.
+        Pass: Cumartesi ile ilgili bilgi veriyor.
+        Fail: Soruyu görmezden geliyor.
+
+# 7. Belirsiz tarih
+- description: "Belirsiz tarih: tercih soruyor, zorlamıyor"
+  vars:
+    message: "Yakında gelmek istiyorum ama tarih bilmiyorum"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent tarih zorlamıyor, tercih soruyor.
+        Pass: Baskı yapmadan tercih soruyor.
+        Fail: Kesin tarih dayatıyor.
+
+# 8. Bilgi + randevu
+- description: "Önce bilgi sonra randevu sıralaması"
+  vars:
+    message: "Randevu almak istiyorum ama önce implant fiyatını öğreneyim"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent önce fiyat sorusuna yanıt (aralık veya konsültasyon),
+        sonra randevu sunuyor.
+        Pass: Önce bilgi, sonra randevu yönlendirmesi.
+        Fail: Bilgi talebini atlayıp direkt randevuya geçiyor.

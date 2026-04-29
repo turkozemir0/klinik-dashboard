@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabase } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { checkEntitlement, decrementUsage } from '@/lib/entitlements'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 function getServiceClient() {
   return createSupabase(
@@ -28,6 +29,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const orgUser = await getOrgUser(user.id)
   if (!orgUser) return NextResponse.json({ error: 'Org bulunamadı' }, { status: 403 })
+
+  const blocked = demoWriteBlock(orgUser.organization_id)
+  if (blocked) return blocked
+
   if (!['admin', 'patron', 'yönetici'].includes(orgUser.role)) {
     return NextResponse.json({ error: 'Yetki yetersiz' }, { status: 403 })
   }
@@ -90,6 +95,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   const orgUser = await getOrgUser(user.id)
   if (!orgUser) return NextResponse.json({ error: 'Org bulunamadı' }, { status: 403 })
+
+  const blocked2 = demoWriteBlock(orgUser.organization_id)
+  if (blocked2) return blocked2
+
   if (!['admin', 'patron'].includes(orgUser.role)) {
     return NextResponse.json({ error: 'Silmek için admin yetkisi gerekli' }, { status: 403 })
   }

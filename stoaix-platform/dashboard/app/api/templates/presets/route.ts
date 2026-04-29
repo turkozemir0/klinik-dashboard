@@ -19,8 +19,9 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const sector  = searchParams.get('sector')
-  const purpose = searchParams.get('purpose')
+  const sector   = searchParams.get('sector')
+  const purpose  = searchParams.get('purpose')
+  const language = searchParams.get('language')
 
   const service = getServiceClient()
   let query = service
@@ -30,8 +31,9 @@ export async function GET(req: NextRequest) {
     .order('sector')
     .order('purpose')
 
-  if (sector)  query = query.eq('sector', sector)
-  if (purpose) query = query.eq('purpose', purpose)
+  if (sector)   query = query.eq('sector', sector)
+  if (purpose)  query = query.eq('purpose', purpose)
+  if (language) query = query.eq('language', language)
 
   const { data: presets, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

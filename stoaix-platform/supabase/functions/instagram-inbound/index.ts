@@ -31,6 +31,39 @@ interface IGWebhookPayload {
   }>
 }
 
+// ─── Language-aware UI messages ──────────────────────────────────────────────
+
+const I18N: Record<string, { unsupported: string }> = {
+  tr: { unsupported: 'Üzgünüm, şu an yalnızca metin mesajlarını anlayabiliyorum. Lütfen yazmak istediğinizi metin olarak iletin.' },
+  de: { unsupported: 'Entschuldigung, ich kann derzeit nur Textnachrichten verarbeiten. Bitte senden Sie Ihre Anfrage als Textnachricht.' },
+  en: { unsupported: 'Sorry, I can only process text messages at the moment. Please send your request as a text message.' },
+}
+
+function getI18n(lang: string) {
+  return I18N[lang] ?? I18N.tr
+}
+
+// ─── Resolve language: contact override → org default → 'tr' ────────────────
+
+async function resolveLanguage(
+  orgId:          string,
+  orgDefaultLang: string,
+  identifierKey:  string,
+  identifierVal:  string
+): Promise<string> {
+  try {
+    const supabase = getSupabase()
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('preferred_language')
+      .eq('organization_id', orgId)
+      .filter(`channel_identifiers->>${identifierKey}`, 'eq', identifierVal)
+      .maybeSingle()
+    if (contact?.preferred_language) return contact.preferred_language
+  } catch { /* ignore — fall through */ }
+  return orgDefaultLang || 'tr'
+}
+
 // ─── Meta Graph API send helper ───────────────────────────────────────────────
 
 async function sendInstagramMessage(
@@ -117,7 +150,8 @@ async function handleInbound(
 
   // Non-text attachments (image, video, audio, story mention, etc.) — friendly fallback
   if (message.attachments?.length) {
-    await reply('Üzgünüm, şu an yalnızca metin mesajlarını anlayabiliyorum. Lütfen yazmak istediğinizi metin olarak iletin.')
+    const lang = await resolveLanguage(org.id, org.default_language ?? 'tr', 'instagram_id', senderId)
+    await reply(getI18n(lang).unsupported)
   }
 }
 
@@ -161,7 +195,7 @@ serve(async (req) => {
   const supabase = getSupabase()
   const { data: orgs } = await supabase
     .from('organizations')
-    .select('id, channel_config')
+    .select('id, default_language, channel_config')
     .eq('status', 'active')
 
   const tasks: Promise<void>[] = []

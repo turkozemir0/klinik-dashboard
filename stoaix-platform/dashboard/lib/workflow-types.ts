@@ -38,6 +38,14 @@ export interface ConfigField {
   unit?: string
   options?: ConfigFieldOption[]
   description?: string
+  template_purpose?: string  // followup | reengagement | appointment_reminder | satisfaction
+}
+
+export interface SequenceStep {
+  step: number
+  template: string
+  param_count: number
+  delay_days: number
 }
 
 export interface WorkflowTemplate {
@@ -52,6 +60,8 @@ export interface WorkflowTemplate {
   config_fields: ConfigField[]
   n8n_workflow_id: string    // n8n webhook key
   steps_summary: string[]    // {{variable}} interpolasyonu
+  comingSoon?: boolean       // n8n karşılığı henüz yok → UI'da devre dışı
+  default_sequence?: SequenceStep[]  // drip sequence varsayılan adımları
 }
 
 // DB: org_workflows
@@ -75,11 +85,14 @@ export interface WorkflowRun {
   trigger_type: TriggerType
   trigger_ref_id: string | null
   status: 'pending' | 'running' | 'success' | 'failed' | 'no_answer' | 'cancelled'
+  sequence_step: number  // drip sequence adımı (default: 1)
   result: {
     call_duration_seconds?: number
     score?: number
     next_action?: string
     notes?: string
+    template?: string
+    step?: number
   }
   n8n_execution_id: string | null
   started_at: string | null
@@ -112,6 +125,11 @@ export interface TemplateWithStatus extends WorkflowTemplate {
   active_workflow_id: string | null  // org_workflows.id varsa
   is_active: boolean
   config: Record<string, any>
+  channel_ready: boolean         // entegrasyon kurulu mu
+  missing_channels: string[]     // eksik kanallar: ['WhatsApp', 'Ses (Giden)']
+  today_runs?: number            // bugün çalıştırılan sayı
+  success_rate?: number          // son 7 gün başarı oranı (0-100)
+  last_run_at?: string | null    // en son çalışma zamanı
 }
 
 // n8n webhook payload (Dashboard → n8n)

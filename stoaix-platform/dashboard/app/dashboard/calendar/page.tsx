@@ -8,11 +8,12 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useOrg } from '@/lib/org-context'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type AppointmentType = 'consultation' | 'operation' | 'follow_up' | 'other'
-type AppointmentSource = 'platform' | 'google' | 'ai' | 'ghl'
+type AppointmentSource = 'platform' | 'google' | 'ai' | 'ghl' | 'dentsoft'
 type SourceFilter = 'all' | AppointmentSource
 
 interface Appointment {
@@ -65,18 +66,21 @@ const SOURCE_LABELS: Record<string, string> = {
   google:   'Google',
   ai:       'AI Asistan',
   ghl:      'GHL',
+  dentsoft: 'DentSoft',
 }
 const SOURCE_BAR_CLASS: Record<string, string> = {
   platform: 'bg-brand-400',
   google:   'bg-blue-400',
   ai:       'bg-emerald-400',
   ghl:      'bg-amber-400',
+  dentsoft: 'bg-purple-400',
 }
 const SOURCE_CHIP_CLASS: Record<string, string> = {
   platform: 'bg-brand-100 text-brand-700',
   google:   'bg-blue-100 text-blue-700',
   ai:       'bg-emerald-100 text-emerald-700',
   ghl:      'bg-amber-100 text-amber-700',
+  dentsoft: 'bg-purple-100 text-purple-700',
 }
 
 const TR_MONTHS = [
@@ -134,6 +138,7 @@ function timeAgo(iso: string) {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
+  const { orgId: ctxOrgId } = useOrg()
   const today       = new Date()
   const [viewYear, setViewYear]   = useState(today.getFullYear())
   const [viewMonth, setViewMonth] = useState(today.getMonth())
@@ -273,21 +278,17 @@ export default function CalendarPage() {
   // Lead search for modal
   async function loadLeads(search = '') {
     setLeadsLoading(true)
+    if (!ctxOrgId) { setLeadsLoading(false); return }
     const sb = createClient()
-    const { data: { user } } = await sb.auth.getUser()
-    if (!user) { setLeadsLoading(false); return }
-    const { data: orgUser } = await sb
-      .from('org_users').select('organization_id').eq('user_id', user.id).maybeSingle()
-    if (!orgUser) { setLeadsLoading(false); return }
     let query = sb.from('leads')
       .select('id, qualification_score, contacts(full_name, phone)')
-      .eq('organization_id', orgUser.organization_id)
+      .eq('organization_id', ctxOrgId)
       .not('status', 'in', '("converted","lost")')
       .order('updated_at', { ascending: false })
       .limit(20)
     if (search) {
       const { data: cm } = await sb.from('contacts').select('id')
-        .eq('organization_id', orgUser.organization_id)
+        .eq('organization_id', ctxOrgId)
         .ilike('full_name', `%${search}%`).limit(20)
       const ids = (cm ?? []).map((c: any) => c.id)
       if (!ids.length) { setLeads([]); setLeadsLoading(false); return }
@@ -391,7 +392,7 @@ export default function CalendarPage() {
           <h1 className="text-xl font-semibold text-slate-800">Takvim</h1>
           {provider && provider !== 'none' && (
             <span className="text-xs bg-brand-50 text-brand-600 border border-brand-100 px-2 py-0.5 rounded-full font-medium">
-              {provider === 'google' ? 'Google Takvim bağlı' : provider}
+              {provider === 'google' ? 'Google Takvim bağlı' : provider === 'dentsoft' ? 'DentSoft bağlı' : provider}
             </span>
           )}
         </div>
@@ -413,7 +414,7 @@ export default function CalendarPage() {
 
       {/* ── Source Filter + Sync info ── */}
       <div className="flex items-center gap-2 mb-5 flex-wrap">
-        {(['all', 'platform', 'google', 'ai', 'ghl'] as const).map(f => (
+        {(['all', 'platform', 'google', 'ai', 'ghl', 'dentsoft'] as const).map(f => (
           <button key={f} onClick={() => setSourceFilter(f)}
             className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
               sourceFilter === f

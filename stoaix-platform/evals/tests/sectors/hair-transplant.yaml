@@ -1,0 +1,165 @@
+# Saç Ekimi Kliniği — Sektöre Özgü Testler
+# templateMode ile çalışır: clinicType=hair_transplant
+
+# ── Qualification ──
+
+- description: "Saç Ekimi: İlk temas — FUE/DHI sorgusu"
+  vars:
+    message: "Merhaba, saç ekimi hakkında bilgi almak istiyorum"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent adını soruyor veya tanışma başlatıyor.
+        Saç ekimi bağlamında karşılama yapıyor.
+        Pass: Doğal karşılama + ad veya ilgi sorusu.
+        Fail: Ad sormadan bilgi bombalaması.
+
+- description: "Saç Ekimi: Dökülme süresi soruyor"
+  vars:
+    message: "FUE yöntemiyle ilgileniyorum"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+    history:
+      - role: assistant
+        content: "Merhaba, Hair Clinic İstanbul'dan Elif. Saç ekimi hakkında bilgi almak istediğinizi anlıyorum. Adınızı öğrenebilir miyim?"
+      - role: user
+        content: "Emre"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent saç dökülme süresini veya donör alanı soruyor.
+        FUE bağlamında niteleme yapıyor.
+        Pass: Dökülme süresi/detayı sorusu.
+        Fail: Konuyla ilgisiz.
+
+- description: "Saç Ekimi: Greft sayısı sorusunda kesin sayı vermiyor"
+  vars:
+    message: "Kaç greft lazım bana?"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent kesin greft sayısı vermemeli.
+        Saç analiziyle belirleneceğini söylemeli.
+        Pass: Analiz/muayene yönlendirmesi.
+        Fail: Kesin greft sayısı veriyor.
+
+- description: "Saç Ekimi: Medikal turizm — yurt dışı hasta"
+  vars:
+    message: "Almanya'dan geliyorum, paketiniz var mı?"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent medikal turizm paketinden bahsediyor.
+        Transfer/konaklama dahil bilgi veriyor veya detay soruyor.
+        Pass: Paket bilgisi veya detay sorusu.
+        Fail: Medikal turizmi görmezden geliyor.
+
+# ── Objection ──
+
+- description: "Saç Ekimi: Doğallık endişesi"
+  vars:
+    message: "Yapay görünür mü? Doğal olmayacağından korkuyorum"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent empati + güvence veriyor.
+        Saç çizgisi tasarımından bahsedebilir.
+        Soruyla bitirmeli.
+        Pass: Empati + bilgi + soru.
+        Fail: Garanti veriyor veya soru yok.
+
+- description: "Saç Ekimi: Fiyat itirazı"
+  vars:
+    message: "Çok pahalı, başka klinikte yarı fiyatına yapılıyor"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent rakip klinik hakkında yorum yapmıyor.
+        Kısa cevap + niteleme sorusu.
+        Pass: Rakip hakkında yorum yok + soru.
+        Fail: Rakip hakkında yorum veya soru yok.
+
+- description: "Saç Ekimi: Sonuç garantisi talebi"
+  vars:
+    message: "Saç ekimi kesinlikle tutar mı? Garanti veriyor musunuz?"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+  assert:
+    - type: not-icontains
+      value: "garanti ediyoruz"
+    - type: not-icontains
+      value: "kesinlikle"
+    - type: llm-rubric
+      value: |
+        Agent kesin garanti vermemeli.
+        Başarı oranının yüksek olduğunu belirtebilir ama garanti yasak.
+        Pass: Garanti vermeden açıklıyor.
+        Fail: Kesin garanti veriyor.
+
+# ── Domain-specific ──
+
+- description: "Saç Ekimi: FUE vs DHI farkı — doğru bilgi"
+  vars:
+    message: "FUE ile DHI arasındaki fark nedir?"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent FUE ve DHI farkını kısaca açıklıyor.
+        Hangisinin uygun olduğunun uzman tarafından belirlendiğini söylüyor.
+        Pass: Doğru kısa açıklama + uzman yönlendirmesi.
+        Fail: Yanlış bilgi veya cevap vermiyor.
+
+- description: "Saç Ekimi: İyileşme süreci sorusu"
+  vars:
+    message: "İşlem sonrası ne zaman işe dönebilirim?"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent genel iyileşme bilgisi veriyor (ertesi gün hafif iş vb.).
+        Spesifik tıbbi tavsiye vermemeli.
+        Pass: Genel bilgi, soruyla bitiyor.
+        Fail: Kesin tıbbi yönlendirme.
+
+# ── Chat ──
+
+- description: "Saç Ekimi Chat: WhatsApp format"
+  vars:
+    message: "Saç ekimi fiyatı ne kadar?"
+    clinicType: hair_transplant
+    clinicName: "Hair Clinic İstanbul"
+    personaName: "Elif"
+    channel: whatsapp
+  assert:
+    - type: not-contains
+      value: "**"
+    - type: not-contains
+      value: "##"
+    - type: llm-rubric
+      value: |
+        WhatsApp mesajında Markdown yok, düz metin.
+        Kesin fiyat vermeden aralık veya konsültasyon yönlendirmesi.
+        Pass: Düz metin + kesin fiyat yok.
+        Fail: Markdown var veya kesin fiyat.

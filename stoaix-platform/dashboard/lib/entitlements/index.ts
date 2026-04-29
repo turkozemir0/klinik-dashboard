@@ -1,4 +1,4 @@
-export { checkEntitlement, hasFeature } from './check'
+export { checkEntitlement, checkAllEntitlements, hasFeature } from './check'
 export { incrementUsage, decrementUsage, getUsage, currentBillingPeriod } from './usage'
 export { invalidateCache } from './cache'
 export { withFeatureGuard } from './guard'

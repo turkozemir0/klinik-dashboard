@@ -1,633 +1,400 @@
 'use client'
 
-import { useState, useEffect, useRef, Suspense } from 'react'
+import { useState, Suspense } from 'react'
 import {
-  Trash2, Plus, Loader2, Calendar, CheckCircle2, ExternalLink, Instagram,
-  X, MessageCircle, Plug, LayoutTemplate,
+  Instagram, Plug, Ban,
 } from 'lucide-react'
-import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import TopBar from '@/components/TopBar'
+import { IntegrationCard } from '@/components/integrations/IntegrationCard'
+import { ConfigDrawer } from '@/components/integrations/ConfigDrawer'
+import { WhatsAppConfig } from '@/components/integrations/WhatsAppConfig'
+import { InstagramConfig } from '@/components/integrations/InstagramConfig'
+import { CalendarConfig } from '@/components/integrations/CalendarConfig'
+import { DentSoftConfig } from '@/components/integrations/DentSoftConfig'
+import { ExcludedPhonesConfig } from '@/components/integrations/ExcludedPhonesConfig'
+import { VoiceProviderConfig } from '@/components/integrations/VoiceProviderConfig'
+import { VOICE_PROVIDERS, PROVIDER_LIST } from '@/lib/voice-providers'
+import { useIsDemo } from '@/lib/demo-context'
+import { useLang } from '@/lib/lang-context'
+import {
+  WhatsAppIcon,
+  NetgsmIcon,
+  VerimorIcon,
+  TwilioIcon,
+  TelnyxIcon,
+  GoogleCalendarIcon,
+  DentSoftIcon,
+  HubSpotIcon,
+  SalesforceIcon,
+  PipedriveIcon,
+  ZapierIcon,
+  CalendlyIcon,
+} from '@/components/integrations/ProviderIcons'
 
-// ─── Facebook SDK type shim ───────────────────────────────────────────────────
-declare global {
-  interface Window {
-    FB: any
-    fbAsyncInit: () => void
-  }
+type DrawerId =
+  | 'whatsapp'
+  | 'instagram'
+  | 'calendar'
+  | 'dentsoft'
+  | 'excluded-phones'
+  | 'netgsm'
+  | 'verimor'
+  | 'twilio'
+  | 'telnyx'
+  | null
+
+const VOICE_ICON_MAP: Record<string, React.ReactNode> = {
+  netgsm: <NetgsmIcon size={24} />,
+  verimor: <VerimorIcon size={24} />,
+  twilio: <TwilioIcon size={24} />,
+  telnyx: <TelnyxIcon size={24} />,
 }
 
-function loadFbSdk(appId: string) {
-  if (document.getElementById('facebook-jssdk')) return
-  window.fbAsyncInit = function () {
-    window.FB.init({ appId, cookie: true, xfbml: false, version: 'v19.0' })
-  }
-  const script = document.createElement('script')
-  script.id  = 'facebook-jssdk'
-  script.src = 'https://connect.facebook.net/en_US/sdk.js'
-  document.body.appendChild(script)
+type CategoryKey = 'all' | 'channels' | 'calendar' | 'crm' | 'clinic_pms' | 'automation'
+
+const SECTION_LABELS: Record<string, { tr: string; en: string }> = {
+  channels: { tr: 'Kanallar', en: 'Channels' },
+  voice: { tr: 'Ses / Sanal Santral', en: 'Voice / PBX' },
+  calendar: { tr: 'Takvim', en: 'Calendar' },
+  clinic_pms: { tr: 'Klinik PMS', en: 'Clinic PMS' },
+  crm: { tr: 'CRM', en: 'CRM' },
+  automation: { tr: 'Otomasyon', en: 'Automation' },
+  other: { tr: 'Diğer', en: 'Other' },
 }
-
-// ─── Calendar ─────────────────────────────────────────────────────────────────
-
-function CalendarSection() {
-  const searchParams = useSearchParams()
-  const [calConnected, setCalConnected] = useState<boolean | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [disconnecting, setDisconnecting] = useState(false)
-
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
-      const { data: orgUser } = await supabase
-        .from('org_users')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (!orgUser) { setLoading(false); return }
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('channel_config')
-        .eq('id', orgUser.organization_id)
-        .single()
-      const cal = (org?.channel_config as any)?.calendar
-      setCalConnected(!!(cal?.access_token))
-      setLoading(false)
-    })
-  }, [searchParams.get('calendar_connected')])
-
-  const connected = calConnected || !!searchParams.get('calendar_connected')
-  const error = searchParams.get('calendar_error')
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6">
-      <div className="flex items-center gap-2 mb-1">
-        <Calendar size={16} className="text-brand-600" />
-        <h2 className="font-semibold text-slate-800">Google Takvim</h2>
-      </div>
-      <p className="text-sm text-slate-500 mb-4">
-        Randevu oluşturma özelliği için Google Takviminizi bağlayın.
-      </p>
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-slate-400 text-sm">
-          <Loader2 size={14} className="animate-spin" /> Yükleniyor...
-        </div>
-      ) : connected ? (
-        <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm">
-          <CheckCircle2 size={16} />
-          <span className="font-medium">Google Takvim bağlı</span>
-          <div className="ml-auto flex items-center gap-3">
-            <button
-              onClick={() => window.location.href = '/api/calendar/auth'}
-              className="text-xs text-slate-500 hover:text-slate-700 underline"
-            >
-              Yeniden bağla
-            </button>
-            <button
-              disabled={disconnecting}
-              onClick={async () => {
-                if (!confirm('Google Takvim bağlantısını kesmek istediğinize emin misiniz?')) return
-                setDisconnecting(true)
-                const res = await fetch('/api/calendar/disconnect', { method: 'DELETE' })
-                if (res.ok) {
-                  setCalConnected(false)
-                } else {
-                  alert('Bağlantı kesilirken bir hata oluştu.')
-                }
-                setDisconnecting(false)
-              }}
-              className="text-xs text-red-500 hover:text-red-700 underline disabled:opacity-50"
-            >
-              {disconnecting ? 'Kesiliyor...' : 'Bağlantıyı kes'}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {error && (
-            <p className="text-sm text-red-500 mb-3">
-              Bağlantı başarısız: {error}
-            </p>
-          )}
-          <button
-            onClick={() => window.location.href = '/api/calendar/auth'}
-            className="flex items-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
-          >
-            <Calendar size={14} />
-            Google Takvim Bağla
-            <ExternalLink size={13} className="opacity-70" />
-          </button>
-        </>
-      )}
-    </div>
-  )
-}
-
-// ─── Instagram ────────────────────────────────────────────────────────────────
-
-function InstagramSection() {
-  const searchParams = useSearchParams()
-  const [igState, setIgState] = useState<{ connected: boolean; username?: string } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [disconnecting, setDisconnecting] = useState(false)
-
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
-      const { data: orgUser } = await supabase
-        .from('org_users')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (!orgUser) { setLoading(false); return }
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('channel_config')
-        .eq('id', orgUser.organization_id)
-        .single()
-      const ig = (org?.channel_config as any)?.instagram
-      const creds = ig?.credentials
-      setIgState({
-        connected: !!(ig?.active && creds?.page_id),
-        username: creds?.username,
-      })
-      setLoading(false)
-    })
-  }, [searchParams.get('instagram')])
-
-  const justConnected = searchParams.get('instagram') === 'connected'
-  const error = searchParams.get('instagram_error')
-  const connected = justConnected || igState?.connected
-
-  async function disconnect() {
-    setDisconnecting(true)
-    try {
-      await fetch('/api/instagram/disconnect', { method: 'DELETE' })
-      setIgState({ connected: false })
-      window.history.replaceState({}, '', '/dashboard/integrations')
-    } finally {
-      setDisconnecting(false)
-    }
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6">
-      <div className="flex items-center gap-2 mb-1">
-        <Instagram size={16} className="text-pink-500" />
-        <h2 className="font-semibold text-slate-800">Instagram DM</h2>
-      </div>
-      <p className="text-sm text-slate-500 mb-4">
-        Instagram hesabınızı bağlayın, gelen DM&apos;ler otomatik yönetilsin.
-      </p>
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-slate-400 text-sm">
-          <Loader2 size={14} className="animate-spin" /> Yükleniyor...
-        </div>
-      ) : connected ? (
-        <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm">
-          <CheckCircle2 size={16} />
-          <span className="font-medium">
-            Bağlı{igState?.username ? ` — @${igState.username}` : ''}
-          </span>
-          <button
-            onClick={disconnect}
-            disabled={disconnecting}
-            className="ml-auto flex items-center gap-1 text-xs text-slate-500 hover:text-red-500 transition-colors"
-          >
-            {disconnecting ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
-            Bağlantıyı Kes
-          </button>
-        </div>
-      ) : (
-        <>
-          {error && (
-            <p className="text-sm text-red-500 mb-3">
-              Bağlantı başarısız: {error}
-            </p>
-          )}
-          <button
-            onClick={() => { window.location.href = '/api/instagram/auth' }}
-            className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-          >
-            <Instagram size={14} />
-            Instagram&apos;ı Bağla
-            <ExternalLink size={13} className="opacity-70" />
-          </button>
-        </>
-      )}
-    </div>
-  )
-}
-
-// ─── WhatsApp ─────────────────────────────────────────────────────────────────
-
-type WaConnectMode = 'embedded' | 'manual'
-
-function WhatsAppSection() {
-  const [waState, setWaState]       = useState<{ connected: boolean; phone?: string } | null>(null)
-  const [loading, setLoading]       = useState(true)
-  const [connecting, setConnecting] = useState(false)
-  const [disconnecting, setDisconnecting] = useState(false)
-  const [error, setError]           = useState('')
-  const [mode, setMode]             = useState<WaConnectMode>('embedded')
-
-  const [manualPhoneId, setManualPhoneId]   = useState('')
-  const [manualToken, setManualToken]       = useState('')
-  const [manualWabaId, setManualWabaId]     = useState('')
-
-  const waSessionInfo = useRef<{ phone_number_id?: string; waba_id?: string } | null>(null)
-  const hasEmbeddedSignup = !!process.env.NEXT_PUBLIC_META_WA_CONFIG_ID
-
-  useEffect(() => {
-    const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID
-    if (appId) loadFbSdk(appId)
-
-    const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
-      const { data: orgUser } = await supabase
-        .from('org_users')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (!orgUser) { setLoading(false); return }
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('channel_config')
-        .eq('id', orgUser.organization_id)
-        .single()
-      const wa    = (org?.channel_config as any)?.whatsapp
-      const creds = wa?.credentials
-      setWaState({
-        connected: !!(wa?.active && creds?.phone_number_id),
-        phone:     creds?.phone_number,
-      })
-      setLoading(false)
-    })
-  }, [])
-
-  useEffect(() => {
-    function onMessage(event: MessageEvent) {
-      if (event.origin !== 'https://www.facebook.com') return
-      try {
-        const data = JSON.parse(event.data)
-        if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH') {
-          waSessionInfo.current = {
-            phone_number_id: data.data?.phone_number_id,
-            waba_id:         data.data?.waba_id,
-          }
-        }
-      } catch {}
-    }
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [])
-
-  async function connectEmbedded() {
-    if (!window.FB) { setError('Facebook SDK yüklenemedi, sayfayı yenileyin.'); return }
-    setConnecting(true)
-    setError('')
-    waSessionInfo.current = null
-
-    window.FB.login(async (response: any) => {
-      try {
-        if (!response?.authResponse?.code) {
-          setError('Bağlantı iptal edildi veya yetki verilmedi.')
-          return
-        }
-        const sessionInfo = waSessionInfo.current ?? {}
-        const res = await fetch('/api/whatsapp/callback', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code:            response.authResponse.code,
-            phone_number_id: sessionInfo.phone_number_id,
-            waba_id:         sessionInfo.waba_id,
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Bağlantı başarısız')
-        setWaState({ connected: true, phone: data.phone_number })
-      } catch (e: any) {
-        setError(e.message ?? 'Bağlantı başarısız')
-      } finally {
-        setConnecting(false)
-      }
-    }, {
-      config_id:                    process.env.NEXT_PUBLIC_META_WA_CONFIG_ID,
-      response_type:                'code',
-      override_default_response_type: true,
-      extras: { sessionInfoVersion: '3' },
-    })
-  }
-
-  async function connectManual() {
-    if (!manualPhoneId.trim() || !manualToken.trim()) {
-      setError('Phone Number ID ve Access Token zorunlu.')
-      return
-    }
-    setConnecting(true)
-    setError('')
-    try {
-      const res = await fetch('/api/whatsapp/manual-connect', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone_number_id: manualPhoneId.trim(),
-          access_token:    manualToken.trim(),
-          waba_id:         manualWabaId.trim() || undefined,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Bağlantı başarısız')
-      setWaState({ connected: true, phone: data.phone_number })
-      setManualPhoneId('')
-      setManualToken('')
-      setManualWabaId('')
-    } catch (e: any) {
-      setError(e.message ?? 'Bağlantı başarısız')
-    } finally {
-      setConnecting(false)
-    }
-  }
-
-  async function disconnect() {
-    setDisconnecting(true)
-    try {
-      await fetch('/api/whatsapp/disconnect', { method: 'DELETE' })
-      setWaState({ connected: false })
-    } finally {
-      setDisconnecting(false)
-    }
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6">
-      <div className="flex items-center gap-2 mb-1">
-        <MessageCircle size={16} className="text-green-500" />
-        <h2 className="font-semibold text-slate-800">WhatsApp</h2>
-      </div>
-      <p className="text-sm text-slate-500 mb-4">
-        WhatsApp Business hesabınızı bağlayın, gelen mesajlar otomatik yönetilsin.
-      </p>
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-slate-400 text-sm">
-          <Loader2 size={14} className="animate-spin" /> Yükleniyor...
-        </div>
-      ) : waState?.connected ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm">
-            <CheckCircle2 size={16} />
-            <span className="font-medium">
-              Bağlı{waState.phone ? ` — ${waState.phone}` : ''}
-            </span>
-            <button
-              onClick={disconnect}
-              disabled={disconnecting}
-              className="ml-auto flex items-center gap-1 text-xs text-slate-500 hover:text-red-500 transition-colors"
-            >
-              {disconnecting ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
-              Bağlantıyı Kes
-            </button>
-          </div>
-          <Link
-            href="/dashboard/templates"
-            className="inline-flex items-center gap-2 text-sm text-brand-600 hover:text-brand-700 font-medium"
-          >
-            <LayoutTemplate size={14} />
-            Template Yönet
-          </Link>
-        </div>
-      ) : (
-        <>
-          {hasEmbeddedSignup && (
-            <div className="flex gap-1 mb-4 bg-slate-100 p-1 rounded-lg w-fit">
-              <button
-                onClick={() => { setMode('embedded'); setError('') }}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  mode === 'embedded' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Embedded Signup
-              </button>
-              <button
-                onClick={() => { setMode('manual'); setError('') }}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  mode === 'manual' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Manuel Bağla
-              </button>
-            </div>
-          )}
-
-          {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
-
-          {(mode === 'embedded' && hasEmbeddedSignup) && (
-            <button
-              onClick={connectEmbedded}
-              disabled={connecting}
-              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-60 transition-colors"
-            >
-              {connecting ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
-              WhatsApp Bağla
-              <ExternalLink size={13} className="opacity-70" />
-            </button>
-          )}
-
-          {(mode === 'manual' || !hasEmbeddedSignup) && (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
-                  Phone Number ID <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={manualPhoneId}
-                  onChange={(e) => setManualPhoneId(e.target.value)}
-                  placeholder="Meta App → WhatsApp → Phone Numbers"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
-                  System User Access Token <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  value={manualToken}
-                  onChange={(e) => setManualToken(e.target.value)}
-                  placeholder="EAAx..."
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
-                  WABA ID <span className="text-slate-400 font-normal">(isteğe bağlı)</span>
-                </label>
-                <input
-                  type="text"
-                  value={manualWabaId}
-                  onChange={(e) => setManualWabaId(e.target.value)}
-                  placeholder="WhatsApp Business Account ID"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-              <button
-                onClick={connectManual}
-                disabled={connecting || !manualPhoneId.trim() || !manualToken.trim()}
-                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-60 transition-colors"
-              >
-                {connecting ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
-                Bağlan &amp; Doğrula
-              </button>
-              <p className="text-xs text-slate-400">
-                Meta Business Suite → System Users → &quot;Generate Token&quot; ile token alabilirsiniz.
-              </p>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-// ─── Excluded Phones ──────────────────────────────────────────────────────────
-
-function ExcludedPhonesSection() {
-  const [phones, setPhones] = useState<string[]>([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-
-  useEffect(() => {
-    fetch('/api/settings/excluded-phones')
-      .then((r) => r.json())
-      .then((d) => setPhones(d.phones ?? []))
-      .catch(() => setError('Yüklenemedi'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  async function save(updated: string[]) {
-    setSaving(true)
-    setError('')
-    setSuccess(false)
-    try {
-      const res = await fetch('/api/settings/excluded-phones', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phones: updated }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setPhones(data.phones)
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 2000)
-    } catch (e: any) {
-      setError(e.message ?? 'Kaydedilemedi')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function addPhones() {
-    if (!input.trim()) return
-    const parsed = input.split(/[\s,\n]+/).map((s) => s.trim()).filter(Boolean)
-    const merged = Array.from(new Set([...phones, ...parsed]))
-    setInput('')
-    save(merged)
-  }
-
-  function remove(phone: string) {
-    save(phones.filter((p) => p !== phone))
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6">
-      <h2 className="font-semibold text-slate-800 mb-1">Hariç Tutulan Numaralar</h2>
-      <p className="text-sm text-slate-500 mb-4">
-        Bu numaralara gelen mesajlara AI yanıt vermez. Numaraları ülke kodu ile girin (ör.{' '}
-        <span className="font-mono">4915123456789</span> veya{' '}
-        <span className="font-mono">+4915123456789</span>). Virgülle, boşlukla veya alt alta yapıştırabilirsiniz.
-      </p>
-
-      <div className="flex gap-2 mb-4">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addPhones() } }}
-          placeholder="+4915123456789&#10;4915123456789, +90 555 000 00 00"
-          rows={3}
-          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
-        />
-        <button
-          onClick={addPhones}
-          disabled={saving || !input.trim()}
-          className="self-start flex items-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
-        >
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-          Ekle
-        </button>
-      </div>
-
-      {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
-      {success && <p className="text-sm text-green-600 mb-3">Kaydedildi.</p>}
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-slate-400 text-sm py-4">
-          <Loader2 size={14} className="animate-spin" /> Yükleniyor...
-        </div>
-      ) : phones.length === 0 ? (
-        <p className="text-sm text-slate-400 py-4">Henüz hariç tutulan numara yok.</p>
-      ) : (
-        <ul className="space-y-1">
-          {phones.map((phone) => (
-            <li key={phone} className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-lg text-sm">
-              <span className="font-mono text-slate-700">{phone}</span>
-              <button
-                onClick={() => remove(phone)}
-                disabled={saving}
-                className="text-slate-400 hover:text-red-500 disabled:opacity-40 transition-colors"
-              >
-                <Trash2 size={14} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function IntegrationsPage() {
+  const isDemo = useIsDemo()
+  const { lang } = useLang()
+  const isTr = lang === 'tr'
+  const [activeDrawer, setActiveDrawer] = useState<DrawerId>(null)
+
+  function openDrawer(id: DrawerId) {
+    if (isDemo) return
+    setActiveDrawer(id)
+  }
+
+  // Status tracking for cards
+  const [waStatus, setWaStatus] = useState<{ connected: boolean; label?: string }>({ connected: false })
+  const [igStatus, setIgStatus] = useState<{ connected: boolean; label?: string }>({ connected: false })
+  const [calStatus, setCalStatus] = useState<{ connected: boolean }>({ connected: false })
+  const [dsStatus, setDsStatus] = useState<{ connected: boolean }>({ connected: false })
+  const [voiceStatus, setVoiceStatus] = useState<Record<string, boolean>>({})
+  const [activeCategory, setActiveCategory] = useState<CategoryKey>('all')
+
+  const categories: { key: CategoryKey; label: string }[] = [
+    { key: 'all', label: isTr ? 'Tümü' : 'All' },
+    { key: 'channels', label: isTr ? 'Kanallar' : 'Channels' },
+    { key: 'calendar', label: isTr ? 'Takvim' : 'Calendar' },
+    { key: 'crm', label: 'CRM' },
+    { key: 'clinic_pms', label: isTr ? 'Klinik PMS' : 'Clinic PMS' },
+    { key: 'automation', label: isTr ? 'Otomasyon' : 'Automation' },
+  ]
+
+  function sectionTitle(key: string) {
+    return SECTION_LABELS[key]?.[lang] ?? key
+  }
+
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
-      <div className="flex items-center gap-3 mb-6">
-        <Plug size={22} className="text-brand-600" />
-        <h1 className="text-xl font-semibold text-slate-800">Entegrasyonlar</h1>
+    <div className="max-w-6xl mx-auto py-8 px-4">
+      <TopBar
+        title={isTr ? 'Entegrasyonlar' : 'Integrations'}
+        subtitle={isTr ? 'Üçüncü parti bağlantılar' : 'Third-party connections'}
+      />
+
+      {/* Category filter chips */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {categories.map(cat => (
+          <button
+            key={cat.key}
+            onClick={() => setActiveCategory(cat.key)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              activeCategory === cat.key
+                ? 'bg-slate-900 text-white'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
       </div>
 
-      <div className="space-y-6">
-        <Suspense fallback={<div className="bg-white rounded-xl border border-slate-200 p-6 text-sm text-slate-400">Yükleniyor...</div>}>
-          <WhatsAppSection />
+      {/* ── Channels — Messaging ─────────────────────────────────── */}
+      {(activeCategory === 'all' || activeCategory === 'channels') && <section className="mb-8">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          {sectionTitle('channels')}
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Suspense fallback={<CardSkeleton />}>
+            <IntegrationCard
+              icon={<WhatsAppIcon size={24} />}
+              name="WhatsApp API"
+              description={isTr ? 'Sadece API üzerinden bağlantı (Manuel)' : 'API-only connection (Manual)'}
+              helperText={isTr ? 'Meta Business Suite\'ten Phone Number ID ve Access Token ile bağlanın.' : 'Connect with Phone Number ID and Access Token from Meta Business Suite.'}
+              category="channels"
+              status={waStatus.connected ? 'connected' : 'disconnected'}
+              statusLabel={waStatus.label}
+              onClick={() => openDrawer('whatsapp')}
+            />
+          </Suspense>
+          <Suspense fallback={<CardSkeleton />}>
+            <IntegrationCard
+              icon={<WhatsAppIcon size={24} />}
+              name="WhatsApp Business"
+              description={isTr ? 'Telefonunuzda ve platform üzerinde tam kontrol' : 'Full control on your phone and platform'}
+              helperText={isTr ? 'Meta Embedded Signup ile tek tıkla bağlantı.' : 'One-click connection via Meta Embedded Signup.'}
+              badge={isTr ? '1 hafta sonra' : 'In 1 week'}
+              category="channels"
+              status="coming_soon"
+            />
+          </Suspense>
+          <Suspense fallback={<CardSkeleton />}>
+            <IntegrationCard
+              icon={<Instagram size={24} className="text-pink-500" />}
+              name="Instagram DM"
+              description={isTr ? 'Instagram Direct mesajları' : 'Instagram Direct messages'}
+              category="channels"
+              status={igStatus.connected ? 'connected' : 'disconnected'}
+              statusLabel={igStatus.label}
+              onClick={() => openDrawer('instagram')}
+            />
+          </Suspense>
+        </div>
+      </section>}
+
+      {/* ── Channels — Voice / PBX ──────────────────────────────── */}
+      {(activeCategory === 'all' || activeCategory === 'channels') && <section className="mb-8">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          {sectionTitle('voice')}
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {PROVIDER_LIST.map((p) => (
+            <IntegrationCard
+              key={p.id}
+              icon={VOICE_ICON_MAP[p.id]}
+              name={p.name}
+              description={p.description}
+              category="channels"
+              status={voiceStatus[p.id] ? 'connected' : 'disconnected'}
+              onClick={() => openDrawer(p.id)}
+            />
+          ))}
+        </div>
+      </section>}
+
+      {/* ── Calendar ─────────────────────────────────────────────── */}
+      {(activeCategory === 'all' || activeCategory === 'calendar') && <section className="mb-8">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          {sectionTitle('calendar')}
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Suspense fallback={<CardSkeleton />}>
+            <IntegrationCard
+              icon={<GoogleCalendarIcon size={24} />}
+              name="Google Takvim"
+              description={isTr ? 'Randevu yönetimi' : 'Appointment management'}
+              category="calendar"
+              status={calStatus.connected ? 'connected' : 'disconnected'}
+              onClick={() => openDrawer('calendar')}
+            />
+          </Suspense>
+          <Suspense fallback={<CardSkeleton />}>
+            <IntegrationCard
+              icon={<CalendlyIcon size={24} />}
+              name="Calendly"
+              description={isTr ? 'Online randevu planlama' : 'Online appointment scheduling'}
+              category="calendar"
+              status="coming_soon"
+            />
+          </Suspense>
+        </div>
+      </section>}
+
+      {/* ── Clinic PMS ───────────────────────────────────────────── */}
+      {(activeCategory === 'all' || activeCategory === 'clinic_pms') && <section className="mb-8">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          {sectionTitle('clinic_pms')}
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Suspense fallback={<CardSkeleton />}>
+            <IntegrationCard
+              icon={<DentSoftIcon size={24} />}
+              name="DentSoft"
+              description={isTr ? 'Diş kliniği takvim entegrasyonu' : 'Dental clinic calendar integration'}
+              category="clinic_pms"
+              status={dsStatus.connected ? 'connected' : 'disconnected'}
+              onClick={() => openDrawer('dentsoft')}
+            />
+          </Suspense>
+        </div>
+      </section>}
+
+      {/* ── CRM ──────────────────────────────────────────────────── */}
+      {(activeCategory === 'all' || activeCategory === 'crm') && <section className="mb-8">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          CRM
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <IntegrationCard
+            icon={<HubSpotIcon size={24} />}
+            name="HubSpot"
+            description={isTr ? 'CRM, pazarlama ve satış otomasyonu' : 'CRM, marketing & sales automation'}
+            category="crm"
+            status="coming_soon"
+          />
+          <IntegrationCard
+            icon={<SalesforceIcon size={24} />}
+            name="Salesforce"
+            description={isTr ? 'Kurumsal CRM ve müşteri yönetimi' : 'Enterprise CRM & customer management'}
+            category="crm"
+            status="coming_soon"
+          />
+          <IntegrationCard
+            icon={<PipedriveIcon size={24} />}
+            name="Pipedrive"
+            description={isTr ? 'Satış pipeline ve anlaşma yönetimi' : 'Sales pipeline & deal management'}
+            category="crm"
+            status="coming_soon"
+          />
+        </div>
+      </section>}
+
+      {/* ── Automation ───────────────────────────────────────────── */}
+      {(activeCategory === 'all' || activeCategory === 'automation') && <section className="mb-8">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          {sectionTitle('automation')}
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <IntegrationCard
+            icon={<ZapierIcon size={24} />}
+            name="Zapier"
+            description={isTr ? '5.000+ uygulama ile otomasyon bağlantısı' : 'Automation with 5,000+ apps'}
+            category="automation"
+            status="coming_soon"
+          />
+        </div>
+      </section>}
+
+      {/* ── Other ────────────────────────────────────────────────── */}
+      {activeCategory === 'all' && <section className="mb-8">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          {sectionTitle('other')}
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <IntegrationCard
+            icon={<Ban size={24} className="text-slate-500" />}
+            name={isTr ? 'Hariç Numaralar' : 'Excluded Numbers'}
+            description={isTr ? 'AI yanıt vermesin istediğiniz numaralar' : 'Numbers you want the AI to skip'}
+            category="other"
+            status="disconnected"
+            onClick={() => openDrawer('excluded-phones')}
+          />
+        </div>
+      </section>}
+
+      {/* ── Drawer'lar ────────────────────────────────────────────── */}
+
+      <ConfigDrawer
+        open={activeDrawer === 'whatsapp'}
+        onClose={() => setActiveDrawer(null)}
+        title="WhatsApp API"
+        icon={<WhatsAppIcon size={18} />}
+      >
+        <Suspense fallback={<DrawerSkeleton />}>
+          <WhatsAppConfig
+            onStatusChange={(c, phone) => setWaStatus({ connected: c, label: phone ? `${isTr ? 'Bağlı' : 'Connected'} — ${phone}` : undefined })}
+          />
         </Suspense>
-        <Suspense fallback={<div className="bg-white rounded-xl border border-slate-200 p-6 text-sm text-slate-400">Yükleniyor...</div>}>
-          <InstagramSection />
+      </ConfigDrawer>
+
+      <ConfigDrawer
+        open={activeDrawer === 'instagram'}
+        onClose={() => setActiveDrawer(null)}
+        title="Instagram DM"
+        icon={<Instagram size={18} className="text-pink-500" />}
+      >
+        <Suspense fallback={<DrawerSkeleton />}>
+          <InstagramConfig
+            onStatusChange={(c, username) => setIgStatus({ connected: c, label: username ? `@${username}` : undefined })}
+          />
         </Suspense>
-        <Suspense fallback={<div className="bg-white rounded-xl border border-slate-200 p-6 text-sm text-slate-400">Yükleniyor...</div>}>
-          <CalendarSection />
+      </ConfigDrawer>
+
+      <ConfigDrawer
+        open={activeDrawer === 'calendar'}
+        onClose={() => setActiveDrawer(null)}
+        title="Google Takvim"
+        icon={<GoogleCalendarIcon size={18} />}
+      >
+        <Suspense fallback={<DrawerSkeleton />}>
+          <CalendarConfig
+            onStatusChange={(c) => setCalStatus({ connected: c })}
+          />
         </Suspense>
-        <ExcludedPhonesSection />
+      </ConfigDrawer>
+
+      <ConfigDrawer
+        open={activeDrawer === 'dentsoft'}
+        onClose={() => setActiveDrawer(null)}
+        title="DentSoft"
+        icon={<DentSoftIcon size={18} />}
+      >
+        <Suspense fallback={<DrawerSkeleton />}>
+          <DentSoftConfig
+            onStatusChange={(c) => setDsStatus({ connected: c })}
+          />
+        </Suspense>
+      </ConfigDrawer>
+
+      <ConfigDrawer
+        open={activeDrawer === 'excluded-phones'}
+        onClose={() => setActiveDrawer(null)}
+        title={isTr ? 'Hariç Numaralar' : 'Excluded Numbers'}
+        icon={<Ban size={18} className="text-slate-500" />}
+      >
+        <ExcludedPhonesConfig />
+      </ConfigDrawer>
+
+      {PROVIDER_LIST.map((p) => (
+        <ConfigDrawer
+          key={p.id}
+          open={activeDrawer === p.id}
+          onClose={() => setActiveDrawer(null)}
+          title={p.name}
+          icon={VOICE_ICON_MAP[p.id]}
+        >
+          <VoiceProviderConfig
+            provider={p}
+            onStatusChange={(c) => setVoiceStatus((prev) => ({ ...prev, [p.id]: c }))}
+          />
+        </ConfigDrawer>
+      ))}
+    </div>
+  )
+}
+
+function CardSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse">
+      <div className="flex items-start gap-3.5">
+        <div className="w-12 h-12 rounded-xl bg-slate-100" />
+        <div className="space-y-2 flex-1">
+          <div className="h-3.5 bg-slate-100 rounded w-24" />
+          <div className="h-2.5 bg-slate-50 rounded w-36" />
+        </div>
       </div>
+      <div className="mt-3 pt-3 border-t border-slate-100">
+        <div className="h-2.5 bg-slate-50 rounded w-16" />
+      </div>
+    </div>
+  )
+}
+
+function DrawerSkeleton() {
+  return (
+    <div className="flex items-center gap-2 text-slate-400 text-sm py-8">
+      <div className="w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
+      {/* Always Turkish here since it's a quick loading state */}
+      Yükleniyor...
     </div>
   )
 }

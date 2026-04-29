@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabase } from '@supabase/supabase-js'
-import { checkEntitlement } from '@/lib/entitlements'
-import { FEATURE_METRIC_MAP } from '@/lib/entitlements/registry'
+import { checkAllEntitlements } from '@/lib/entitlements'
 
 function getServiceClient() {
   return createSupabase(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -27,20 +26,12 @@ export async function GET() {
   // Subscription bilgisi
   const { data: sub } = await service
     .from('org_subscriptions')
-    .select('plan_id, status, trial_ends_at, current_period_end, grace_period_ends_at, cancel_at_period_end')
+    .select('plan_id, status, trial_ends_at, current_period_end, grace_period_ends_at, cancel_at_period_end, billing_interval')
     .eq('organization_id', orgId)
     .maybeSingle()
 
-  // Tüm feature'ları kontrol et
-  const featureKeys = Object.keys(FEATURE_METRIC_MAP)
-  const entitlements: Record<string, any> = {}
-
-  await Promise.all(
-    featureKeys.map(async (key) => {
-      const ent = await checkEntitlement(orgId, key)
-      entitlements[key] = ent
-    })
-  )
+  // Tüm feature'ları tek seferde kontrol et (~4 sorgu vs ~115)
+  const entitlements = await checkAllEntitlements(orgId)
 
   return NextResponse.json({
     plan_id: sub?.plan_id ?? null,       // null = henüz plan seçilmemiş (legacy değil)
@@ -49,6 +40,7 @@ export async function GET() {
     current_period_end: sub?.current_period_end ?? null,
     grace_period_ends_at: sub?.grace_period_ends_at ?? null,
     cancel_at_period_end: sub?.cancel_at_period_end ?? false,
+    billing_interval: sub?.billing_interval ?? null,
     entitlements,
   })
 }

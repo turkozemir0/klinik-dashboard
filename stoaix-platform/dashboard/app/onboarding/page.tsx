@@ -14,7 +14,18 @@ import { Button } from '@/components/Button'
 import { StepIndicator } from '@/components/StepIndicator'
 import { OnboardingSuccess } from '@/components/OnboardingSuccess'
 
-type Step = 1 | 2 | 3
+type Step = 0 | 1 | 2 | 3
+
+const CLINIC_TYPES = [
+  { key: 'hair_transplant', label: 'Saç Ekimi', desc: 'FUE, DHI, sakal/kaş ekimi' },
+  { key: 'dental', label: 'Diş Kliniği', desc: 'İmplant, ortodonti, estetik diş' },
+  { key: 'medical_aesthetics', label: 'Medikal Estetik', desc: 'Botox, dolgu, lazer, cilt bakım' },
+  { key: 'surgical_aesthetics', label: 'Cerrahi Estetik', desc: 'Rinoplasti, liposuction, vücut şekillendirme' },
+  { key: 'physiotherapy', label: 'Fizyoterapi', desc: 'Spor yaralanmaları, rehabilitasyon' },
+  { key: 'ophthalmology', label: 'Göz Hastalıkları', desc: 'LASIK, katarak, göz implantı' },
+  { key: 'general_practice', label: 'Genel Pratisyen', desc: 'Aile hekimi, kronik hastalık yönetimi' },
+  { key: 'other', label: 'Diğer', desc: 'Özel sağlık hizmeti' },
+]
 
 // ─── Per-clinic pre-fill data ─────────────────────────────────────────────────
 
@@ -278,10 +289,12 @@ const CLINIC_CONFIG: Record<string, {
 function OnboardingForm() {
   const router = useRouter()
   const params = useSearchParams()
-  const clinicType = params.get('type') ?? 'other'
+  const urlType = params.get('type')
+  const [selectedType, setSelectedType] = useState<string>(urlType ?? 'other')
+  const clinicType = selectedType
   const config = CLINIC_CONFIG[clinicType] ?? CLINIC_CONFIG.other
 
-  const [step, setStep] = useState<Step>(1)
+  const [step, setStep] = useState<Step>(urlType ? 1 : 0)
   const [orgId, setOrgId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -322,6 +335,7 @@ function OnboardingForm() {
         .from('org_users')
         .select('organization_id, organizations(id, name)')
         .eq('user_id', data.user.id)
+        .order('created_at', { ascending: false })
         .maybeSingle()
         .then(({ data: ou }) => {
           if (ou) {
@@ -331,6 +345,17 @@ function OnboardingForm() {
         })
     })
   }, [router])
+
+  function handleClinicTypeSelect(type: string) {
+    setSelectedType(type)
+    const c = CLINIC_CONFIG[type] ?? CLINIC_CONFIG.other
+    setAbout(c.defaultAbout)
+    setWorkingHours(c.defaultWorkingHours)
+    setSelectedServices(c.services.filter(s => s.preSelected).map(s => s.name))
+    setSelectedFaqIndices(c.suggestedFaqs.map((f, i) => (f.preSelected ? i : -1)).filter(i => i >= 0))
+    setPricingValues({})
+    setStep(1)
+  }
 
   // ── Step 1 submit ──
   async function handleStep1(e: React.FormEvent) {
@@ -546,7 +571,7 @@ function OnboardingForm() {
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="flex gap-3 pt-2">
-        <Button type="button" variant="secondary" fullWidth onClick={() => router.push('/clinic-type')}
+        <Button type="button" variant="secondary" fullWidth onClick={() => setStep(0)}
           icon={<ArrowLeft className="w-4 h-4" />}>
           Geri
         </Button>
@@ -869,6 +894,47 @@ function OnboardingForm() {
   )
 
   if (isCompleted) return <OnboardingSuccess clinicName={clinicName} />
+
+  if (step === 0) {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.12),_transparent_24%),radial-gradient(circle_at_top_right,_rgba(20,184,166,0.10),_transparent_22%),linear-gradient(180deg,_#f9fbff_0%,_#f3f6fb_100%)]">
+        <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-brand-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" />
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-accent-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '2s' }} />
+        </div>
+
+        <div className="mx-auto max-w-3xl px-4 py-16 md:px-6">
+          <div className="text-center mb-10">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700 sm:text-[11px]">
+              <Sparkles size={12} />
+              Kurulum başlıyor
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Klinik Tipinizi Seçin</h1>
+            <p className="text-sm text-slate-500 mt-2 max-w-lg mx-auto">
+              AI asistanınız seçtiğiniz klinik tipine göre özelleştirilmiş bilgi bankası, prompt yapısı ve hizmet şablonlarıyla hazırlanacak.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {CLINIC_TYPES.map(ct => (
+              <button
+                key={ct.key}
+                type="button"
+                onClick={() => handleClinicTypeSelect(ct.key)}
+                className="flex items-start gap-4 p-5 rounded-2xl border-2 border-slate-200 bg-white/90 text-left transition-all duration-150 hover:border-brand-400 hover:shadow-md hover:bg-brand-50/50 backdrop-blur"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">{ct.label}</p>
+                  <p className="text-xs text-slate-500 mt-1">{ct.desc}</p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const stepLabels = ['Bilgiler', 'Hizmetler', 'AI Kurulumu']
 

@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react'
 import { useT } from '@/lib/lang-context'
 import { formatDuration } from '@/lib/types'
+import Sparkline from '@/components/Sparkline'
 
 interface Props {
   call: {
@@ -36,6 +37,22 @@ function scoreColor(score: number) {
   return 'bg-red-100 text-red-700'
 }
 
+function DirectionIcon({ direction, status }: { direction: string; status: string }) {
+  if (status === 'missed') return <PhoneMissed size={14} className="text-red-400" />
+  if (direction === 'outbound') return <PhoneOutgoing size={14} className="text-blue-500" />
+  return <PhoneIncoming size={14} className="text-green-500" />
+}
+
+function makeSparkValues(durationSec: number): number[] {
+  if (durationSec <= 0) return []
+  const points = 8
+  const base = durationSec / points
+  return Array.from({ length: points }, (_, i) => {
+    const phase = Math.sin((i / points) * Math.PI)
+    return Math.round(base * (0.3 + 0.7 * phase))
+  })
+}
+
 export default function CallRow({ call }: Props) {
   const t = useT()
   const [expanded, setExpanded] = useState(false)
@@ -46,16 +63,28 @@ export default function CallRow({ call }: Props) {
     ? Object.entries(lead.collected_data).filter(([, v]) => v)
     : []
 
+  const sparkValues = makeSparkValues(call.duration_seconds)
+
   return (
     <>
       <tr className="hover:bg-slate-50 transition-colors">
-        <td className="px-5 py-3 font-medium text-slate-800">
-          {call.direction === 'inbound' ? call.phone_from : call.phone_to || '—'}
+        <td className="px-5 py-3">
+          <div className="flex items-center gap-2">
+            <DirectionIcon direction={call.direction} status={call.status} />
+            <span className="font-medium text-slate-800">
+              {call.direction === 'inbound' ? call.phone_from : call.phone_to || '—'}
+            </span>
+          </div>
         </td>
         <td className="px-5 py-3 text-slate-600">
           {call.direction === 'inbound' ? t.inbound : t.outbound}
         </td>
-        <td className="px-5 py-3 text-slate-600">{formatDuration(call.duration_seconds)}</td>
+        <td className="px-5 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-600">{formatDuration(call.duration_seconds)}</span>
+            {sparkValues.length > 0 && <Sparkline values={sparkValues} width={60} height={20} color={call.status === 'completed' ? '#22c55e' : '#94a3b8'} />}
+          </div>
+        </td>
         <td className="px-5 py-3">
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[call.status] || 'bg-slate-100 text-slate-600'}`}>
             {call.status}
@@ -66,6 +95,11 @@ export default function CallRow({ call }: Props) {
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${scoreColor(lead.qualification_score)}`}>
               {lead.qualification_score}/100
             </span>
+          ) : <span className="text-slate-300 text-xs">—</span>}
+        </td>
+        <td className="px-5 py-3 hidden lg:table-cell">
+          {lead?.ai_summary ? (
+            <p className="text-xs text-slate-500 truncate max-w-[200px]">{lead.ai_summary}</p>
           ) : <span className="text-slate-300 text-xs">—</span>}
         </td>
         <td className="px-5 py-3 text-slate-400 text-xs">
@@ -84,7 +118,7 @@ export default function CallRow({ call }: Props) {
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={7} className="px-5 pb-4 pt-1">
+          <td colSpan={8} className="px-5 pb-4 pt-1">
             <div className="space-y-3">
               {/* AI Özeti */}
               {lead?.ai_summary && (

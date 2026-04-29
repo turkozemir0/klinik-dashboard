@@ -2,10 +2,21 @@
 
 import { useState } from 'react'
 import { X, Loader2, Send, Save } from 'lucide-react'
+import { PURPOSE_LABELS, LANGUAGE_LABELS } from '@/lib/template-purpose-config'
+
+interface EditTemplate {
+  id:         string
+  name:       string
+  language:   string
+  category:   string
+  purpose:    string | null
+  components: any[]
+}
 
 interface Props {
   onClose:  () => void
   onSaved:  (template: any, submit?: boolean) => void
+  editTemplate?: EditTemplate | null
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -14,25 +25,22 @@ const CATEGORY_LABELS: Record<string, string> = {
   AUTHENTICATION: 'Kimlik Doğrulama',
 }
 
-const LANG_LABELS: Record<string, string> = {
-  tr: 'Türkçe (tr)',
-  en: 'İngilizce (en)',
+// Language labels with code suffix for the dropdown
+const LANG_OPTIONS: Record<string, string> = {
+  tr: `${LANGUAGE_LABELS.tr} (tr)`,
+  en: `${LANGUAGE_LABELS.en} (en)`,
+  de: `${LANGUAGE_LABELS.de} (de)`,
 }
 
-const PURPOSE_LABELS: Record<string, string> = {
-  followup:             'Takip Mesajı',
-  reengagement:         'Yeniden Bağlama',
-  unsubscribe:          'Listeden Çıkma',
-  appointment_reminder: 'Randevu Hatırlatma',
-  other:                'Diğer',
-}
+export default function TemplateModal({ onClose, onSaved, editTemplate }: Props) {
+  const isEdit = !!editTemplate
+  const initBody = editTemplate?.components?.find((c: any) => c.type === 'BODY')?.text ?? ''
 
-export default function TemplateModal({ onClose, onSaved }: Props) {
-  const [name, setName]           = useState('')
-  const [language, setLanguage]   = useState('tr')
-  const [category, setCategory]   = useState('UTILITY')
-  const [purpose, setPurpose]     = useState('followup')
-  const [bodyText, setBodyText]   = useState('')
+  const [name, setName]           = useState(editTemplate?.name ?? '')
+  const [language, setLanguage]   = useState(editTemplate?.language ?? 'tr')
+  const [category, setCategory]   = useState(editTemplate?.category ?? 'UTILITY')
+  const [purpose, setPurpose]     = useState(editTemplate?.purpose ?? 'followup')
+  const [bodyText, setBodyText]   = useState(initBody)
   const [saving, setSaving]       = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]         = useState('')
@@ -57,21 +65,40 @@ export default function TemplateModal({ onClose, onSaved }: Props) {
     setError('')
 
     try {
-      const res = await fetch('/api/templates', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name:       name.trim(),
-          language,
-          category,
-          purpose,
-          components: buildComponents(),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Kayıt başarısız')
+      let template: any
 
-      const template = data.template
+      if (isEdit) {
+        // PATCH existing draft template
+        const res = await fetch(`/api/templates/${editTemplate!.id}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name:       name.trim(),
+            language,
+            category,
+            components: buildComponents(),
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Güncelleme başarısız')
+        template = data.template
+      } else {
+        // POST new template
+        const res = await fetch('/api/templates', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name:       name.trim(),
+            language,
+            category,
+            purpose,
+            components: buildComponents(),
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Kayıt başarısız')
+        template = data.template
+      }
 
       if (andSubmit) {
         const submitRes = await fetch(`/api/templates/${template.id}/submit`, { method: 'POST' })
@@ -96,7 +123,7 @@ export default function TemplateModal({ onClose, onSaved }: Props) {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-base font-semibold text-slate-800">Yeni Template</h2>
+          <h2 className="text-base font-semibold text-slate-800">{isEdit ? 'Template Düzenle' : 'Yeni Template'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             <X size={18} />
           </button>
@@ -144,7 +171,7 @@ export default function TemplateModal({ onClose, onSaved }: Props) {
                 onChange={(e) => setLanguage(e.target.value)}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
-                {Object.entries(LANG_LABELS).map(([val, label]) => (
+                {Object.entries(LANG_OPTIONS).map(([val, label]) => (
                   <option key={val} value={val}>{label}</option>
                 ))}
               </select>

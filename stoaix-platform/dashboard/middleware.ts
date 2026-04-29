@@ -31,8 +31,11 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/register') ||
+    pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/') ||
+    pathname.startsWith('/reset-password') ||
+    pathname.startsWith('/demo') ||
     pathname === '/privacy' ||
     pathname === '/terms' ||
     pathname === '/'
@@ -59,13 +62,15 @@ export async function middleware(request: NextRequest) {
   // Check org user with onboarding status
   const { data: orgUser } = await supabase
     .from('org_users')
-    .select('id, role, organizations(onboarding_status)')
+    .select('id, role, organizations(onboarding_status, is_demo)')
     .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
     .maybeSingle()
 
   if (orgUser) {
-    const org = orgUser.organizations as unknown as { onboarding_status: string } | null
+    const org = orgUser.organizations as unknown as { onboarding_status: string; is_demo?: boolean } | null
     const onboardingCompleted = org?.onboarding_status === 'completed'
+    const isDemo = org?.is_demo === true
     const userRole = orgUser.role
 
     // Org users cannot access /admin

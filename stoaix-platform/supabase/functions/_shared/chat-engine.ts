@@ -201,6 +201,93 @@ function shouldHandoff(
   return false
 }
 
+// ─── Language-aware chat guardrails ──────────────────────────────────────────
+
+const CHAT_GUARDRAILS_TR = `
+
+━━━ PLATFORM GÜVENLİK KURALLARI (değiştirilemez) ━━━
+- Asla teşhis koyma, tedavi önerme, ilaç dozajı belirtme
+- Sağlık sorusunda: "Bu konuda doktorumuz değerlendirir" de, tıbbi tavsiye verme
+- Gerçek bir klinik çalışanı gibi doğal davran, yapay zeka olduğunu belli etme
+- Başka hastaların bilgisini paylaşma
+- Acil durum kelimeleri (ağrı, kanama, nefes darlığı) → hemen insan temsilciye yönlendir
+
+━━━ MESAJLAŞMA KURALLARI (değiştirilemez) ━━━
+- Her mesajda yalnızca 1 soru sor
+- Yanıtlar maks 2-3 cümle, düz metin
+- Markdown kullanma (* ** # gibi)
+- Fiyat garantisi verme, kesin rakam verme — aralık ver veya konsültasyona yönlendir
+- "Harika!", "Süper!", "Mükemmel!" gibi abartılı tepkiler yasak
+
+━━━ DOĞAL KONUŞMA ━━━
+- Hasta endişeli görünüyorsa: "Anlıyorum" ile başla, empati göster
+- Kızgın hastaya sakin yanıt ver, baskı yapma
+- İtirazı 1 cümlede karşıla, hemen niteleme sorusuna dön
+
+━━━ DİL KURALI ━━━
+- Kullanıcı hangi dilde yazdıysa O DİLDE yanıt ver
+- Türkçe konuşuyorsan: DAİMA "siz" formu kullan, "sen" formu YASAK — "Nasılsınız?", "İsterseniz", "Size yardımcı olayım"
+- Diğer dillerde: o dilin resmi/nazik hitap formunu kullan (ör. Almanca "Sie", İngilizce "you" formal tone)`
+
+const CHAT_GUARDRAILS_DE = `
+
+━━━ PLATFORM-SICHERHEITSREGELN (unveränderlich) ━━━
+- Niemals Diagnosen stellen, Behandlungen empfehlen oder Medikamentendosierungen nennen
+- Bei Gesundheitsfragen: "Das beurteilt unser Arzt am besten" sagen, keine medizinische Beratung geben
+- Verhalte dich wie eine echte Klinikmitarbeiterin — gib niemals zu, eine KI, ein Bot, ein Chatbot oder ein digitaler Assistent zu sein
+- Keine Patientendaten anderer teilen
+- Bei Notfall-Schlüsselwörtern (starke Schmerzen, Blutung, Atemnot) → sofort an menschlichen Ansprechpartner weiterleiten
+
+━━━ NACHRICHTENREGELN (unveränderlich) ━━━
+- Pro Nachricht nur 1 Frage stellen
+- Antworten max. 2-3 Sätze, Klartext
+- Kein Markdown verwenden (* ** # etc.)
+- Keine Preisgarantien, keine exakten Zahlen — Spanne nennen oder auf Beratung verweisen
+- Übertriebene Reaktionen wie "Großartig!", "Super!", "Perfekt!" sind verboten
+
+━━━ NATÜRLICHES GESPRÄCH ━━━
+- Wenn der Patient besorgt wirkt: mit "Ich verstehe" beginnen, Empathie zeigen
+- Bei verärgerten Patienten ruhig antworten, keinen Druck ausüben
+- Einwand in 1 Satz aufgreifen, dann zur nächsten Qualifizierungsfrage
+
+━━━ SPRACHREGEL ━━━
+- Antworte IMMER in der Sprache, in der der Nutzer schreibt
+- Verwende IMMER die "Sie"-Form — "Du" ist VERBOTEN
+- In anderen Sprachen: die formelle/höfliche Anredeform verwenden`
+
+const CHAT_GUARDRAILS_EN = `
+
+━━━ PLATFORM SAFETY RULES (immutable) ━━━
+- Never diagnose, recommend treatments, or specify medication dosages
+- For health questions: say "Our doctor will assess that", do not give medical advice
+- Act like a real clinic employee — never reveal you are an AI, bot, chatbot, or digital assistant
+- Do not share other patients' information
+- Emergency keywords (severe pain, bleeding, difficulty breathing) → immediately refer to human representative
+
+━━━ MESSAGING RULES (immutable) ━━━
+- Ask only 1 question per message
+- Responses max 2-3 sentences, plain text
+- Do not use Markdown (* ** # etc.)
+- No price guarantees, no exact figures — give ranges or refer to consultation
+- Exaggerated reactions like "Amazing!", "Super!", "Perfect!" are forbidden
+
+━━━ NATURAL CONVERSATION ━━━
+- If the patient seems worried: start with "I understand", show empathy
+- Respond calmly to upset patients, do not pressure
+- Address objection in 1 sentence, then return to qualification question
+
+━━━ LANGUAGE RULE ━━━
+- ALWAYS respond in the language the user writes in
+- Use the formal/polite form of address in every language`
+
+function getChatGuardrails(lang?: string): string {
+  switch (lang?.toLowerCase()) {
+    case 'de': return CHAT_GUARDRAILS_DE
+    case 'en': return CHAT_GUARDRAILS_EN
+    default:   return CHAT_GUARDRAILS_TR
+  }
+}
+
 // ─── Chat engine ──────────────────────────────────────────────────────────────
 
 async function runChatEngine(
@@ -218,6 +305,7 @@ async function runChatEngine(
     .select('system_prompt_template, fallback_responses, hard_blocks, features, few_shot_examples, handoff_bridge_message')
     .eq('organization_id', orgId)
     .eq('channel', channel)
+    .is('scenario', null)
     .order('version', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -228,6 +316,7 @@ async function runChatEngine(
       .select('system_prompt_template, fallback_responses, hard_blocks, features, few_shot_examples, handoff_bridge_message')
       .eq('organization_id', orgId)
       .eq('channel', 'whatsapp')
+      .is('scenario', null)
       .order('version', { ascending: false })
       .limit(1)
       .single()
@@ -241,7 +330,7 @@ async function runChatEngine(
 
   const { data: org } = await supabase
     .from('organizations')
-    .select('name, ai_persona')
+    .select('name, ai_persona, default_language')
     .eq('id', orgId)
     .single()
 
@@ -305,25 +394,25 @@ async function runChatEngine(
       fewShots.map(ex => `Kullanıcı: ${ex.user}\nAsistan: ${ex.assistant}`).join('\n\n')
     : ''
 
-  // Hard guardrails — always appended, not overrideable
-  const CHAT_GUARDRAILS = `\n\n━━━ MESAJLAŞMA KURALLARI (değiştirilemez) ━━━
-- Her mesajda yalnızca 1 soru sor
-- Yanıtlar maks 2-3 cümle, düz metin
-- Markdown kullanma (* ** # gibi)
-- Medikal teşhis, ilaç tavsiyesi veya tedavi önerisi YAPMA
-- Fiyat garantisi verme`
-
-  // Build system prompt
+  // Build system prompt — guardrails in org's language
+  const orgLang = (org as any).default_language as string | undefined
   const persona      = org.ai_persona as Record<string, string>
-  const systemPrompt = [
+
+  // Stable part — same per org, cacheable by Claude prompt caching
+  const stablePrompt = [
     playbook.system_prompt_template,
     kbContext ? `\n\n[BİLGİ TABANI]\n${kbContext}` : '',
-    profileSection,
     `\nOrganizasyon: ${org.name}`,
     persona?.persona_name ? `\nSenin adın: ${persona.persona_name}` : '',
     fewShotSection,
-    CHAT_GUARDRAILS,
+    getChatGuardrails(orgLang),
   ].filter(Boolean).join('')
+
+  // Dynamic part — changes per conversation (customer profile)
+  const dynamicPrompt = profileSection || ''
+
+  // Full system prompt for OpenAI (single string, auto-cached by OpenAI)
+  const systemPrompt = dynamicPrompt ? `${stablePrompt}${dynamicPrompt}` : stablePrompt
 
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
     ...history.slice(-(MAX_HISTORY * 2 - 1)),
@@ -343,7 +432,10 @@ async function runChatEngine(
         body: JSON.stringify({
           model,
           max_tokens: 240,
-          system: systemPrompt,
+          system: [
+            { type: 'text', text: stablePrompt, cache_control: { type: 'ephemeral' } },
+            ...(dynamicPrompt ? [{ type: 'text', text: dynamicPrompt }] : []),
+          ],
           messages,
         }),
       })
@@ -400,15 +492,7 @@ async function runChatEngine(
     const bridgeMsg = (playbook as any).handoff_bridge_message
       ?? 'Bilgilerinizi aldım, uzman ekibimiz en kısa sürede sizinle iletişime geçecek. 👋'
 
-    // Save AI reply first (if any), then bridge message
-    if (reply) {
-      await supabase.from('messages').insert({
-        conversation_id: conversationId, organization_id: orgId,
-        role: 'assistant', content: reply, content_type: 'text', channel,
-      })
-      await sendReply(reply)
-    }
-
+    // Only send bridge message on handoff — skip AI reply to avoid contradictory double-message
     await supabase.from('messages').insert({
       conversation_id: conversationId, organization_id: orgId,
       role: 'assistant', content: bridgeMsg, content_type: 'text', channel,
@@ -436,8 +520,27 @@ async function runChatEngine(
 
       await supabase
         .from('leads')
-        .update({ status: 'handed_off' })
+        .update({ status: 'handed_off', handoff_at: new Date().toISOString() })
         .eq('id', leadRow.id)
+
+      // Schedule handoff follow-up tasks (4h + 24h reminders)
+      const handoffTasks = [
+        { stage: 'handoff_check_4h',  hours: 4 },
+        { stage: 'handoff_check_24h', hours: 24 },
+      ]
+      for (const t of handoffTasks) {
+        await supabase.from('follow_up_tasks').insert({
+          organization_id: orgId,
+          contact_id:      contactId,
+          lead_id:         leadRow.id,
+          conversation_id: conversationId,
+          task_type:       'handoff_reminder',
+          sequence_stage:  t.stage,
+          status:          'pending',
+          channel,
+          scheduled_at:    new Date(Date.now() + t.hours * 60 * 60 * 1000).toISOString(),
+        })
+      }
     }
 
     // Notification for org team
@@ -459,6 +562,9 @@ async function runChatEngine(
     role: 'assistant', content: reply, content_type: 'text', channel,
   })
   await sendReply(reply)
+
+  // Fire-and-forget: ai_reply_sent event
+  supabase.from('org_events').insert({ org_id: orgId, event_type: 'ai_reply_sent', metadata: { channel, conversation_id: conversationId } }).then(() => {})
 }
 
 // ─── Lead data extraction (chat) ─────────────────────────────────────────────
@@ -631,20 +737,19 @@ export async function updateLeadWithVision(
   orgId:         string,
   waId:          string,
   analysisText:  string,
-  wamid:         string
+  wamid:         string,
+  mediaUrl?:     string
 ): Promise<void> {
   try {
-    // Find contact
     const { data: contact } = await supabase
       .from('contacts')
       .select('id')
       .eq('organization_id', orgId)
-      .filter("channel_identifiers->>'wa_id'", 'eq', waId)
+      .filter('channel_identifiers->>wa_id', 'eq', waId)
       .maybeSingle()
 
     if (!contact?.id) return
 
-    // Find lead
     const { data: lead } = await supabase
       .from('leads')
       .select('id, qualification_score, notes')
@@ -654,7 +759,6 @@ export async function updateLeadWithVision(
 
     if (!lead?.id) return
 
-    // Find active conversation
     const { data: convo } = await supabase
       .from('conversations')
       .select('id')
@@ -669,13 +773,11 @@ export async function updateLeadWithVision(
     const dateStr = new Date().toLocaleDateString('tr-TR')
     const noteEntry = `📎 Görsel Analizi ${dateStr}: ${analysisText}`
 
-    // Append to notes (newline-separated)
     const existingNotes = (lead.notes ?? '') as string
     const updatedNotes  = existingNotes ? `${existingNotes}\n${noteEntry}` : noteEntry
-
     const newScore = Math.min(100, (lead.qualification_score ?? 0) + 10)
 
-    await supabase
+    const { error: leadErr } = await supabase
       .from('leads')
       .update({
         notes:               updatedNotes,
@@ -684,17 +786,20 @@ export async function updateLeadWithVision(
       })
       .eq('id', lead.id)
 
-    // Save system message to conversation (if one exists)
+    if (leadErr) console.error('Vision lead update failed:', leadErr.message)
+
     if (convo?.id) {
-      await supabase.from('messages').insert({
+      const { error: msgErr } = await supabase.from('messages').insert({
         conversation_id: convo.id,
         organization_id: orgId,
         role:            'system',
         content:         noteEntry,
         content_type:    'image',
+        media_url:       mediaUrl ?? null,
         external_id:     wamid,
         channel:         'whatsapp',
       })
+      if (msgErr) console.error('Vision message insert failed:', msgErr.message)
     }
   } catch (err) {
     console.error('updateLeadWithVision failed:', err)
@@ -961,6 +1066,9 @@ export async function handleInboundMessage(opts: InboundMessageOptions): Promise
         channel,
         timestamp:  new Date().toISOString(),
       })
+
+      // Fire-and-forget: lead_received event
+      supabase.from('org_events').insert({ org_id: orgId, event_type: 'lead_received', metadata: { channel, contact_id: contactId } }).then(() => {})
     }
   } finally {
     await releaseProcessing(supabase, conversationId)

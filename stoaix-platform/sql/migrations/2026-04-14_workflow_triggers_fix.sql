@@ -5,7 +5,7 @@
 
 -- ADIM 1: Bu dosyayı çalıştırmadan önce aşağıdaki sabit değerleri belirle:
 --   _DASHBOARD_URL : https://platform.stoaix.com
---   _INTERNAL_SECRET : Kw9XpdxedhX1VoijU7JA
+--   _INTERNAL_SECRET : <VERCEL_ENV_VAR>
 --   Aynı secret değerini Vercel'e WORKFLOW_INTERNAL_SECRET olarak ekle.
 
 -- ── fn_notify_workflow_lead ───────────────────────────────────────────────────

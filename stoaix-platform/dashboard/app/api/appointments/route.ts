@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
   }
 
   const VALID_TYPES   = ['consultation', 'operation', 'follow_up', 'other']
-  const VALID_SOURCES = ['platform', 'ai', 'ghl']
+  const VALID_SOURCES = ['platform', 'ai', 'ghl', 'dentsoft']
   const apptType   = VALID_TYPES.includes(appointment_type)   ? appointment_type   : 'consultation'
   const apptSource = VALID_SOURCES.includes(source) ? source : 'platform'
 
@@ -112,9 +112,11 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Auto-push to Google Calendar if connected (fire-and-forget)
+  // Auto-push to calendar providers (fire-and-forget)
   pushToGoogleCalendar(inserted, orgUser.organization_id, parsed, duration_minutes ?? 60, notes, title, contact_id)
     .catch(err => console.warn('[calendar] Google push failed:', err))
+  pushToDentsoft(inserted, orgUser.organization_id, parsed, title, contact_id)
+    .catch(err => console.warn('[calendar] DentSoft push failed:', err))
 
   return NextResponse.json(inserted, { status: 201 })
 }
@@ -183,5 +185,75 @@ async function pushToGoogleCalendar(
     }
   } catch (err) {
     console.warn('[calendar] pushToGoogleCalendar error:', err)
+  }
+}
+
+// ── DentSoft push helper ──────────────────────────────────────────────────────
+
+async function pushToDentsoft(
+  appointment: any,
+  orgId: string,
+  scheduledAt: Date,
+  title: string | undefined,
+  contactId: string | undefined,
+) {
+  try {
+    const service = getServiceClient()
+    const { data: org } = await service
+      .from('organizations')
+      .select('channel_config')
+      .eq('id', orgId)
+      .single()
+
+    const cal = (org?.channel_config as any)?.calendar
+    if (!cal || cal.provider !== 'dentsoft' || !cal.api_url || !cal.api_key || !cal.clinic_id) return
+
+    const doctorId = cal.default_doctor_id
+    if (!doctorId) return
+
+    // Get contact info for the appointment
+    let contactName = title ?? 'Randevu'
+    let contactPhone = ''
+    if (contactId) {
+      const { data: contact } = await service
+        .from('contacts').select('full_name, phone').eq('id', contactId).single()
+      if (contact?.full_name) contactName = contact.full_name
+      if (contact?.phone) contactPhone = contact.phone
+    }
+
+    const baseUrl = cal.api_url.replace(/\/+$/, '')
+    const fd = new FormData()
+    fd.append('FullName', contactName)
+    fd.append('ContactMobile', contactPhone)
+    fd.append('Date', scheduledAt.toISOString().slice(0, 10))
+    fd.append('Time', scheduledAt.toISOString().slice(11, 16))
+    fd.append('Note', title ?? '')
+    fd.append('PatientNumber', '')
+
+    const dsRes = await fetch(
+      `${baseUrl}/Api/v1/Appointment/New/${encodeURIComponent(cal.clinic_id)}/${encodeURIComponent(doctorId)}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${cal.api_key}` },
+        body: fd,
+      }
+    )
+
+    if (dsRes.ok) {
+      const dsData = await dsRes.json()
+      if (dsData?.Status?.Code === 100) {
+        const externalId = dsData?.Response?.PNR ?? dsData?.Response?.AppointmentID ?? dsData?.Response?.ID
+        if (externalId) {
+          await service
+            .from('appointments')
+            .update({ external_id: String(externalId) })
+            .eq('id', appointment.id)
+        }
+      }
+    } else {
+      console.warn('[calendar] DentSoft appointment creation failed:', await dsRes.text())
+    }
+  } catch (err) {
+    console.warn('[calendar] pushToDentsoft error:', err)
   }
 }

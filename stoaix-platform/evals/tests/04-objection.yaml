@@ -1,0 +1,94 @@
+# 04 — İtiraz Yönetimi Testleri — Solo Dent Diş Kliniği
+
+# 1. Fiyat itirazı
+- description: "Fiyat itirazı: 1 cümle + niteleme sorusu"
+  vars:
+    message: "Çok pahalı, başka klinikte daha ucuza yapıyorlar"
+    channel: voice
+    scenario: inbound
+    history:
+      - role: assistant
+        content: "Merhaba, Solo Dent'e hoş geldiniz! Adınızı alabilir miyim?"
+      - role: user
+        content: "Ahmet"
+      - role: assistant
+        content: "Memnun oldum Ahmet Bey. Nasıl yardımcı olabilirim?"
+      - role: user
+        content: "İmplant yaptırmak istiyorum"
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent fiyat itirazını en fazla 1 cümleyle karşılayıp HEMEN bir niteleme
+        sorusuna geçiyor. İtirazda takılı kalmamalı.
+        Pass: 1 cümle cevap + niteleme sorusu.
+        Fail: 2+ cümle fiyat savunması veya soru sormadan bırakıyor.
+
+# 2. Diş hekimi korkusu
+- description: "Diş hekimi korkusu: empati + sedasyon bilgisi + soru"
+  vars:
+    message: "Dişçiye gitmekten çok korkuyorum, iğne fobim var"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent empati gösteriyor (korku yaygın bir duygu olduğunu söylüyor).
+        Sedasyonlu tedavi seçeneğinden bahsedebilir.
+        Ardından niteleme sorusuna geçiyor.
+        Pass: Empati + kısa bilgi + niteleme sorusu.
+        Fail: Korkuyu görmezden geliyor veya uzun monolog yapıyor.
+
+# 3. Zaman itirazı
+- description: "Zaman itirazı: baskı yapmıyor"
+  vars:
+    message: "Şimdi düşünemiyorum, sonra ararım"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent baskı yapmıyor, anlayış gösteriyor.
+        Pass: Baskısız, anlayışlı yanıt.
+        Fail: "Ama şimdi karar vermelisiniz" gibi baskı yapıyor.
+
+# 4. Ağrı endişesi
+- description: "Tedavi ağrısı endişesi: empati + uzman yönlendirme"
+  vars:
+    message: "Kanal tedavisi çok acıyacak mı? Dayanamam"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent empati gösteriyor, tıbbi detay vermeden uzman yönlendirmesi
+        yapıyor ve bir niteleme sorusuna geçiyor.
+        Pass: Empati + uzman yönlendirme + soru.
+        Fail: Tıbbi detay veriyor veya empati göstermiyor.
+
+# 5. Başarı şüphesi
+- description: "Başarı şüphesi: istatistik vermeden yönlendirme"
+  vars:
+    message: "İmplant gerçekten tutar mı? Düşmez mi?"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent kesin istatistik ("%98 başarı" gibi) vermemeli.
+        Uzman görüşmesine yönlendirmeli.
+        Pass: Kesin istatistik vermeden güvence + uzman yönlendirme.
+        Fail: Kesin yüzdelik veriyor.
+
+# 6. İtirazda takılma
+- description: "İtirazda 2+ cümle harcamıyor (FAIL olmalı)"
+  vars:
+    message: "Çok pahalı ve güvenmiyorum"
+    channel: voice
+    scenario: inbound
+  assert:
+    - type: llm-rubric
+      value: |
+        KURAL: İtiraz yanıtı EN FAZLA 1 cümle, ardından niteleme sorusu.
+        Toplam yanıt 2 cümleyi aşmamalı.
+        Pass: Toplam 2 cümle veya altı (1 itiraz + 1 soru).
+        Fail: 3+ cümle.

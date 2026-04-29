@@ -51,13 +51,51 @@ interface MetaWebhookPayload {
   }>
 }
 
-// ─── Sector-aware vision prompts ──────────────────────────────────────────────
+// ─── Sector-aware vision prompts (language × sector) ─────────────────────────
 
-const VISION_PROMPTS: Record<string, string> = {
-  dental:     'Hangi diş bölgesi? Kırık, renk bozukluğu, eksik diş, dolgu, protez var mı? Kısa, klinik.',
-  hair:       'Dökülme alanı, yoğunluk, bölge? Norwood skalasına göre tahmin.',
-  aesthetics: 'Hangi bölge, ne tür endikasyon? Botoks, filler, ameliyat?',
-  default:    'Klinik açıdan önemli bir bilgi var mı? Kısa tut.',
+const VISION_PROMPTS: Record<string, Record<string, string>> = {
+  tr: {
+    dental:     'Bir klinik danışmanlık asistanısın, teşhis değil gözlem yapıyorsun. Görselde hangi diş bölgesi görünüyor? Kırık, renk bozukluğu, eksik diş, dolgu veya protez var mı? Kısa ve açıklayıcı yaz.',
+    hair:       'Bir klinik danışmanlık asistanısın, teşhis değil gözlem yapıyorsun. Görselde saç dökülme alanı, saç yoğunluğu ve etkilenen bölgeyi tanımla. Norwood skalasına göre yaklaşık aşamayı belirt. Kısa yaz.',
+    aesthetics: 'Bir klinik danışmanlık asistanısın, teşhis değil gözlem yapıyorsun. Görselde hangi yüz/vücut bölgesi var? Botoks, dolgu veya cerrahi açıdan ne tür bir endikasyon gözlemliyorsun? Kısa yaz.',
+    default:    'Bir klinik danışmanlık asistanısın, teşhis değil gözlem yapıyorsun. Görselde dikkat çeken noktaları kısaca tanımla.',
+  },
+  de: {
+    dental:     'Du bist ein klinischer Beratungsassistent — du machst Beobachtungen, keine Diagnosen. Welcher Zahnbereich ist zu sehen? Gibt es Brüche, Verfärbungen, fehlende Zähne, Füllungen oder Prothesen? Kurz und beschreibend.',
+    hair:       'Du bist ein klinischer Beratungsassistent — du machst Beobachtungen, keine Diagnosen. Beschreibe den Bereich des Haarausfalls, die Haardichte und die betroffene Zone. Schätze die ungefähre Stufe nach der Norwood-Skala. Kurz.',
+    aesthetics: 'Du bist ein klinischer Beratungsassistent — du machst Beobachtungen, keine Diagnosen. Welcher Gesichts-/Körperbereich ist zu sehen? Welche Indikation für Botox, Filler oder OP beobachtest du? Kurz.',
+    default:    'Du bist ein klinischer Beratungsassistent — du machst Beobachtungen, keine Diagnosen. Beschreibe kurz die auffälligen Punkte im Bild.',
+  },
+  en: {
+    dental:     'You are a clinical consultation assistant — you make observations, not diagnoses. Which dental area is visible? Any fractures, discoloration, missing teeth, fillings, or prostheses? Brief and descriptive.',
+    hair:       'You are a clinical consultation assistant — you make observations, not diagnoses. Describe the hair loss area, density, and affected zone. Estimate the approximate Norwood scale stage. Brief.',
+    aesthetics: 'You are a clinical consultation assistant — you make observations, not diagnoses. Which facial/body area is shown? What indication for Botox, filler, or surgery do you observe? Brief.',
+    default:    'You are a clinical consultation assistant — you make observations, not diagnoses. Briefly describe the notable points in the image.',
+  },
+}
+
+// ─── Language-aware UI messages ──────────────────────────────────────────────
+
+const I18N: Record<string, { imageAck: string; imageError: string; unsupported: string }> = {
+  tr: {
+    imageAck:    'Fotoğrafınızı aldım, uzman ekibimiz inceleyecek.',
+    imageError:  'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.',
+    unsupported: 'Üzgünüm, şu an yalnızca metin ve görsel mesajları anlayabiliyorum. Lütfen yazmak istediğinizi metin olarak iletin.',
+  },
+  de: {
+    imageAck:    'Vielen Dank für Ihr Foto! Unser Expertenteam wird es prüfen.',
+    imageError:  'Beim Empfang Ihres Bildes ist ein Fehler aufgetreten. Bitte senden Sie es erneut.',
+    unsupported: 'Entschuldigung, ich kann derzeit nur Text- und Bildnachrichten verarbeiten. Bitte senden Sie Ihre Anfrage als Textnachricht.',
+  },
+  en: {
+    imageAck:    'Thank you for your photo! Our expert team will review it.',
+    imageError:  'There was an issue receiving your image. Please send it again.',
+    unsupported: 'Sorry, I can only process text and image messages at the moment. Please send your request as a text message.',
+  },
+}
+
+function getI18n(lang: string) {
+  return I18N[lang] ?? I18N.tr
 }
 
 // ─── Meta Graph API helpers ───────────────────────────────────────────────────
@@ -91,10 +129,12 @@ async function sendMetaMessage(
 
 async function callGPTVision(imageUrl: string, prompt: string): Promise<string> {
   try {
+    const apiKey = Deno.env.get('OPENAI_API_KEY')
+    if (!apiKey) { console.error('OPENAI_API_KEY not set'); return '' }
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')!}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type':  'application/json',
       },
       body: JSON.stringify({
@@ -140,7 +180,7 @@ async function handleHumanEcho(
     .from('contacts')
     .select('id')
     .eq('organization_id', orgId)
-    .filter("channel_identifiers->>'wa_id'", 'eq', customerWaId)
+    .filter('channel_identifiers->>wa_id', 'eq', customerWaId)
     .maybeSingle()
 
   if (!contact?.id) return
@@ -182,17 +222,41 @@ async function handleHumanEcho(
   })
 }
 
+// ─── Resolve language: contact override → org default → 'tr' ────────────────
+
+async function resolveLanguage(
+  orgId:          string,
+  orgDefaultLang: string,
+  identifierKey:  string,
+  identifierVal:  string
+): Promise<string> {
+  try {
+    const supabase = getSupabase()
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('preferred_language')
+      .eq('organization_id', orgId)
+      .filter(`channel_identifiers->>${identifierKey}`, 'eq', identifierVal)
+      .maybeSingle()
+    if (contact?.preferred_language) return contact.preferred_language
+  } catch { /* ignore — fall through */ }
+  return orgDefaultLang || 'tr'
+}
+
 // ─── Image message handler (Vision Pipeline) ─────────────────────────────────
 
 async function handleImageMessage(
   phoneNumberId: string,
   message:       MetaMessage,
-  org:           { id: string; sector?: string | null },
+  org:           { id: string; sector?: string | null; default_language?: string },
   accessToken:   string,
   waId:          string
 ): Promise<void> {
   const mediaId = message.image?.id
   if (!mediaId) return
+
+  const lang = await resolveLanguage(org.id, (org as any).default_language ?? 'tr', 'wa_id', waId)
+  const msgs = getI18n(lang)
 
   // Step 1: Resolve media URL from Meta Graph API
   const infoRes = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`, {
@@ -200,15 +264,13 @@ async function handleImageMessage(
   })
   if (!infoRes.ok) {
     console.error(`Meta media info failed ${infoRes.status}`)
-    await sendMetaMessage(accessToken, phoneNumberId, waId,
-      'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.')
+    await sendMetaMessage(accessToken, phoneNumberId, waId, msgs.imageError)
     return
   }
   const infoData = await infoRes.json()
   const mediaUrl = infoData.url
   if (!mediaUrl) {
-    await sendMetaMessage(accessToken, phoneNumberId, waId,
-      'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.')
+    await sendMetaMessage(accessToken, phoneNumberId, waId, msgs.imageError)
     return
   }
 
@@ -218,8 +280,7 @@ async function handleImageMessage(
   })
   if (!imgRes.ok) {
     console.error(`Meta media download failed ${imgRes.status}`)
-    await sendMetaMessage(accessToken, phoneNumberId, waId,
-      'Görselinizi alırken bir sorun oluştu. Lütfen tekrar gönderin.')
+    await sendMetaMessage(accessToken, phoneNumberId, waId, msgs.imageError)
     return
   }
 
@@ -228,17 +289,83 @@ async function handleImageMessage(
   const mime    = infoData.mime_type ?? 'image/jpeg'
   const dataUrl = `data:${mime};base64,${toBase64(blob)}`
 
-  const sector  = (org as any).sector ?? 'default'
-  const prompt  = VISION_PROMPTS[sector] ?? VISION_PROMPTS.default
-  const analysis = await callGPTVision(dataUrl, prompt)
+  // ── Upload to Supabase Storage for persistent URL ──
+  let persistentUrl = mediaUrl  // fallback to Meta URL if upload fails
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg'
+    const now = new Date()
+    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const safeName = message.id.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const path = `${org.id}/${yearMonth}/${safeName}.${ext}`
+
+    const storageSupabase = getSupabase()
+    const { error: uploadErr } = await storageSupabase.storage
+      .from('wa-media')
+      .upload(path, blob, { contentType: mime, upsert: true })
+
+    if (uploadErr) {
+      console.error('Storage upload failed:', uploadErr.message)
+    } else {
+      persistentUrl = `${supabaseUrl}/storage/v1/object/public/wa-media/${path}`
+    }
+  } catch (err) {
+    console.error('Storage upload error:', err)
+  }
+
+  const sector     = (org as any).sector ?? 'default'
+  const langPrompts = VISION_PROMPTS[lang] ?? VISION_PROMPTS.tr
+  const prompt     = langPrompts[sector] ?? langPrompts.default
+  const analysis   = await callGPTVision(dataUrl, prompt)
 
   const supabase = getSupabase()
   if (analysis) {
-    await updateLeadWithVision(supabase, org.id, waId, analysis, message.id)
+    await updateLeadWithVision(supabase, org.id, waId, analysis, message.id, persistentUrl)
+  } else {
+    console.error(`Vision returned empty for waId: ${waId}`)
   }
 
-  await sendMetaMessage(accessToken, phoneNumberId, waId,
-    'Fotoğrafınızı aldım, uzman ekibimiz inceleyecek. ✅')
+  // Only send ack if we haven't sent one for this contact in the last 2 minutes
+  // (prevents spam when user sends multiple photos back-to-back)
+  let shouldAck = true
+  try {
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('organization_id', org.id)
+      .filter('channel_identifiers->>wa_id', 'eq', waId)
+      .maybeSingle()
+
+    if (contact?.id) {
+      const { data: convo } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('organization_id', org.id)
+        .eq('contact_id', contact.id)
+        .eq('channel', 'whatsapp')
+        .eq('status', 'active')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (convo?.id) {
+        const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+        const { count } = await supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('conversation_id', convo.id)
+          .eq('role', 'system')
+          .eq('content_type', 'image')
+          .gte('created_at', twoMinAgo)
+
+        if (count && count > 0) shouldAck = false
+      }
+    }
+  } catch { /* ignore — send ack as fallback */ }
+
+  if (shouldAck) {
+    await sendMetaMessage(accessToken, phoneNumberId, waId, msgs.imageAck)
+  }
 }
 
 // ─── Main inbound handler ─────────────────────────────────────────────────────
@@ -304,8 +431,8 @@ async function handleInbound(
 
     default: {
       // Audio, document, sticker, location, etc.
-      await sendMetaMessage(accessToken, phoneNumberId, waId,
-        'Üzgünüm, şu an yalnızca metin ve görsel mesajları anlayabiliyorum. Lütfen yazmak istediğinizi metin olarak iletin.')
+      const lang = await resolveLanguage(org.id, org.default_language ?? 'tr', 'wa_id', waId)
+      await sendMetaMessage(accessToken, phoneNumberId, waId, getI18n(lang).unsupported)
       break
     }
   }
@@ -445,7 +572,7 @@ serve(async (req) => {
   const supabase = getSupabase()
   const { data: orgs } = await supabase
     .from('organizations')
-    .select('id, sector, crm_config, channel_config')
+    .select('id, sector, default_language, crm_config, channel_config')
     .eq('status', 'active')
 
   const tasks: Promise<void>[] = []
@@ -494,8 +621,7 @@ serve(async (req) => {
     }
   }
 
-  // Ack immediately — Meta requires fast response to avoid retries
-  // @ts-ignore Deno-specific global
-  EdgeRuntime.waitUntil(Promise.all(tasks))
+  // Run all tasks before responding — waitUntil may not complete on edge runtime
+  await Promise.all(tasks)
   return new Response('OK', { status: 200 })
 })

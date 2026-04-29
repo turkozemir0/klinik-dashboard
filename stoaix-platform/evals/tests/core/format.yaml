@@ -1,0 +1,80 @@
+# Core Format & Naturalness Tests — Tüm klinik tipleri için geçerli
+
+# 1. Siz formu
+- description: "Core Format: Siz formu kullanıyor"
+  vars:
+    message: "Merhaba, bilgi almak istiyorum"
+    channel: voice
+  assert:
+    - type: not-icontains
+      value: " sen "
+    - type: not-icontains
+      value: "sana "
+    - type: llm-rubric
+      value: |
+        Agent DAİMA "siz" formu kullanmalı. "sen" YASAK.
+        Pass: Siz formu tutarlı.
+        Fail: Sen formu tespit edildi.
+
+# 2. Çift soru yasağı
+- description: "Core Format: Tek turda 1 soru"
+  vars:
+    message: "Tedavi hakkında bilgi almak istiyorum"
+    channel: voice
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent yanıtında en fazla 1 soru işareti olmalı.
+        Pass: 0 veya 1 soru işareti var.
+        Fail: 2+ soru işareti var.
+
+# 3. Kısa cümle (voice)
+- description: "Core Format: Maks 2 cümle (voice)"
+  vars:
+    message: "Bu tedavi nasıl yapılıyor, süreci anlatır mısınız?"
+    channel: voice
+  assert:
+    - type: llm-rubric
+      value: |
+        Voice yanıtı en fazla 2 cümle olmalı.
+        Pass: 1-2 cümle.
+        Fail: 3+ cümle.
+
+# 4. Abartı yasağı
+- description: "Core Format: Abartılı ifade kullanmıyor"
+  vars:
+    message: "Randevu almak istiyorum"
+    channel: voice
+  assert:
+    - type: not-icontains
+      value: "Harika!"
+    - type: not-icontains
+      value: "Mükemmel!"
+    - type: not-icontains
+      value: "Süper!"
+
+# 5. Empati trigger
+- description: "Core Format: Endişeli hastaya empati"
+  vars:
+    message: "Çok korkuyorum, bu tedaviden çok endişeleniyorum"
+    channel: voice
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent empatiyle başlamalı ("Anlıyorum", "Endişenizi anlıyorum" vb.).
+        Sonra bir niteleme sorusu sormalı.
+        Pass: Empati + soru.
+        Fail: Empati yok veya soru yok.
+
+# 6. İtiraz sonrası nitelemeye dönüş
+- description: "Core Format: İtirazı tek cümlede karşılayıp soru soruyor"
+  vars:
+    message: "Çok pahalı bu, karşılayamam"
+    channel: voice
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent itirazı 1 cümleyle karşılayıp HEMEN ardından niteleme sorusu soruyor.
+        Yanıtı bir soruyla bitirmeli.
+        Pass: İtiraz cevabı + soru (? ile bitiyor).
+        Fail: Soru sormadan bitiyor veya 3+ cümle harcıyor.

@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { buildClinicPlaybookDefaults } from '@/lib/agent-templates'
+import { CLINIC_INTAKE_SCHEMAS } from '@/lib/clinic-intake-schemas'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const service = createServiceClient()
+
+  const body = await request.json().catch(() => ({}))
+  const bodyClinicType = (body.clinic_type as string) || null
 
   const { data: orgUser } = await service
     .from('org_users')
@@ -19,9 +24,27 @@ export async function POST(_request: NextRequest) {
 
   const orgId = orgUser.organization_id
 
+  const blocked = demoWriteBlock(orgId)
+  if (blocked) return blocked
+
+  // Önce mevcut ai_persona'yı oku
+  const { data: existing } = await service
+    .from('organizations')
+    .select('ai_persona')
+    .eq('id', orgId)
+    .single()
+
+  const existingPersona = (existing?.ai_persona as any) ?? {}
+  const clinicType = bodyClinicType ?? existingPersona.clinic_type ?? 'other'
+
+  // clinic_type'ı ai_persona'ya kaydet + onboarding tamamla
   const { data: org, error } = await service
     .from('organizations')
-    .update({ status: 'active', onboarding_status: 'completed' })
+    .update({
+      status: 'active',
+      onboarding_status: 'completed',
+      ai_persona: { ...existingPersona, clinic_type: clinicType },
+    })
     .eq('id', orgId)
     .select('name, sector, city, country, ai_persona')
     .single()
@@ -41,7 +64,7 @@ export async function POST(_request: NextRequest) {
   const playbookInserts: any[] = []
 
   if (!existingChannels.has('voice')) {
-    const defaults = buildClinicPlaybookDefaults(org.name, personaName, 'voice')
+    const defaults = buildClinicPlaybookDefaults(org.name, personaName, 'voice', clinicType)
     const hard_blocks = defaults.blocks.map((b, i) => ({
       trigger_id: `block_${i}`,
       action: 'soft_block',
@@ -64,7 +87,7 @@ export async function POST(_request: NextRequest) {
   }
 
   if (!existingChannels.has('whatsapp')) {
-    const defaults = buildClinicPlaybookDefaults(org.name, personaName, 'whatsapp')
+    const defaults = buildClinicPlaybookDefaults(org.name, personaName, 'whatsapp', clinicType)
     const hard_blocks = defaults.blocks.map((b, i) => ({
       trigger_id: `block_${i}`,
       action: 'soft_block',
@@ -99,12 +122,7 @@ export async function POST(_request: NextRequest) {
   const existingSchemaChannels = new Set((existingSchemas || []).map((s: any) => s.channel))
   const schemaInserts: any[] = []
 
-  const voiceDefaultFields = [
-    { key: 'full_name',        label: 'Ad Soyad',           type: 'text',  priority: 'must',   voice_prompt: 'Adınızı ve soyadınızı öğrenebilir miyim?' },
-    { key: 'phone',            label: 'Telefon',             type: 'phone', priority: 'must',   voice_prompt: 'Sizi daha sonra arayabilmemiz için telefon numaranızı alabilir miyim?' },
-    { key: 'service_interest', label: 'İlgilenilen Hizmet',  type: 'text',  priority: 'must',   voice_prompt: 'Hangi hizmetimiz hakkında bilgi almak istiyorsunuz?' },
-    { key: 'timeline',         label: 'Zaman Çizelgesi',     type: 'text',  priority: 'should', voice_prompt: 'Ne zaman başlamayı düşünüyorsunuz?' },
-  ]
+  const voiceDefaultFields = CLINIC_INTAKE_SCHEMAS[clinicType] ?? CLINIC_INTAKE_SCHEMAS['other']
 
   // WhatsApp'ta telefon payload'dan otomatik geliyor, sohbetten extract etmeye gerek yok
   const whatsappDefaultFields = [

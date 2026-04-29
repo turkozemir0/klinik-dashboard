@@ -1,0 +1,110 @@
+# Core Outbound Scenario Tests — Tüm klinik tipleri için geçerli
+
+# 1. first_contact
+- description: "Outbound: İlk temas — tanıtım + ilgi doğrulama"
+  vars:
+    message: "Alo?"
+    scenario: first_contact
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent kendini tanıtıyor, nazik açılış yapıyor.
+        Kısa ve doğal, 2 cümleyi aşmıyor.
+        Pass: Tanıtım + ad/ilgi doğrulama, kısa.
+        Fail: Uzun monolog veya tanıtım yapmıyor.
+
+# 2. warm_followup
+- description: "Outbound: Takip — önceki ilgi hatırlatma"
+  vars:
+    message: "Evet, buyurun"
+    scenario: warm_followup
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent önceki konuşmayı/ilgiyi hatırlatıyor, baskı yapmıyor.
+        Pass: Önceki ilgiyi referans veriyor, baskısız.
+        Fail: Baskılı satış yapıyor.
+
+# 3. appt_confirm
+- description: "Outbound: Randevu teyit — tarih/saat doğrulama"
+  vars:
+    message: "Evet?"
+    scenario: appt_confirm
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent randevu detayını belirtip teyit istiyor.
+        Pass: Randevu detayı + teyit.
+        Fail: Detay vermeden konuşuyor.
+
+# 4. appointment_reminder
+- description: "Outbound: Hatırlatma — çok kısa"
+  vars:
+    message: "Tamam, teşekkürler"
+    scenario: appointment_reminder
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent çok kısa hatırlatma yapıyor, kapanış.
+        Pass: Kısa ve net.
+        Fail: Uzun konuşma veya satış.
+
+# 5. noshow_followup
+- description: "Outbound: Gelmedi — anlayışlı + yeni randevu"
+  vars:
+    message: "Evet, unuttum maalesef"
+    scenario: noshow_followup
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent anlayışlı, suçlamıyor. Yeni randevu öneriyor.
+        Pass: Anlayışlı + yeni randevu.
+        Fail: Suçlayıcı ton.
+
+# 6. satisfaction_survey
+- description: "Outbound: Memnuniyet anketi"
+  vars:
+    message: "Evet, memnunum tedaviden"
+    scenario: satisfaction_survey
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent memnuniyet puanı soruyor.
+        Pass: Puan/değerlendirme sorusu.
+        Fail: Anket yapmıyor.
+
+# 7. treatment_reminder
+- description: "Outbound: Tedavi hatırlatma"
+  vars:
+    message: "Evet, dinliyorum"
+    scenario: treatment_reminder
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent kontrol randevusu hatırlatıyor.
+        Pass: Hatırlatma + randevu önerisi.
+        Fail: Tıbbi tavsiye veriyor.
+
+# 8. reactivation
+- description: "Outbound: Uyuyan lead"
+  vars:
+    message: "Evet, kimsiniz?"
+    scenario: reactivation
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent kendini tanıtıyor, nazikçe hatırlatıyor.
+        Pass: Nazik tanıtım, baskısız.
+        Fail: Agresif satış.
+
+# 9. payment_followup
+- description: "Outbound: Tahsilat — nazik, ödeme planı"
+  vars:
+    message: "Evet, biliyorum ödeme kaldı"
+    scenario: payment_followup
+  assert:
+    - type: llm-rubric
+      value: |
+        Agent ödemeyi nazikçe ele alıyor, ödeme planı sunuyor.
+        Pass: Nazik + ödeme planı.
+        Fail: Tehditkar ton.

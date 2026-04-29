@@ -5,7 +5,7 @@
  *
  * Providers:
  *   google   → GoogleCalendarAdapter  (channel_config.calendar)
- *   dentsoft → DentsoftCalendarAdapter (skeleton — API docs bekleniyor)
+ *   dentsoft → DentsoftCalendarAdapter (Bearer token auth, per-clinic base URL)
  *   ghl      → GHLCalendarAdapter     (crm_config.calendar_id + pit_token — legacy)
  *   none     → null
  */
@@ -23,6 +23,7 @@ export interface AppointmentParams {
   datetime:   string   // ISO 8601, e.g. "2026-04-14T10:00:00"
   notes?:     string
   email?:     string
+  tckn?:      string   // TC Kimlik No — DentSoft uses this for patient matching
 }
 
 export interface AppointmentResult {
@@ -179,7 +180,7 @@ interface OrgRow {
  *
  * Resolution order:
  * 1. channel_config.calendar.provider = 'google'    → GoogleCalendarAdapter
- * 2. channel_config.calendar.provider = 'dentsoft'  → null (skeleton, not implemented)
+ * 2. channel_config.calendar.provider = 'dentsoft'  → DentsoftCalendarAdapter
  * 3. crm_config.calendar_id + pit_token present     → GHLCalendarAdapter (legacy)
  * 4. otherwise → null
  */
@@ -194,8 +195,9 @@ export function getCalendarAdapter(org: OrgRow): CalendarAdapter | null {
   }
 
   if (provider === 'dentsoft') {
-    // Dentsoft adapter not yet implemented — API docs pending
-    return null
+    const { DentsoftCalendarAdapter } = await import('./dentsoft-adapter.ts')
+    if (!calConfig.api_url || !calConfig.api_key || !calConfig.clinic_id) return null
+    return new DentsoftCalendarAdapter(calConfig)
   }
 
   // Legacy GHL: crm_config.calendar_id + crm_config.pit_token

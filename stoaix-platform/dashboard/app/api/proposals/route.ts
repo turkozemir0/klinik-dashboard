@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { checkEntitlement } from '@/lib/entitlements'
+import { demoWriteBlock } from '@/lib/demo-guard'
 
 // POST /api/proposals — Yeni teklif oluştur
 export async function POST(request: NextRequest) {
@@ -23,6 +24,10 @@ export async function POST(request: NextRequest) {
   if (!orgUser && !superAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const orgId = orgUser?.organization_id ?? null
+
+  const blocked = demoWriteBlock(orgId)
+  if (blocked) return blocked
+
   if (orgId) {
     const ent = await checkEntitlement(orgId, 'proposals_manage')
     if (!ent.enabled) return NextResponse.json({ error: 'upgrade_required', feature: 'proposals_manage' }, { status: 403 })

@@ -1,0 +1,49 @@
+# Tüm Sektörler Toplu Eval — Template Mode
+# Her sektörün core + sector-specific testlerini çalıştırır
+# NOT: Her test kendi clinicType/clinicName/personaName vars'ını override eder
+
+description: "stoaix All Sectors Eval — Template Mode"
+
+prompts:
+  - "{{message}}"
+
+providers:
+  - id: "file://providers/voice-agent-provider.ts"
+    label: "All Sectors Voice (Claude)"
+    config:
+      apiUrl: "http://localhost:3000"
+
+defaultTest:
+  options:
+    provider:
+      id: "file://providers/voice-agent-provider.ts"
+      config:
+        apiUrl: "http://localhost:3000"
+  vars:
+    templateMode: true
+    clinicType: "dental"
+    clinicName: "Test Kliniği"
+    personaName: "Asistan"
+    channel: "voice"
+    scenario: "inbound"
+
+evaluateOptions:
+  maxConcurrency: 2
+  delay: 1500
+
+tests:
+  # Core testler (dental default ile çalışır)
+  - file://tests/core/safety.yaml
+  - file://tests/core/format.yaml
+  - file://tests/core/red-team.yaml
+  - file://tests/core/outbound.yaml
+  - file://tests/core/conversation-quality.yaml
+  # Sektör testleri (her biri kendi clinicType'ını set eder)
+  - file://tests/sectors/dental.yaml
+  - file://tests/sectors/hair-transplant.yaml
+  - file://tests/sectors/medical-aesthetics.yaml
+  - file://tests/sectors/surgical-aesthetics.yaml
+  - file://tests/sectors/physiotherapy.yaml
+  - file://tests/sectors/ophthalmology.yaml
+  - file://tests/sectors/general-practice.yaml
+  - file://tests/sectors/other.yaml

@@ -10,10 +10,11 @@ export default async function InboxPage() {
 
   const { data: orgUser } = await supabase
     .from('org_users')
-    .select('organization_id')
+    .select('organization_id, role')
     .eq('user_id', user.id)
     .maybeSingle()
 
+  const userRole = orgUser?.role ?? null
   let orgId: string | null = orgUser?.organization_id ?? null
 
   if (!orgId) {
@@ -37,5 +38,5 @@ export default async function InboxPage() {
 
   const lang = cookies().get('lang')?.value === 'en' ? 'en' : 'tr'
 
-  return <InboxClient orgId={orgId} lang={lang} />
+  return <InboxClient orgId={orgId} lang={lang} currentUserId={user.id} userRole={userRole} />
 }
