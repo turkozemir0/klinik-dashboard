@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Plus, Pencil, Trash2, Globe } from 'lucide-react'
+import { Search, Plus, Pencil, Trash2, Globe, GitMerge, Loader2 } from 'lucide-react'
 import { useT } from '@/lib/lang-context'
 import KBItemModal from '@/components/admin/KBItemModal'
 import WebScraperModal from '@/components/knowledge/WebScraperModal'
+import DuplicatesModal from '@/components/knowledge/DuplicatesModal'
 import type { KnowledgeItem } from '@/lib/types'
 
 interface Props {
@@ -52,6 +53,9 @@ export default function KnowledgeClient({ items: initialItems, orgId, sector, re
   const [editingItem, setEditingItem] = useState<KnowledgeItem | undefined>(undefined)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [scraperOpen, setScraperOpen] = useState(false)
+  const [dupChecking, setDupChecking] = useState(false)
+  const [dupResult, setDupResult] = useState<{ pairs: any[]; remaining: number } | null>(null)
+  const [dupError, setDupError] = useState('')
 
   const filtered = items.filter(item =>
     item.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -92,6 +96,25 @@ export default function KnowledgeClient({ items: initialItems, orgId, sector, re
     setDeletingId(null)
   }
 
+  async function handleCheckDuplicates() {
+    setDupChecking(true)
+    setDupError('')
+    setDupResult(null)
+    try {
+      const res = await fetch('/api/knowledge/check-duplicates')
+      const data = await res.json()
+      if (!res.ok) {
+        setDupError(data.error ?? 'Kontrol başarısız')
+        return
+      }
+      setDupResult(data)
+    } catch {
+      setDupError('Bağlantı hatası')
+    } finally {
+      setDupChecking(false)
+    }
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
@@ -100,6 +123,15 @@ export default function KnowledgeClient({ items: initialItems, orgId, sector, re
           <span className="text-sm text-slate-500">{items.length} kayıt</span>
           {!readOnly && (
             <>
+              <button
+                onClick={handleCheckDuplicates}
+                disabled={dupChecking}
+                title={dupError || undefined}
+                className="flex items-center gap-1.5 border border-slate-200 hover:border-brand-400 hover:text-brand-600 text-slate-600 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
+              >
+                {dupChecking ? <Loader2 size={15} className="animate-spin" /> : <GitMerge size={15} />}
+                Benzerlik Kontrolü
+              </button>
               <button
                 onClick={() => setScraperOpen(true)}
                 className="flex items-center gap-1.5 border border-slate-200 hover:border-brand-400 hover:text-brand-600 text-slate-600 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
@@ -116,6 +148,7 @@ export default function KnowledgeClient({ items: initialItems, orgId, sector, re
               </button>
             </>
           )}
+          {dupError && <p className="text-xs text-red-500 mt-1">{dupError}</p>}
         </div>
       </div>
 
@@ -215,6 +248,15 @@ export default function KnowledgeClient({ items: initialItems, orgId, sector, re
           onSaved={(newItems) => {
             setItems(prev => [...newItems, ...prev])
           }}
+        />
+      )}
+
+      {dupResult && (
+        <DuplicatesModal
+          pairs={dupResult.pairs}
+          remaining={dupResult.remaining}
+          onClose={() => setDupResult(null)}
+          onDeleted={(id) => setItems(prev => prev.filter(i => i.id !== id))}
         />
       )}
     </div>
