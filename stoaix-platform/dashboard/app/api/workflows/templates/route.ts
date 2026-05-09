@@ -119,5 +119,6 @@ export async function GET() {
   )
 
   const orgLang = (orgRes.data?.ai_persona as any)?.language ?? 'tr'
-  return NextResponse.json({ templates: results, org_sector: orgRes.data?.sector ?? 'general', org_lang: orgLang })
+  const waProvider = (channelConfig as any)?.whatsapp?.provider ?? 'meta'
+  return NextResponse.json({ templates: results, org_sector: orgRes.data?.sector ?? 'general', org_lang: orgLang, wa_provider: waProvider })
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Bell, X, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useLang } from '@/lib/lang-context'
 
 interface OrgNotification {
   id: string
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export default function NotificationBell({ userId, orgId }: Props) {
+  const { lang } = useLang()
   const [notifications, setNotifications] = useState<OrgNotification[]>([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -197,7 +199,7 @@ export default function NotificationBell({ userId, orgId }: Props) {
                       <p className="text-xs font-semibold text-slate-800">{notif.title}</p>
                       {notif.body && <p className="text-xs text-slate-500 mt-0.5 truncate">{notif.body}</p>}
                       <p className="text-[10px] text-slate-400 mt-1">
-                        {new Date(notif.created_at).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                        {new Date(notif.created_at).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
                       </p>
                     </div>
                     {!notif.read_at && (

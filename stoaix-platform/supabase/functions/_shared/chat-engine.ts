@@ -68,6 +68,26 @@ export function getSupabase() {
   )
 }
 
+// ─── AI conversation counter ─────────────────────────────────────────────────
+
+async function incrementConversationCount(
+  supabase: ReturnType<typeof createClient>,
+  orgId: string
+): Promise<void> {
+  try {
+    const now = new Date()
+    const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    await supabase.rpc('increment_usage', {
+      p_org_id: orgId,
+      p_period: period,
+      p_metric: 'ai_conversation_count',
+      p_amount: 1,
+    })
+  } catch (e) {
+    console.error('ai_conversation_count increment failed (non-fatal):', e)
+  }
+}
+
 // ─── KB vector search ─────────────────────────────────────────────────────────
 
 async function searchKB(
@@ -368,20 +388,50 @@ async function runChatEngine(
 
   const history = ((historyRows ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>).reverse()
 
-  // Customer profile from lead
+  // Customer profile from lead + contact history (parallel)
   let profileSection = ''
-  const { data: leadRow } = await supabase
-    .from('leads')
-    .select('id, collected_data, missing_fields, qualification_score, status')
-    .eq('organization_id', orgId)
-    .eq('contact_id', contactId)
-    .maybeSingle()
+  const [{ data: leadRow }, { data: contactRow }] = await Promise.all([
+    supabase
+      .from('leads')
+      .select('id, collected_data, missing_fields, qualification_score, status')
+      .eq('organization_id', orgId)
+      .eq('contact_id', contactId)
+      .maybeSingle(),
+    supabase
+      .from('contacts')
+      .select('contact_summary')
+      .eq('id', contactId)
+      .maybeSingle(),
+  ])
 
   const collectedData = (leadRow?.collected_data ?? {}) as Record<string, unknown>
   const profileEntries = Object.entries(collectedData).filter(([, v]) => v !== null && v !== undefined && v !== '')
-  if (profileEntries.length > 0) {
-    const lines = profileEntries.map(([k, v]) => `- ${k}: ${v}`).join('\n')
-    profileSection = `\n\n━━━ MÜŞTERİ PROFİLİ (önceki mesajlardan toplanan bilgiler) ━━━\n${lines}\nBu bilgileri bağlam olarak kullanabilirsin, tekrar sormak zorunda değilsin. Kullanıcı düzeltirse güncellediğini kabul et.`
+
+  const hasSummary = !!contactRow?.contact_summary
+  const hasCollected = profileEntries.length > 0
+
+  if (hasSummary || hasCollected) {
+    let block = '\n\n━━━ GERİ DÖNEN HASTA — İÇ SEZGİ (DOĞRULAMA GEREKTİRİR) ━━━\n'
+    block += 'Bu bilgiler kesin değildir. Fikir değişmiş, yanlış anlaşılmış olabilir.\n\n'
+
+    if (hasSummary) {
+      block += `Önceki etkileşim özeti:\n${contactRow!.contact_summary}\n\n`
+    }
+
+    if (hasCollected) {
+      block += 'Son bilinen ilgi alanları:\n'
+      block += profileEntries.map(([k, v]) => `- ${k}: ${v}`).join('\n')
+      block += '\n'
+    }
+
+    block += '\nKULLANIM KURALI (İSTİSNASIZ):\n'
+    block += '- "Geçen sefer...", "Daha önce söylemiştiniz..." YASAK\n'
+    block += '- Bu bilgileri ASLA doğrudan kullanma veya ima etme\n'
+    block += '- Sadece iç navigasyon: hangi prosedürü önce açayım, '
+    block += 'hangi endişeye hazır olayım, tonu nasıl ayarlayayım\n'
+    block += '- Hasta kendi ağzından bir şey söylerse → onu esas al, önceki bilgiyi unut\n'
+
+    profileSection = block
   }
 
   // Model selection — from playbook features, fallback to gpt-4o-mini
@@ -553,6 +603,9 @@ async function runChatEngine(
       body:            `Otomatik handoff: skor ${currentScore}, ${missingMustFields.length === 0 ? 'tüm must alanlar dolu' : 'anahtar kelime tetiklendi'}.`,
     })
 
+    // Handoff = hasta ciddi ilgisini gösterdi → contact-level özet güncelle
+    await updateContactSummary(supabase, contactId, conversationId, contactRow?.contact_summary ?? null)
+
     return
   }
 
@@ -565,6 +618,70 @@ async function runChatEngine(
 
   // Fire-and-forget: ai_reply_sent event
   supabase.from('org_events').insert({ org_id: orgId, event_type: 'ai_reply_sent', metadata: { channel, conversation_id: conversationId } }).then(() => {})
+}
+
+// ─── Contact summary güncelleme (chat — sadece handoff anında) ───────────────
+
+async function updateContactSummary(
+  supabase: ReturnType<typeof createClient>,
+  contactId: string,
+  conversationId: string,
+  existingSummary: string | null,
+): Promise<void> {
+  try {
+    const { data: msgs } = await supabase
+      .from('messages')
+      .select('role, content')
+      .eq('conversation_id', conversationId)
+      .in('role', ['user', 'assistant'])
+      .order('created_at', { ascending: false })
+      .limit(12)
+
+    if (!msgs?.length) return
+
+    const transcript = (msgs as Array<{ role: string; content: string }>)
+      .reverse()
+      .map(m => `${m.role === 'user' ? 'Hasta' : 'Asistan'}: ${m.content}`)
+      .join('\n')
+
+    const prevSummarySection = existingSummary
+      ? `Mevcut özet: ${existingSummary}\n\n`
+      : ''
+
+    const prompt = `${prevSummarySection}Yeni konuşma:\n${transcript.slice(-2000)}\n\n`
+      + `Yukarıdaki konuşmadan yola çıkarak hastayı 2-3 cümleyle tanımla. `
+      + `Neyle ilgilendiğini, belirttiği endişeleri, karar sürecini yaz. `
+      + `Mevcut özet varsa bilgileri güncelle, çelişkide yeni bilgiyi esas al. `
+      + `Sadece özeti yaz, başka bir şey ekleme.`
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')!}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 150,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+
+    if (!res.ok) return
+    const data = await res.json()
+    const newSummary = data.choices?.[0]?.message?.content?.trim()
+    if (!newSummary) return
+
+    await supabase
+      .from('contacts')
+      .update({
+        contact_summary: newSummary,
+        contact_summary_updated_at: new Date().toISOString(),
+      })
+      .eq('id', contactId)
+  } catch (e) {
+    console.error('updateContactSummary failed (non-fatal):', e)
+  }
 }
 
 // ─── Lead data extraction (chat) ─────────────────────────────────────────────
@@ -962,6 +1079,9 @@ export async function handleInboundMessage(opts: InboundMessageOptions): Promise
       return
     }
     conversationId = newConvo.id
+
+    // ── AI konuşma sayacını artır (yeni conversation başlangıcı) ──
+    await incrementConversationCount(supabase, orgId)
   }
 
   // ── Save user message ──

@@ -9,7 +9,7 @@ function getServiceClient() {
   )
 }
 
-const GRAPH = 'https://graph.facebook.com/v19.0'
+import { META_GRAPH_URL as GRAPH } from '@/lib/meta-api'
 
 // Exchange short-lived code for a long-lived user access token.
 async function exchangeCode(code: string): Promise<string> {

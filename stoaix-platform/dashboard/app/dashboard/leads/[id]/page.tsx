@@ -7,7 +7,13 @@ import { ArrowLeft } from 'lucide-react'
 import LeadDetailClient from './LeadDetailClient'
 import LeadAppointmentsClient from './LeadAppointmentsClient'
 import LeadPipelinesClient from './LeadPipelinesClient'
-import ContactLanguageSelect from './ContactLanguageSelect'
+import LeadFollowupPanel from '@/components/followup/LeadFollowupPanel'
+import HandoffOutcomeClient from './HandoffOutcomeClient'
+import MetaCapiButton from '@/components/leads/MetaCapiButton'
+import ContactInfoEditClient from './ContactInfoEditClient'
+import LeadNotesClient from './LeadNotesClient'
+import CollectedDataEditClient from './CollectedDataEditClient'
+import LeadStatusSelectClient from './LeadStatusSelectClient'
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const supabase = createClient()
@@ -26,7 +32,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
     .from('leads')
     .select(`
       id, qualification_score, status, source_channel, collected_data,
-      data_completeness, missing_fields, notes, created_at, updated_at,
+      data_completeness, missing_fields, notes, ai_summary, assigned_to, created_at, updated_at,
       contact:contacts(id, full_name, phone, email, status, source_channel, created_at, preferred_language)
     `)
     .eq('id', params.id)
@@ -60,7 +66,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   // Fetch handoff log
   const { data: handoff } = await supabase
     .from('handoff_logs')
-    .select('id, trigger_reason, summary, missing_at_handoff, routing_target, status, created_at')
+    .select('id, trigger_reason, summary, missing_at_handoff, routing_target, status, handoff_outcome, outcome_notes, created_at')
     .eq('lead_id', lead.id)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -92,6 +98,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-xl font-bold text-slate-900">{contact?.full_name || contact?.phone || 'Bilinmeyen'}</h1>
               <LeadBadge score={lead.qualification_score} />
+              <LeadStatusSelectClient leadId={lead.id} initialStatus={lead.status} userRole={userRole} />
             </div>
             <p className="text-sm text-slate-500 mt-0.5">{contact?.phone} {contact?.email ? `· ${contact.email}` : ''}</p>
           </div>
@@ -110,73 +117,51 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Contact Info */}
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-3">{t.contactInfo}</h2>
-          <dl className="space-y-2">
-            {[
-              ['Telefon', contact?.phone],
-              ['E-posta', contact?.email],
-              ['Kaynak', contact?.source_channel],
-              ['Durum', contact?.status],
-              ['Kayıt', contact?.created_at ? new Date(contact.created_at).toLocaleDateString('tr-TR') : '—'],
-            ].map(([label, value]) => value ? (
-              <div key={label} className="flex text-sm">
-                <dt className="w-24 text-slate-500 flex-shrink-0">{label}</dt>
-                <dd className="text-slate-800 font-medium">{value}</dd>
-              </div>
-            ) : null)}
-          </dl>
-          {contact?.id && (
-            <ContactLanguageSelect
-              contactId={contact.id}
-              initialLanguage={contact.preferred_language ?? null}
-            />
-          )}
-        </div>
+        {/* Contact Info (editable) */}
+        <ContactInfoEditClient
+          contactId={contact?.id}
+          fullName={contact?.full_name}
+          phone={contact?.phone}
+          email={contact?.email}
+          sourceChannel={contact?.source_channel}
+          contactStatus={contact?.status}
+          createdAt={contact?.created_at}
+          preferredLanguage={contact?.preferred_language ?? null}
+          userRole={userRole}
+        />
 
-        {/* Collected Data */}
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-3">{t.collectedData}</h2>
-          {Object.keys(lead.collected_data).length === 0 ? (
-            <p className="text-sm text-slate-400">{t.noData}</p>
-          ) : (
-            <dl className="space-y-2">
-              {Object.entries(lead.collected_data).map(([key, value]) => (
-                value != null ? (
-                  <div key={key} className="flex text-sm">
-                    <dt className="w-36 text-slate-500 flex-shrink-0 truncate capitalize">{key.replace(/_/g, ' ')}</dt>
-                    <dd className="text-slate-800 font-medium">{String(value)}</dd>
-                  </div>
-                ) : null
-              ))}
-            </dl>
-          )}
-        </div>
+        {/* Collected Data (editable) */}
+        <CollectedDataEditClient
+          leadId={lead.id}
+          initialData={lead.collected_data}
+          userRole={userRole}
+        />
       </div>
 
-      {/* Notes (vision analysis etc.) */}
-      {lead.notes && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-3">Notlar</h2>
-          <div className="text-sm text-slate-700 whitespace-pre-line">{lead.notes}</div>
-        </div>
-      )}
+      {/* Notes (editable — always visible) */}
+      <LeadNotesClient
+        leadId={lead.id}
+        initialNotes={lead.notes}
+        aiSummary={(lead as any).ai_summary ?? null}
+        userRole={userRole}
+      />
 
       {/* Handoff */}
       {handoff && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-amber-800 mb-2">{t.handoffInfo}</h2>
-          <div className="text-sm text-amber-700 space-y-1">
-            <p><span className="font-medium">Neden:</span> {handoff.trigger_reason}</p>
-            {handoff.routing_target && <p><span className="font-medium">Yönlendirme:</span> {handoff.routing_target}</p>}
-            {handoff.summary && <p className="mt-2">{handoff.summary}</p>}
-            {handoff.missing_at_handoff?.length > 0 && (
-              <p><span className="font-medium">Eksik:</span> {handoff.missing_at_handoff.join(', ')}</p>
-            )}
-          </div>
-        </div>
+        <HandoffOutcomeClient
+          handoffId={handoff.id}
+          initialOutcome={(handoff as any).handoff_outcome ?? null}
+          initialNotes={(handoff as any).outcome_notes ?? null}
+          triggerReason={handoff.trigger_reason}
+          routingTarget={handoff.routing_target}
+          summary={handoff.summary}
+          missingAtHandoff={handoff.missing_at_handoff}
+          userRole={userRole}
+        />
       )}
+
+      {/* Meta CAPI */}
+      <MetaCapiButton leadId={lead.id} />
 
       {/* Pipeline Atamaları */}
       <LeadPipelinesClient leadId={lead.id} />
@@ -230,6 +215,9 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           )}
         </div>
       </div>
+
+      {/* Follow-up Tasks */}
+      <LeadFollowupPanel leadId={lead.id} />
 
       {/* Messages */}
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">

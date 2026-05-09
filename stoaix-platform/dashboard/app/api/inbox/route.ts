@@ -125,5 +125,12 @@ export async function GET(request: NextRequest) {
     last_message: lastMessages[c.id] ?? null,
   }))
 
+  // Sort by last message time (most recent first), fallback to started_at
+  result.sort((a: any, b: any) => {
+    const ta = a.last_message?.created_at ?? a.started_at
+    const tb = b.last_message?.created_at ?? b.started_at
+    return new Date(tb).getTime() - new Date(ta).getTime()
+  })
+
   return NextResponse.json({ conversations: result, hasMore, nextCursor })
 }

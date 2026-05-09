@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as sbAdmin } from '@supabase/supabase-js'
 import { getTemplate } from '@/lib/workflow-templates'
 import { checkEntitlement } from '@/lib/entitlements'
+import { checkChannelReady } from '@/lib/integration-health'
 import type { TriggerType } from '@/lib/workflow-types'
 
 function getServiceClient() {
@@ -102,6 +103,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // no_reply event — attempt bilgisi contact_data'ya aktar
+  if (event === 'no_reply' && triggerData?.attempt) {
+    contactData.attempt = triggerData.attempt
+  }
+
   // no_answer event — orijinal run'dan contact bilgisi al
   if (event === 'no_answer' && ref_id) {
     const { data: origRun } = await service
@@ -117,6 +123,13 @@ export async function POST(request: NextRequest) {
     if (triggerData?.attempt)     contactData.attempt     = triggerData.attempt
     if (triggerData?.script_type) contactData.script_type = triggerData.script_type
   }
+
+  // Fetch org timezone for appointment formatting
+  const { data: org } = await service
+    .from('organizations')
+    .select('timezone')
+    .eq('id', org_id)
+    .maybeSingle()
 
   // Appointment events — bilgi zenginleştirme
   const isApptEvent = ['appointment_created', 'appointment_reminder', 'appointment_noshow', 'post_appointment'].includes(event)
@@ -139,8 +152,9 @@ export async function POST(request: NextRequest) {
         contactData.appointment_time = triggerData.appointment_time
       } else if (appt.scheduled_at) {
         const apptDate = new Date(appt.scheduled_at)
+        const orgTimezone = org?.timezone || 'Europe/Istanbul'
         contactData.appointment_time = apptDate.toLocaleString('tr-TR', {
-          timeZone: 'Europe/Istanbul', hour12: false,
+          timeZone: orgTimezone, hour12: false,
         })
       }
 
@@ -181,6 +195,21 @@ export async function POST(request: NextRequest) {
       continue
     }
 
+    // C1: trigger_sources filtresi — hangi form kanallarından gelen leadler tetiklesin
+    if (template.id === 'lead_first_contact_chat') {
+      const sources = workflow.config?.trigger_sources ?? 'all_forms'
+      const leadSource = contactData.lead_source ?? ''
+
+      const SOURCE_MAP: Record<string, string[]> = {
+        'all_forms':    ['meta_form', 'web_form', 'import', 'manual', 'form'],
+        'meta_form':    ['meta_form'],
+        'web_form':     ['web_form'],
+        'meta_and_web': ['meta_form', 'web_form'],
+      }
+      const allowed = SOURCE_MAP[sources] ?? SOURCE_MAP['all_forms']
+      if (!allowed.includes(leadSource)) continue
+    }
+
     // workflow_runs INSERT
     const isValidUuid = (v: any) => typeof v === 'string' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
@@ -201,20 +230,48 @@ export async function POST(request: NextRequest) {
 
     if (runErr || !run) continue
 
-    // n8n dispatch
+    // n8n dispatch — resolve target webhook (V3 channel routing)
+    let dispatchWebhookId = template.n8n_workflow_id
+    let dispatchScriptType = template.id
+
+    if (template.id === 'lead_first_contact_voice' && workflow.config?.first_channel === 'whatsapp') {
+      const chatTemplate = getTemplate('lead_first_contact_chat')
+      if (chatTemplate) {
+        const waCheck = await checkChannelReady(org_id, 'whatsapp')
+        if (waCheck.ready) {
+          dispatchWebhookId = chatTemplate.n8n_workflow_id
+          dispatchScriptType = chatTemplate.id
+        }
+        // WA not ready → fallback to voice (keep original)
+      }
+    }
+
+    // WasenderAPI provider routing — wasender org'ları için ayrı n8n workflow'una yönlendir
+    if ((template.channel === 'whatsapp' || template.channel === 'multi') && template.n8n_workflow_id_wasender) {
+      const { data: orgForProvider } = await service
+        .from('organizations')
+        .select('channel_config')
+        .eq('id', org_id)
+        .maybeSingle()
+      const waProvider = (orgForProvider?.channel_config as any)?.whatsapp?.provider
+      if (waProvider === 'wasender') {
+        dispatchWebhookId = template.n8n_workflow_id_wasender
+      }
+    }
+
     if (n8nWebhookUrl && contactPhone) {
       const payload = {
         run_id:       run.id,
         org_id,
         phone:        contactPhone,
         config:       workflow.config,
-        script_type:  template.id,
+        script_type:  dispatchScriptType,
         contact_data: contactData,
         callback_url: `${dashboardUrl}/api/webhooks/n8n-result`,
       }
 
       try {
-        const r = await fetch(`${n8nWebhookUrl.replace(/\/$/, '')}/webhook/${template.n8n_workflow_id}`, {
+        const r = await fetch(`${n8nWebhookUrl.replace(/\/$/, '')}/webhook/${dispatchWebhookId}`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(payload),

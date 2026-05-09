@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabase } from '@supabase/supabase-js'
-import { getStripe, getPriceId } from '@/lib/stripe'
+import { getStripe, getPriceId, type BillingInterval } from '@/lib/stripe'
 
 function getServiceClient() {
   return createSupabase(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -24,11 +24,15 @@ export async function POST(req: NextRequest) {
 
   const orgId = orgUser.organization_id
   const body = await req.json()
-  const { planId, interval = 'monthly' } = body as { planId: string; interval: 'monthly' | 'annual' }
+  const { planId, interval = 'monthly', noTrial = false } = body as { planId: string; interval: BillingInterval; noTrial?: boolean }
 
   const validPlans = ['essential', 'professional', 'business']
+  const validIntervals: BillingInterval[] = ['monthly', 'quarterly', 'semi_annual', 'annual']
   if (!validPlans.includes(planId)) {
     return NextResponse.json({ error: 'Geçersiz plan' }, { status: 400 })
+  }
+  if (!validIntervals.includes(interval)) {
+    return NextResponse.json({ error: 'Geçersiz fatura dönemi' }, { status: 400 })
   }
 
   const priceId = getPriceId(planId, interval)
@@ -68,13 +72,16 @@ export async function POST(req: NextRequest) {
       .upsert({ organization_id: orgId, stripe_customer_id: customerId, plan_id: sub?.plan_id ?? 'legacy', status: sub?.status ?? 'legacy' }, { onConflict: 'organization_id' })
   }
 
+  // Daha önce subscription yaşamış (canceled/expired) müşterilere trial uygulanmaz
+  const skipTrial = noTrial || planId === 'business' || sub?.status === 'canceled' || sub?.status === 'past_due'
+
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: 'subscription',
     payment_method_types: ['card'],
     line_items: [{ price: priceId, quantity: 1 }],
     subscription_data: {
-      trial_period_days: 7,
+      ...(skipTrial ? {} : { trial_period_days: 7 }),
       metadata: { organization_id: orgId, plan_id: planId },
     },
     payment_method_collection: 'always', // trial'da da kart zorunlu

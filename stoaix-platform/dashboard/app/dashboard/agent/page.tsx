@@ -151,8 +151,8 @@ const VOICE_LANGUAGES = [
 ]
 
 const VOICE_MODEL_OPTIONS = [
-  { value: 'claude-sonnet-4-6',        label: 'Claude Sonnet 4.6 (Önerilen)' },
-  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (Hızlı)' },
+  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (Önerilen)' },
+  { value: 'claude-sonnet-4-6',        label: 'Claude Sonnet 4.6' },
   { value: 'gpt-4o-mini',              label: 'GPT-4o Mini' },
 ]
 
@@ -1597,7 +1597,7 @@ function AgentPageInner() {
                 </p>
               </div>
               <select
-                value={current.features.model ?? (editorView.channel === 'voice' ? 'claude-sonnet-4-6' : 'gpt-4o-mini')}
+                value={current.features.model ?? (editorView.channel === 'voice' ? 'claude-haiku-4-5-20251001' : 'gpt-4o-mini')}
                 onChange={e => setCurrent(prev => ({
                   ...prev,
                   features: { ...prev.features, model: e.target.value },

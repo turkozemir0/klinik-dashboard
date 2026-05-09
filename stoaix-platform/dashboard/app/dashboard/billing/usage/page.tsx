@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MessageSquare, Phone, BookOpen, Upload, Users, Webhook } from 'lucide-react'
+import { MessageSquare, Phone, BookOpen, Upload, Users, Webhook, Bot } from 'lucide-react'
 
 interface UsageMetric {
   key: string
@@ -25,6 +25,7 @@ function getTextColor(pct: number) {
 
 // metricKey = usage_counters.metric, featureKey = plan_entitlements.feature_key
 const METRIC_META: { key: string; featureKey: string; label: string; icon: React.ReactNode }[] = [
+  { key: 'ai_conversation_count',  featureKey: 'ai_conversations',        label: 'AI Konuşmalar',       icon: <Bot size={20} className="text-cyan-500" /> },
   { key: 'whatsapp_outbound_msgs', featureKey: 'whatsapp_outbound',       label: 'WhatsApp Mesajları',  icon: <MessageSquare size={20} className="text-blue-500" /> },
   { key: 'voice_minutes',          featureKey: 'voice_agent_inbound',     label: 'Ses Dakikası',        icon: <Phone size={20} className="text-purple-500" /> },
   { key: 'kb_item_count',          featureKey: 'kb_write',                label: 'Bilgi Bankası Öğesi', icon: <BookOpen size={20} className="text-amber-500" /> },

@@ -15,7 +15,7 @@ declare global {
 function loadFbSdk(appId: string) {
   if (document.getElementById('facebook-jssdk')) return
   window.fbAsyncInit = function () {
-    window.FB.init({ appId, cookie: true, xfbml: false, version: 'v19.0' })
+    window.FB.init({ appId, cookie: true, xfbml: false, version: 'v21.0' })
   }
   const script = document.createElement('script')
   script.id = 'facebook-jssdk'

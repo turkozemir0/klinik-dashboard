@@ -1,7 +1,8 @@
-import { MessageSquare, Phone, Instagram, RefreshCw, Globe } from 'lucide-react'
+import { Phone, Instagram, RefreshCw, Globe, MessageSquare } from 'lucide-react'
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
-const CONFIG: Record<string, { icon: typeof MessageSquare; colors: string; label: string }> = {
-  whatsapp:     { icon: MessageSquare, colors: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'WhatsApp' },
+const CONFIG: Record<string, { icon: any; colors: string; label: string }> = {
+  whatsapp:     { icon: WhatsAppIcon,  colors: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'WhatsApp' },
   voice:        { icon: Phone,         colors: 'bg-violet-50 text-violet-700 border-violet-200',    label: 'Voice' },
   instagram:    { icon: Instagram,     colors: 'bg-pink-50 text-pink-700 border-pink-200',          label: 'Instagram' },
   web:          { icon: Globe,         colors: 'bg-sky-50 text-sky-700 border-sky-200',              label: 'Web' },

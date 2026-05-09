@@ -10,7 +10,7 @@ function getServiceClient() {
   )
 }
 
-const GRAPH = 'https://graph.facebook.com/v19.0'
+import { META_GRAPH_URL as GRAPH } from '@/lib/meta-api'
 const SYNC_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
 
 interface MetaLead {

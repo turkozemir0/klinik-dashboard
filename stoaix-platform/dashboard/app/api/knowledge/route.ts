@@ -99,7 +99,12 @@ export async function POST(request: NextRequest) {
     .select('id, item_type, title, description_for_ai, data, tags, is_active, updated_at')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    if (error.code === '23505') {
+      return NextResponse.json({ error: 'duplicate', message: 'Bu başlıkta bir madde zaten mevcut' }, { status: 409 })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
   await incrementUsage(organization_id, 'kb_write')
 
   // Fire-and-forget: kb item added event

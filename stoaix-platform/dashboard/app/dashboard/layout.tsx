@@ -8,6 +8,7 @@ import { LangProvider } from '@/lib/lang-context'
 import { DemoProvider } from '@/lib/demo-context'
 import { OrgProvider } from '@/lib/org-context'
 import DemoBanner from '@/components/DemoBanner'
+import SupportChatWidget from '@/components/support/SupportChatWidget'
 import type { Lang } from '@/lib/i18n'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -58,6 +59,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               </>
             )}
           </main>
+          <SupportChatWidget />
         </div>
         </OrgProvider>
       </DemoProvider>

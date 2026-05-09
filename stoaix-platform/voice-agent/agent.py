@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -26,6 +27,7 @@ from prompt_rules import (
     REGISTER_RULES,
     OBJECTION_RULES,
     get_voice_rules,
+    get_sector_rules,
     language_instruction,
     inbound_language_instruction,
     LANGUAGE_NAMES,
@@ -95,6 +97,8 @@ async def load_org(org_id: str) -> dict:
     sub = sb.table("org_subscriptions") \
         .select("plan_id, status") \
         .eq("organization_id", org_id) \
+        .in_("status", ["active", "trialing"]) \
+        .order("created_at", desc=True) \
         .limit(1) \
         .execute()
     org["_plan"] = sub.data[0]["plan_id"] if sub.data else "legacy"
@@ -638,6 +642,8 @@ def build_system_prompt(
     calendar_enabled: bool = False,
     lang: str = "tr",
     few_shots: list = None,
+    caller_phone: str = "",
+    contact_history_block: str = "",
 ) -> str:
     persona      = org.get("ai_persona", {})
     persona_name = persona.get("persona_name", "Asistan")
@@ -679,8 +685,13 @@ def build_system_prompt(
 
     base_prompt = playbook.get("system_prompt_template", "") if playbook else ""
 
-    # ═══ TR: Mevcut Türkçe prompt — AYNEN korunur ═══
+    # Sektöre göre kural blokları seç (default: clinic)
+    sector = org.get("sector", "clinic")
+
+    # ═══ TR: Türkçe prompt ═══
     if lang == "tr":
+        guardrails, conv_rules, nat_rules, reg_rules, obj_rules = get_sector_rules(sector, "tr")
+
         calendar_section = (
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "RANDEVU ALMA:\n"
@@ -690,23 +701,39 @@ def build_system_prompt(
             "SIRA ÖNEMLİ: Önce check_availability, sonra book_appointment. Tersini yapma."
         ) if calendar_enabled else ""
 
-        return f"""{PLATFORM_GUARDRAILS}
+        history_section = ""
+        if contact_history_block:
+            history_section = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GERİ DÖNEN HASTA — İÇ SEZGİ (DOĞRULAMA GEREKTİRİR):
+Bu bilgiler kesin değildir. Fikir değişmiş, yanlış toplanmış olabilir.
+
+{contact_history_block}
+
+KULLANIM KURALI (İSTİSNASIZ):
+- "Geçen sefer...", "Daha önce söylemiştiniz..." YASAK
+- Bu bilgileri ASLA doğrudan kullanma veya ima etme
+- Sadece iç navigasyon için: hangi prosedürü önce sor, hangi endişeye hazır ol
+- Arayan kendi bilgisini verirse → onu esas al, önceki bilgiyi unut
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+
+        return f"""{guardrails}
 
 {base_prompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 KONUŞMA KURALLARI (KATI — İSTİSNASIZ UYGULANIR):
-{VOICE_CONVERSATION_RULES}
+{conv_rules}
 
-{NATURALNESS_RULES}
+{nat_rules}
 
-{REGISTER_RULES}
+{reg_rules}
 
-{OBJECTION_RULES}
+{obj_rules}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BİLGİ TABANI (RAG — bu konuşma için ilgili içerik):
-{kb_context if kb_context else "(Henüz sorgu yapılmadı — kullanıcı soru sorunca KB'den çekilecek)"}
+{kb_context if kb_context else "(Henüz sorgu yapılmadı — kullanıcı soru sorunca KB'den çekilecek)"}{history_section}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TOPLANMASI GEREKEN BİLGİLER (zorunlu):
@@ -718,7 +745,13 @@ VERİ TOPLAMA TARZI (ÇOK ÖNEMLİ):
 - Bilgileri tek seferde sormak YASAK. Birer birer, sırayla sor.
 - Kullanıcı zaten bir bilgiyi paylaştıysa tekrar sorma.
 - Tüm zorunlu bilgiler toplandığında: "Bilgilerinizi not aldım, bir danışmanımız sizi en kısa sürede arayacak." de ve görüşmeyi nazikçe sonlandır.
-
+{"" if not caller_phone else f'''
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARAYAN NUMARASI: {caller_phone}
+- Bu numara zaten biliniyor. "Telefon numaranızı alabilir miyim?" SORMA.
+- Bunun yerine: "Sizinle {caller_phone} numarası üzerinden mi iletişime geçelim?" diye teyit al.
+- Arayan farklı numara verirse onu kaydet.
+'''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 YÖNLENDİRME KURALLARI:{routing_text if routing_text else " (tanımlı kural yok)"}
 
@@ -735,7 +768,7 @@ HALÜSİNASYON KURALI:
 {calendar_section}{few_shot_section}"""
 
     # ═══ Non-TR: International prompt ═══
-    conv_rules, nat_rules, reg_rules, obj_rules = get_voice_rules(lang)
+    guardrails_intl, conv_rules, nat_rules, reg_rules, obj_rules = get_sector_rules(sector, lang)
     lang_inst = language_instruction(lang)
 
     calendar_section_intl = (
@@ -749,7 +782,23 @@ HALÜSİNASYON KURALI:
 
     completion_msg = "I've noted your information, one of our consultants will reach out to you shortly."
 
-    return f"""{PLATFORM_GUARDRAILS}
+    intl_history_section = ""
+    if contact_history_block:
+        intl_history_section = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RETURNING PATIENT — INTERNAL CONTEXT (REQUIRES VERIFICATION):
+This information may be outdated or misunderstood. Do NOT rely on it directly.
+
+{contact_history_block}
+
+USAGE RULE (NO EXCEPTIONS):
+- "Last time...", "You mentioned before..." is FORBIDDEN
+- NEVER use or imply this information directly
+- Internal navigation only: which procedure to prioritise, which concern to prepare for
+- If the caller provides information themselves → use that, discard the previous
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+
+    return f"""{guardrails_intl}
 {lang_inst}
 
 {base_prompt}
@@ -766,7 +815,7 @@ CONVERSATION RULES (STRICT — NO EXCEPTIONS):
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 KNOWLEDGE BASE (RAG — relevant content for this conversation):
-{kb_context if kb_context else "(No query yet — will be loaded when user asks a question)"}
+{kb_context if kb_context else "(No query yet — will be loaded when user asks a question)"}{intl_history_section}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REQUIRED INFORMATION (must collect):
@@ -778,7 +827,13 @@ DATA COLLECTION STYLE (VERY IMPORTANT):
 - Asking all fields at once is FORBIDDEN. Ask one by one, in order.
 - If the user already shared a piece of information, don't ask again.
 - When all required info is collected: "{completion_msg}" and politely end the call.
-
+{"" if not caller_phone else f'''
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CALLER PHONE NUMBER: {caller_phone}
+- This number is already known. Do NOT ask "Can I get your phone number?".
+- Instead, confirm: "Shall we reach you at {caller_phone}?"
+- If the caller provides a different number, record that instead.
+'''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ROUTING RULES:{routing_text if routing_text else " (no rules defined)"}
 
@@ -963,7 +1018,11 @@ async def extract_collected_data(transcript: list, intake_fields: list, lang: st
         return {}
     try:
         from openai import OpenAI as OpenAIClient
-        oa = OpenAIClient(api_key=os.environ["OPENAI_API_KEY"])
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OPENAI_API_KEY not set — extraction skipped")
+            return {"_extraction_failed": True, "_error": "OPENAI_API_KEY missing"}
+        oa = OpenAIClient(api_key=api_key)
 
         field_defs = "\n".join(
             f"- {f['key']} ({f['label']}): {f.get('type', 'text')}"
@@ -1040,7 +1099,11 @@ async def generate_call_summary(transcript: list, collected_data: dict, org_name
         return ""
     try:
         from openai import OpenAI as OpenAIClient
-        oa = OpenAIClient(api_key=os.environ["OPENAI_API_KEY"])
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OPENAI_API_KEY not set — summary skipped")
+            return ""
+        oa = OpenAIClient(api_key=api_key)
 
         transcript_text = "\n".join(
             f"[{m['role']}] {m['content']}"
@@ -1226,11 +1289,15 @@ async def upsert_contact_and_lead(
     phone_from: str,
     org_name:   str,
     source:     str = "voice_inbound",
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None, dict]:
+    """Returns (contact_id, lead_id, prev_summary, prev_collected).
+    prev_summary/prev_collected dolu ise geri dönen hasta — history bloğu için kullan."""
     try:
         sb = get_supabase()
-        contact_id = None
-        lead_id    = None
+        contact_id   = None
+        lead_id      = None
+        prev_summary = None
+        prev_collected: dict = {}
 
         # Normalize to E.164 before any DB lookup/insert
         if phone_from:
@@ -1246,6 +1313,22 @@ async def upsert_contact_and_lead(
 
             if existing.data:
                 contact_id = existing.data[0]["id"]
+                # Geri dönen hasta — önceki özet ve collected_data çek
+                hist = sb.table("contacts") \
+                    .select("contact_summary") \
+                    .eq("id", contact_id) \
+                    .limit(1).execute()
+                if hist.data:
+                    prev_summary = hist.data[0].get("contact_summary")
+
+                lead_hist = sb.table("leads") \
+                    .select("collected_data") \
+                    .eq("organization_id", org_id) \
+                    .eq("contact_id", contact_id) \
+                    .in_("status", ["new", "in_progress", "handed_off"]) \
+                    .order("updated_at", desc=True).limit(1).execute()
+                if lead_hist.data:
+                    prev_collected = lead_hist.data[0].get("collected_data") or {}
             else:
                 res = sb.table("contacts").insert({
                     "organization_id": org_id,
@@ -1289,11 +1372,11 @@ async def upsert_contact_and_lead(
                 if res.data:
                     lead_id = res.data[0]["id"]
 
-        return contact_id, lead_id
+        return contact_id, lead_id, prev_summary, prev_collected
 
     except Exception as e:
         logger.warning(f"contact/lead upsert failed: {e}")
-        return None, None
+        return None, None, None, {}
 
 
 # ── SIP yardımcıları ───────────────────────────────────────────────────────────
@@ -1495,7 +1578,7 @@ async def entrypoint(ctx: JobContext):
     llm_model = (
         meta.get("model")
         or features.get("model")
-        or "claude-sonnet-4-6"
+        or "claude-haiku-4-5-20251001"
     )
     if llm_model.startswith("claude-"):
         llm_instance = anthropic.LLM(model=llm_model)
@@ -1539,7 +1622,29 @@ async def entrypoint(ctx: JobContext):
     # ── İnbound ───────────────────────────────────────────────────────────────
     if not scenario:
         initial_kb = ""  # Başlangıçta KB yükleme — şehir/ofis varsayımını önler, sorular gelince dinamik yüklenir
-        system_prompt = build_system_prompt(org, playbook, intake, initial_kb, calendar_enabled, lang)
+        phone_from = _get_sip_caller_number(ctx) or meta.get("phone_from", "")
+
+        contact_id, lead_id, prev_summary, prev_collected = await upsert_contact_and_lead(
+            org_id, phone_from, org["name"], source="voice_inbound"
+        )
+
+        # Contact history bloğu — sadece geri dönen hastalarda dolu gelir
+        contact_history_block = ""
+        if prev_summary or prev_collected:
+            parts = []
+            if prev_summary:
+                parts.append(f"Önceki etkileşim özeti:\n{prev_summary}")
+            if prev_collected:
+                filled = {k: v for k, v in prev_collected.items() if v}
+                if filled:
+                    lines = "\n".join(f"- {k}: {v}" for k, v in list(filled.items())[:6])
+                    parts.append(f"Son bilinen veriler:\n{lines}")
+            contact_history_block = "\n\n".join(parts)
+
+        system_prompt = build_system_prompt(
+            org, playbook, intake, initial_kb, calendar_enabled, lang,
+            caller_phone=phone_from, contact_history_block=contact_history_block,
+        )
         # Bilingual instruction: plan destekliyorsa LLM'e "arayan hangi dilde konuşursa o dilde yanıt ver" talimatı
         if _org_plan in _LANG_DETECT_PLANS:
             system_prompt += inbound_language_instruction(_org_plan)
@@ -1552,11 +1657,9 @@ async def entrypoint(ctx: JobContext):
         else:
             opening = INBOUND_GREETINGS.get(lang, INBOUND_GREETINGS["en"]).format(org=org['name'])
         direction  = "inbound"
-        phone_from = _get_sip_caller_number(ctx) or meta.get("phone_from", "")
-        phone_to   = os.environ.get("PLATFORM_INBOUND_NUMBER", "")
-
-        contact_id, lead_id = await upsert_contact_and_lead(
-            org_id, phone_from, org["name"], source="voice_inbound"
+        phone_to   = (
+            (org.get("channel_config") or {}).get("voice_inbound", {}).get("inbound_number", "")
+            or os.environ.get("PLATFORM_INBOUND_NUMBER", "")
         )
 
     # ── Outbound ──────────────────────────────────────────────────────────────
@@ -1569,13 +1672,31 @@ async def entrypoint(ctx: JobContext):
         appt_time     = meta.get("appointment_time", "")
         reminder_hrs  = meta.get("reminder_hours", "24")
 
+        prev_summary: str | None = None
+        prev_collected: dict = {}
+
         # If contact_id wasn't passed in metadata, upsert from phone_to so conversation insert never fails
         if not contact_id:
-            contact_id, fallback_lead_id = await upsert_contact_and_lead(
+            contact_id, fallback_lead_id, prev_summary, prev_collected = await upsert_contact_and_lead(
                 org_id, phone_to, org["name"], source="voice_outbound"
             )
             if not lead_id:
                 lead_id = fallback_lead_id
+        else:
+            # contact_id metadata'dan geldi — geçmiş veriyi ayrıca çek
+            try:
+                sb = get_supabase()
+                _ch = sb.table("contacts").select("contact_summary").eq("id", contact_id).limit(1).execute()
+                if _ch.data:
+                    prev_summary = _ch.data[0].get("contact_summary")
+                _lh = sb.table("leads").select("collected_data") \
+                    .eq("organization_id", org_id).eq("contact_id", contact_id) \
+                    .in_("status", ["new", "in_progress", "handed_off"]) \
+                    .order("updated_at", desc=True).limit(1).execute()
+                if _lh.data:
+                    prev_collected = _lh.data[0].get("collected_data") or {}
+            except Exception as e:
+                logger.warning(f"outbound contact history load failed: {e}")
 
         outbound_playbook_text = playbook.get("system_prompt_template", "") if playbook else ""
         outbound_guardrails = build_outbound_guardrails(lang, playbook)
@@ -1982,6 +2103,32 @@ RULE: Never make up information not in the knowledge base.
         if _pb_opening:
             opening = _pb_opening
 
+        # Geri dönen hasta varsa history bloğunu outbound system_prompt'a ekle
+        if prev_summary or prev_collected:
+            _parts = []
+            if prev_summary:
+                _parts.append(f"Önceki etkileşim özeti:\n{prev_summary}")
+            if prev_collected:
+                _filled = {k: v for k, v in prev_collected.items() if v}
+                if _filled:
+                    _lines = "\n".join(f"- {k}: {v}" for k, v in list(_filled.items())[:6])
+                    _parts.append(f"Son bilinen veriler:\n{_lines}")
+            _history_block = "\n\n".join(_parts)
+            if _history_block:
+                _history_section = (
+                    "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "GERİ DÖNEN HASTA — İÇ SEZGİ (DOĞRULAMA GEREKTİRİR):\n"
+                    "Bu bilgiler kesin değildir. Fikir değişmiş, yanlış toplanmış olabilir.\n\n"
+                    f"{_history_block}\n\n"
+                    "KULLANIM KURALI (İSTİSNASIZ):\n"
+                    "- \"Geçen sefer...\", \"Daha önce söylemiştiniz...\" YASAK\n"
+                    "- Bu bilgileri ASLA doğrudan kullanma veya ima etme\n"
+                    "- Sadece iç navigasyon için kullan\n"
+                    "- Hasta kendi bilgisini verirse → onu esas al, öncekini unut\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                )
+                system_prompt = system_prompt + _history_section
+
         direction  = "outbound"
         phone_from = os.environ.get("PLATFORM_OUTBOUND_NUMBER", "")
 
@@ -2012,6 +2159,7 @@ RULE: Never make up information not in the knowledge base.
                 sb.table("satisfaction_surveys").insert({
                     "organization_id": org_id,
                     "contact_id":      contact_id,
+                    "lead_id":         lead_id,
                     "run_id":          _survey_run_id or None,
                     "score":           max(1, min(5, score)),
                     "comment":         comment or None,
@@ -2108,7 +2256,7 @@ RULE: Never make up information not in the knowledge base.
     _pb_voice_id = features.get("tts_voice_id", "").strip()
     voice_id = _pb_voice_id if _pb_voice_id else (CARTESIA_VOICES.get(tts_lang) or CARTESIA_VOICES["tr"])
 
-    STT_LANG_MAP = {"tr": "tr", "en": "en", "ar": "ar", "de": "de", "ru": "ru", "fr": "fr", "es": "es"}
+    STT_LANG_MAP = {"tr": "tr", "en": "en", "ar": "ar", "de": "de", "ru": "ru", "fr": "fr", "es": "es", "it": "it", "pt": "pt", "zh": "zh"}
     stt_language = STT_LANG_MAP.get(tts_lang, "tr")
 
     # Klinik terminolojisi — Deepgram Nova-3 keyterm prompting ile TR doğruluğu artır
@@ -2137,10 +2285,11 @@ RULE: Never make up information not in the knowledge base.
         ),
         **({"turn_detection": _TURN_DETECTOR_CLS()} if _TURN_DETECTOR_CLS else {}),
         allow_interruptions=True,
-        min_interruption_duration=0.3,        # 300ms barge-in eşiği
-        min_interruption_words=1,             # 1 kelime ile interrupt
+        min_interruption_duration=0.5,        # 500ms barge-in eşiği (300ms → 500ms: kısa gürültü/filler filtreleme)
+        min_interruption_words=2,             # 2 kelime gereksin (1→2: "hmm" tek başına bölmesin)
         min_endpointing_delay=0.5,
         max_endpointing_delay=6.0,            # Türkçe uzun cümle desteği
+        false_interruption_timeout=1.5,       # Yanlış interrupt sonrası 1.5s'de devam et (default 2.0 → 1.5 daha responsive)
     )
 
     call_start     = datetime.now(timezone.utc)
@@ -2214,31 +2363,15 @@ RULE: Never make up information not in the knowledge base.
     )
     await background_audio.start(room=ctx.room, agent_session=session)
 
+    # Disconnect event — entrypoint bu event'i bekleyecek, save inline çalışacak.
+    # create_task kullanmıyoruz çünkü LiveKit framework disconnect sonrası
+    # background task'ları iptal ediyor. Inline await ile entrypoint bitmeden
+    # extraction tamamlanmış olur.
+    disconnected_ev = asyncio.Event()
+
     @ctx.room.on("disconnected")
     def on_disconnected():
-        async def _safe_save():
-            try:
-                await _save_all(
-                    org_id=org_id,
-                    direction=direction,
-                    call_start=call_start,
-                    transcript=transcript,
-                    phone_from=phone_from,
-                    phone_to=phone_to,
-                    contact_id=contact_id,
-                    lead_id=lead_id,
-                    conv_id=conv_id,
-                    intake=intake,
-                    handoff_reason=handoff_reason,
-                    room_name=room_name,
-                    run_id=meta.get("run_id"),
-                    callback_url=meta.get("callback_url"),
-                    lang=lang,
-                    org_lang=persona.get("language", "tr"),
-                )
-            except Exception as e:
-                logger.error(f"CRITICAL _save_all failed — call may not be recorded: {e}", exc_info=True)
-        asyncio.create_task(_safe_save())
+        disconnected_ev.set()
 
     # Opening — session.say() ile LLM'i bypass et, metni doğrudan TTS'e gönder
     # generate_reply() kullanılırsa LLM gürültüyü "user konuştu" diye yorumlayıp
@@ -2249,12 +2382,94 @@ RULE: Never make up information not in the knowledge base.
     session.clear_user_turn()
     session.input.set_audio_enabled(True)
 
+    # Disconnect olana kadar bekle, sonra save'i inline çalıştır
+    await disconnected_ev.wait()
+
+    try:
+        await _save_all(
+            org_id=org_id,
+            direction=direction,
+            call_start=call_start,
+            transcript=transcript,
+            phone_from=phone_from,
+            phone_to=phone_to,
+            contact_id=contact_id,
+            lead_id=lead_id,
+            conv_id=conv_id,
+            intake=intake,
+            handoff_reason=handoff_reason,
+            room_name=room_name,
+            run_id=meta.get("run_id"),
+            callback_url=meta.get("callback_url"),
+            lang=lang,
+            org_lang=persona.get("language", "tr"),
+            org_name=org["name"],
+            prev_summary=prev_summary,
+        )
+    except Exception as e:
+        logger.error(f"CRITICAL _save_all failed — call may not be recorded: {e}", exc_info=True)
+
+
+async def _update_contact_summary(
+    contact_id: str,
+    prev_summary: str | None,
+    new_call_summary: str,
+    collected_data: dict,
+    lang: str = "tr",
+) -> None:
+    """Her çağrı sonunda contact-level progressive özet güncelle (gpt-4o-mini)."""
+    try:
+        from openai import OpenAI as OpenAIClient
+        oa = OpenAIClient(api_key=os.environ["OPENAI_API_KEY"])
+
+        prev_part = f"Mevcut özet: {prev_summary}\n\n" if prev_summary else ""
+        data_str = ", ".join(f"{k}: {v}" for k, v in collected_data.items() if v)
+        prompt = (
+            f"{prev_part}"
+            f"Bu görüşmede öğrenilen: {new_call_summary}\n"
+            f"Toplanan veriler: {data_str or 'yok'}\n\n"
+            f"Hastayı 2-3 cümleyle güncelle. Prosedür ilgisini, endişelerini, "
+            f"karar sürecini yaz. Çelişkide yeni bilgiyi esas al. Sadece özet yaz."
+        )
+        resp = oa.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150,
+        )
+        new_summary = resp.choices[0].message.content.strip()
+        if new_summary:
+            get_supabase().table("contacts").update({
+                "contact_summary": new_summary,
+                "contact_summary_updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", contact_id).execute()
+            logger.info(f"contact_summary updated for contact {contact_id}")
+    except Exception as e:
+        logger.warning(f"_update_contact_summary failed: {e}")
+
+
+async def _increment_voice_usage(org_id: str, duration_seconds: int):
+    """Increment voice_minutes usage counter. Rounds up to nearest minute."""
+    minutes = max(1, -(-duration_seconds // 60))  # ceiling division
+    period = datetime.now(timezone.utc).strftime("%Y-%m")
+    try:
+        sb = get_supabase()
+        sb.rpc('increment_usage', {
+            'p_org_id': org_id,
+            'p_period': period,
+            'p_metric': 'voice_minutes',
+            'p_amount': minutes,
+        }).execute()
+        logger.info(f"voice_minutes +{minutes} for org {org_id}")
+    except Exception as e:
+        logger.warning(f"voice_minutes increment failed (non-fatal): {e}")
+
 
 async def _save_all(
     org_id, direction, call_start, transcript,
     phone_from, phone_to, contact_id, lead_id,
     conv_id, intake, handoff_reason, room_name,
     run_id=None, callback_url=None, lang="tr", org_lang="tr",
+    org_name="Klinik", prev_summary=None,
 ):
     """Çağrı bittikten sonra: immediate saves + callback hemen, extraction background'da."""
     duration = int((datetime.now(timezone.utc) - call_start).total_seconds())
@@ -2315,31 +2530,66 @@ async def _save_all(
         except Exception as e:
             logger.warning(f"Workflow callback failed: {e}")
 
+    # ── IMMEDIATE: Voice dakika usage sayacı ───────────────────────────────────
+    await _increment_voice_usage(org_id, duration)
+
     logger.info(f"Immediate save done — duration: {duration}s, handoff: {handoff_reason}")
 
-    # ── BACKGROUND: Extraction + summary (2-6s LLM çağrıları) ────────────────
+    # ── Extraction — inline await ─────────────────────────────────────────────
+    logger.info(f"Extraction check — has_extraction: {has_extraction}, lead_id: {lead_id}, intake len: {len(intake) if intake else 0}")
     if has_extraction:
-        asyncio.create_task(_extract_and_update(
-            org_id=org_id, lead_id=lead_id, conv_id=conv_id,
-            transcript=transcript, intake=intake,
-            handoff_reason=handoff_reason,
-            room_name=room_name, lang=lang, org_lang=org_lang,
-            duration=duration,
-        ))
+        try:
+            await _extract_and_update(
+                org_id=org_id, lead_id=lead_id, conv_id=conv_id,
+                contact_id=contact_id,
+                transcript=transcript, intake=intake,
+                handoff_reason=handoff_reason,
+                room_name=room_name, lang=lang, org_lang=org_lang,
+                duration=duration, org_name=org_name,
+                prev_summary=prev_summary,
+            )
+        except Exception as exc:
+            logger.error(f"Extraction failed — room: {room_name}: {exc}", exc_info=True)
+    else:
+        logger.warning(f"Extraction SKIPPED — lead_id: {lead_id}, intake: {bool(intake)}")
 
 
 async def _extract_and_update(
     org_id, lead_id, conv_id, transcript, intake,
     handoff_reason, room_name, lang, org_lang, duration,
+    org_name="Klinik", contact_id=None, prev_summary=None,
 ):
     """Background: LLM extraction + summary + lead update. Callback zaten gönderildi."""
+    logger.info(f"_extract_and_update START — room: {room_name}, lead: {lead_id}, intake fields: {len(intake)}")
     try:
         collected_data = await extract_collected_data(transcript, intake, lang)
-        summary = await generate_call_summary(transcript, collected_data, org_id, org_lang)
-        await update_lead_data(lead_id, intake, collected_data, summary)
+        extraction_ok = not collected_data.get("_extraction_failed")
+        logger.info(f"Extraction result — ok: {extraction_ok}, keys: {list(collected_data.keys())}")
+
+        summary = ""
+        if extraction_ok:
+            summary = await generate_call_summary(transcript, collected_data, org_name, org_lang)
+            await update_lead_data(lead_id, intake, collected_data, summary)
+
+            # Contact-level progressive summary — her çağrı sonunda güncelle
+            if contact_id and summary:
+                await _update_contact_summary(contact_id, prev_summary, summary, collected_data, org_lang)
+
+            # Contact adını extracted data'dan güncelle
+            if contact_id and collected_data:
+                contact_name = collected_data.get("full_name") or collected_data.get("first_name")
+                if contact_name:
+                    try:
+                        sb = get_supabase()
+                        sb.table("contacts").update({
+                            "full_name": contact_name,
+                        }).eq("id", contact_id).execute()
+                        logger.info(f"contact name updated: {contact_name}")
+                    except Exception as e:
+                        logger.warning(f"contact name update failed: {e}")
 
         must_keys = {f["key"] for f in intake if f.get("priority") == "must"}
-        missing_fields = [k for k in must_keys if not collected_data.get(k)]
+        missing_fields = [k for k in must_keys if not collected_data.get(k)] if extraction_ok else list(must_keys)
 
         if handoff_reason:
             await save_handoff(
@@ -2348,12 +2598,12 @@ async def _extract_and_update(
                 conv_id=conv_id,
                 trigger_reason=handoff_reason,
                 summary=summary or f"Handoff tetiklendi ({handoff_reason}). Süre: {duration}s.",
-                collected_data=collected_data,
+                collected_data=collected_data if extraction_ok else {},
                 missing_fields=missing_fields,
             )
 
         # Voice call metadata güncelle — extraction sonucu
-        extraction_status = "failed" if collected_data.get("_extraction_failed") else "ok"
+        extraction_status = "ok" if extraction_ok else "failed"
         try:
             sb = get_supabase()
             sb.table("voice_calls").update({

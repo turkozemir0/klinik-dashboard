@@ -5,13 +5,16 @@ import {
   Phone, MessageSquare, ArrowLeftRight, Zap,
   ToggleLeft, ToggleRight, Settings2, Clock, Lock,
   CreditCard, Loader2, RefreshCw, Play, AlertTriangle, Plug,
-  CheckCircle2, TrendingUp, CalendarClock,
+  CheckCircle2, TrendingUp, CalendarClock, Eye,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { TemplateWithStatus } from '@/lib/workflow-types'
 import type { WorkflowCategory } from '@/lib/workflow-types'
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 import ActivateModal from './ActivateModal'
 import RunHistoryDrawer from './RunHistoryDrawer'
+import WorkflowDetailDrawer from './WorkflowDetailDrawer'
 import { useIsDemo } from '@/lib/demo-context'
 import { useLang } from '@/lib/lang-context'
 import TopBar from '@/components/TopBar'
@@ -76,7 +79,7 @@ function useL() {
 
 const CATEGORY_ICONS: Record<WorkflowCategory, React.FC<any>> = {
   outbound_voice: Phone,
-  chatbot:        MessageSquare,
+  chatbot:        WhatsAppIcon,
   sync:           ArrowLeftRight,
 }
 
@@ -108,6 +111,7 @@ function WorkflowCard({
   onToggle,
   onRunHistory,
   onManualRun,
+  onDetail,
   toggling,
   isDemo,
   l,
@@ -118,6 +122,7 @@ function WorkflowCard({
   onToggle: (id: string, current: boolean) => void
   onRunHistory: (id: string, name: string) => void
   onManualRun: (t: TemplateWithStatus) => void
+  onDetail: (t: TemplateWithStatus) => void
   toggling: string | null
   isDemo?: boolean
   l: (key: LKey) => string
@@ -246,6 +251,14 @@ function WorkflowCard({
       {/* Action buttons */}
       {!disabled && (
         <div className="mt-4 flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => onDetail(template)}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <Eye size={12} />
+            Detay
+          </button>
+
           {channelMissing ? (
             <span
               className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 cursor-not-allowed"
@@ -275,7 +288,7 @@ function WorkflowCard({
             </button>
           )}
 
-          {workflowId && template.is_active && !channelMissing && (
+          {workflowId && template.is_active && !channelMissing && template.supports_manual_trigger !== false && (
             <button
               onClick={() => onManualRun(template)}
               disabled={isDemo}
@@ -381,6 +394,7 @@ export default function WorkflowsClient() {
   const { lang } = useLang()
   const isTr = lang === 'tr'
   const l = useL()
+  const router = useRouter()
 
   const [templates, setTemplates]     = useState<TemplateWithStatus[]>([])
   const [loading, setLoading]         = useState(true)
@@ -388,10 +402,12 @@ export default function WorkflowsClient() {
   const [editingTemplate, setEditingTemplate] = useState<TemplateWithStatus | null>(null)
   const [manualRunTemplate, setManualRunTemplate] = useState<TemplateWithStatus | null>(null)
   const [historyWorkflow, setHistoryWorkflow]     = useState<{ id: string; name: string } | null>(null)
+  const [detailTemplate, setDetailTemplate]       = useState<TemplateWithStatus | null>(null)
   const [toggling, setToggling]       = useState<string | null>(null)
   const [toggleError, setToggleError] = useState<string | null>(null)
   const [orgSector, setOrgSector]     = useState('general')
   const [orgLang, setOrgLang]         = useState('tr')
+  const [waProvider, setWaProvider]   = useState('meta')
   const [searchQuery, setSearchQuery] = useState('')
   const [activeOnly, setActiveOnly]   = useState(false)
 
@@ -404,6 +420,7 @@ export default function WorkflowsClient() {
         setTemplates(data.templates)
         if (data.org_sector) setOrgSector(data.org_sector)
         if (data.org_lang) setOrgLang(data.org_lang)
+        if (data.wa_provider) setWaProvider(data.wa_provider)
       }
     } finally {
       setLoading(false)
@@ -608,10 +625,24 @@ export default function WorkflowsClient() {
             <WorkflowCard
               key={template.id}
               template={template}
-              onEdit={isDemo ? () => {} : setEditingTemplate}
+              onEdit={isDemo ? () => {} : (t) => {
+                // Templates with settings page → redirect when active workflow exists
+                const SETTINGS_PAGE_TEMPLATES = [
+                  'lead_first_contact_voice',
+                  'lead_first_contact_chat',
+                  'chatbot_followup',
+                  'reactivation_chat',
+                ]
+                if (SETTINGS_PAGE_TEMPLATES.includes(t.id) && t.active_workflow_id) {
+                  router.push(`/dashboard/workflows/${t.id}/settings`)
+                } else {
+                  setEditingTemplate(t)
+                }
+              }}
               onToggle={handleToggle}
               onRunHistory={(id, name) => setHistoryWorkflow({ id, name })}
               onManualRun={isDemo ? () => {} : setManualRunTemplate}
+              onDetail={setDetailTemplate}
               toggling={toggling}
               isDemo={isDemo}
               l={l}
@@ -627,6 +658,7 @@ export default function WorkflowsClient() {
           template={editingTemplate}
           orgSector={orgSector}
           orgLang={orgLang}
+          waProvider={waProvider}
           onClose={() => setEditingTemplate(null)}
           onSaved={() => { setEditingTemplate(null); fetchTemplates() }}
         />
@@ -645,6 +677,13 @@ export default function WorkflowsClient() {
           workflowId={historyWorkflow.id}
           workflowName={historyWorkflow.name}
           onClose={() => setHistoryWorkflow(null)}
+        />
+      )}
+
+      {detailTemplate && (
+        <WorkflowDetailDrawer
+          template={detailTemplate}
+          onClose={() => setDetailTemplate(null)}
         />
       )}
     </div>

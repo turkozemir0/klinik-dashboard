@@ -1,99 +1,63 @@
 {
   "name": "stoaix — Process Handoff Follow-Up Tasks",
   "nodes": [
+
     {
       "id": "ht01",
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [
-        200,
-        300
-      ],
+      "position": [200, 300],
       "parameters": {
         "rule": {
           "interval": [
-            {
-              "field": "hours",
-              "triggerAtHour": 1
-            }
+            { "field": "hours", "triggerAtHour": 1 }
           ]
         }
       }
     },
+
     {
       "id": "ht02",
       "name": "Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [
-        420,
-        300
-      ],
+      "position": [420, 300],
       "parameters": {
         "assignments": {
           "assignments": [
-            {
-              "id": "cfg_sb_url",
-              "name": "SUPABASE_URL",
-              "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co",
-              "type": "string"
-            },
-            {
-              "id": "cfg_sb_key",
-              "name": "SUPABASE_SERVICE_KEY",
-              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",
-              "type": "string"
-            }
+            { "id": "cfg_sb_url", "name": "SUPABASE_URL",         "value": "https://ablntzdbsrzbqyrnfwpl.supabase.co", "type": "string" },
+            { "id": "cfg_sb_key", "name": "SUPABASE_SERVICE_KEY", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY",           "type": "string" }
           ]
         },
         "options": {}
       }
     },
+
     {
       "id": "ht03",
       "name": "Process All Tasks",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        640,
-        300
-      ],
+      "position": [640, 300],
       "parameters": {
-        "jsCode": "const _h = this.helpers;\nconst SB_URL = $('Config').first().json.SUPABASE_URL;\nconst SB_KEY = $('Config').first().json.SUPABASE_SERVICE_KEY;\nconst headers = {\n  'apikey': SB_KEY,\n  'Authorization': 'Bearer ' + SB_KEY,\n  'Content-Type': 'application/json'\n};\n\nasync function sbGet(path) {\n  try {\n    const res = await _h.httpRequest({\n      method: 'GET',\n      url: SB_URL + '/rest/v1/' + path,\n      headers,\n      json: true\n    });\n    return res || [];\n  } catch { return []; }\n}\n\nasync function sbPost(path, body) {\n  try {\n    await _h.httpRequest({\n      method: 'POST',\n      url: SB_URL + '/rest/v1/' + path,\n      headers: { ...headers, 'Prefer': 'return=minimal' },\n      body: JSON.stringify(body)\n    });\n  } catch {}\n}\n\nasync function sbPatch(path, body) {\n  try {\n    await _h.httpRequest({\n      method: 'PATCH',\n      url: SB_URL + '/rest/v1/' + path,\n      headers,\n      body: JSON.stringify(body)\n    });\n  } catch {}\n}\n\n// 1. Query pending handoff tasks whose scheduled_at has passed\nconst now = new Date().toISOString();\nconst tasks = await sbGet(\n  'follow_up_tasks?status=eq.pending&task_type=eq.handoff_reminder' +\n  '&scheduled_at=lte.' + now +\n  '&select=id,organization_id,lead_id,conversation_id,sequence_stage' +\n  '&limit=50'\n);\n\nif (!tasks.length) {\n  return [{ json: { processed: 0, message: 'No pending handoff tasks' } }];\n}\n\n// 2. Bulk-fetch lead statuses + handoff_at\nconst leadIds = [...new Set(tasks.map(t => t.lead_id).filter(Boolean))];\nconst leads = leadIds.length\n  ? await sbGet('leads?id=in.(' + leadIds.join(',') + ')&select=id,status,handoff_at')\n  : [];\nconst leadMap = {};\nfor (const l of leads) leadMap[l.id] = l;\n\nlet notified = 0;\nlet cancelled = 0;\n\n// 3. Process each task\nfor (const task of tasks) {\n  const lead = leadMap[task.lead_id];\n\n  if (!lead || lead.status !== 'handed_off') {\n    // Lead status changed — cancel\n    await sbPatch('follow_up_tasks?id=eq.' + task.id, { status: 'cancelled' });\n    cancelled++;\n    continue;\n  }\n\n  // 4. Check if salesperson already replied after handoff\n  const handoffAt = lead.handoff_at || '1970-01-01T00:00:00Z';\n  const humanMsgs = await sbGet(\n    'messages?conversation_id=eq.' + task.conversation_id +\n    '&role=eq.assistant&created_at=gte.' + handoffAt +\n    '&select=id&limit=1'\n  );\n\n  if (humanMsgs.length > 0) {\n    // Salesperson already responded — cancel\n    await sbPatch('follow_up_tasks?id=eq.' + task.id, { status: 'cancelled' });\n    cancelled++;\n    continue;\n  }\n\n  // 5. Still waiting — send reminder notification\n  const title = task.sequence_stage === 'handoff_check_4h'\n    ? 'Lead bekliyor \\u2014 4 saat oldu'\n    : '\\u26A0\\uFE0F Lead 24 saattir bekliyor!';\n\n  await sbPost('notifications', {\n    organization_id: task.organization_id,\n    type: 'handoff_reminder',\n    title: title,\n    body: 'Handoff sonras\\u0131 hen\\u00FCz takip yap\\u0131lmad\\u0131.',\n    lead_id: task.lead_id,\n    conversation_id: task.conversation_id\n  });\n\n  await sbPatch('follow_up_tasks?id=eq.' + task.id, {\n    status: 'done',\n    sent_at: now\n  });\n  notified++;\n}\n\nreturn [{ json: { processed: tasks.length, notified, cancelled } }];\n"
+        "jsCode": "const SB_URL = $('Config').first().json.SUPABASE_URL;\nconst SB_KEY = $('Config').first().json.SUPABASE_SERVICE_KEY;\nconst headers = {\n  'apikey': SB_KEY,\n  'Authorization': 'Bearer ' + SB_KEY,\n  'Content-Type': 'application/json'\n};\n\nasync function sbGet(path) {\n  const res = await fetch(SB_URL + '/rest/v1/' + path, { headers });\n  return res.json();\n}\n\nasync function sbPost(path, body) {\n  await fetch(SB_URL + '/rest/v1/' + path, {\n    method: 'POST',\n    headers: { ...headers, 'Prefer': 'return=minimal' },\n    body: JSON.stringify(body)\n  });\n}\n\nasync function sbPatch(path, body) {\n  await fetch(SB_URL + '/rest/v1/' + path, {\n    method: 'PATCH',\n    headers,\n    body: JSON.stringify(body)\n  });\n}\n\n// 1. Query pending handoff tasks whose scheduled_at has passed\nconst now = new Date().toISOString();\nconst tasks = await sbGet(\n  'follow_up_tasks?status=eq.pending&task_type=eq.handoff_reminder' +\n  '&scheduled_at=lte.' + now +\n  '&select=id,organization_id,lead_id,conversation_id,sequence_stage' +\n  '&limit=50'\n);\n\nif (!tasks.length) {\n  return [{ json: { processed: 0, message: 'No pending handoff tasks' } }];\n}\n\n// 2. Bulk-fetch lead statuses + handoff_at\nconst leadIds = [...new Set(tasks.map(t => t.lead_id).filter(Boolean))];\nconst leads = leadIds.length\n  ? await sbGet('leads?id=in.(' + leadIds.join(',') + ')&select=id,status,handoff_at,collected_data,contact_id')\n  : [];\nconst leadMap = {};\nfor (const l of leads) leadMap[l.id] = l;\n\nlet notified = 0;\nlet cancelled = 0;\n\n// 3. Process each task\nfor (const task of tasks) {\n  const lead = leadMap[task.lead_id];\n\n  if (!lead || lead.status !== 'handed_off') {\n    // Lead status changed — cancel\n    await sbPatch('follow_up_tasks?id=eq.' + task.id, { status: 'cancelled' });\n    cancelled++;\n    continue;\n  }\n\n  // 4. Check if salesperson already replied after handoff\n  const handoffAt = lead.handoff_at || '1970-01-01T00:00:00Z';\n  const humanMsgs = await sbGet(\n    'messages?conversation_id=eq.' + task.conversation_id +\n    '&role=eq.assistant&created_at=gte.' + handoffAt +\n    '&select=id&limit=1'\n  );\n\n  if (humanMsgs.length > 0) {\n    // Salesperson already responded — cancel\n    await sbPatch('follow_up_tasks?id=eq.' + task.id, { status: 'cancelled' });\n    cancelled++;\n    continue;\n  }\n\n  // 5. Update handoff_log with collected_data summary (if not already set)\n  const handoffLogs = await sbGet(\n    'handoff_logs?lead_id=eq.' + task.lead_id +\n    '&select=id,summary,collected_data_snapshot' +\n    '&order=created_at.desc&limit=1'\n  );\n  const handoffLog = handoffLogs[0];\n  if (handoffLog && !handoffLog.summary) {\n    const cd = lead.collected_data || {};\n    const summaryLines = Object.entries(cd)\n      .filter(([, v]) => v != null && v !== '')\n      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);\n    const autoSummary = summaryLines.length > 0\n      ? 'Toplanan veriler: ' + summaryLines.join(' | ')\n      : 'Veri toplanmadı';\n    await sbPatch(\n      'handoff_logs?id=eq.' + handoffLog.id,\n      {\n        summary: autoSummary,\n        collected_data_snapshot: cd\n      }\n    );\n  }\n\n  // 6. Still waiting — send reminder notification\n  const title = task.sequence_stage === 'handoff_check_4h'\n    ? 'Lead bekliyor \\u2014 4 saat oldu'\n    : '\\u26A0\\uFE0F Lead 24 saattir bekliyor!';\n\n  await sbPost('notifications', {\n    organization_id: task.organization_id,\n    type: 'handoff_reminder',\n    title: title,\n    body: 'Handoff sonras\\u0131 hen\\u00FCz takip yap\\u0131lmad\\u0131.',\n    lead_id: task.lead_id,\n    conversation_id: task.conversation_id\n  });\n\n  await sbPatch('follow_up_tasks?id=eq.' + task.id, {\n    status: 'done',\n    sent_at: now\n  });\n  notified++;\n}\n\nreturn [{ json: { processed: tasks.length, notified, cancelled } }];"
       }
     }
+
   ],
   "connections": {
     "Schedule Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[ { "node": "Config", "type": "main", "index": 0 } ]]
     },
     "Config": {
-      "main": [
-        [
-          {
-            "node": "Process All Tasks",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[ { "node": "Process All Tasks", "type": "main", "index": 0 } ]]
     }
   },
   "settings": {
     "executionOrder": "v1"
   },
   "tags": [
-    {
-      "name": "stoaix-platform"
-    }
+    { "name": "stoaix-platform" }
   ]
 }

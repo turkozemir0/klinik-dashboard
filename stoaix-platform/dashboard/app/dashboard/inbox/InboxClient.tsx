@@ -85,8 +85,8 @@ function timeAgo(dateStr: string, lang: string): string {
   return lang === 'tr' ? `${days} gün` : `${days}d`
 }
 
-function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+function formatTime(dateStr: string, lang: string): string {
+  return new Date(dateStr).toLocaleTimeString(lang === 'en' ? 'en-US' : 'tr-TR', { hour: '2-digit', minute: '2-digit' })
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -134,6 +134,7 @@ export default function InboxClient({ orgId, lang, currentUserId, userRole }: Pr
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [handoffLoading, setHandoffLoading] = useState(false)
+  const [realtimeActive, setRealtimeActive] = useState(false)
 
   // Appointment modal state
   const [showApptModal, setShowApptModal] = useState(false)
@@ -245,9 +246,9 @@ export default function InboxClient({ orgId, lang, currentUserId, userRole }: Pr
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // ─── Fallback: poll messages every 15s (silent, no loading spinner) ─────────
+  // ─── Fallback: poll messages every 15s (only when Realtime is not connected) ─
   useEffect(() => {
-    if (!selectedId) return
+    if (!selectedId || realtimeActive) return
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/inbox/${selectedId}/messages`)
@@ -263,7 +264,7 @@ export default function InboxClient({ orgId, lang, currentUserId, userRole }: Pr
       } catch { /* silent poll failure */ }
     }, 15_000)
     return () => clearInterval(interval)
-  }, [selectedId])
+  }, [selectedId, realtimeActive])
 
   // ─── Realtime: new message in selected conversation ──────────────────────
   useEffect(() => {
@@ -292,9 +293,13 @@ export default function InboxClient({ orgId, lang, currentUserId, userRole }: Pr
       )
       .subscribe((status) => {
         console.log(`[inbox-realtime] messages channel status: ${status}`)
+        setRealtimeActive(status === 'SUBSCRIBED')
       })
 
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+      setRealtimeActive(false)
+    }
   }, [selectedId, supabase])
 
   // ─── Realtime: conversation list updates (INSERT + UPDATE) ─────────────
@@ -316,11 +321,12 @@ export default function InboxClient({ orgId, lang, currentUserId, userRole }: Pr
     return () => { supabase.removeChannel(channel) }
   }, [orgId, supabase, fetchConversations])
 
-  // ─── Fallback: poll conversation list every 30s (silent) ─────────────────
+  // ─── Fallback: poll conversation list every 30s (only when Realtime is not connected) ─
   useEffect(() => {
+    if (realtimeActive) return
     const interval = setInterval(() => void fetchConversations(false, null), 30_000)
     return () => clearInterval(interval)
-  }, [fetchConversations])
+  }, [fetchConversations, realtimeActive])
 
   // ─── Handoff: takeover / release ─────────────────────────────────────────
   const canTakeover = ['admin', 'yönetici', 'satisci'].includes(userRole ?? '')
@@ -553,7 +559,7 @@ export default function InboxClient({ orgId, lang, currentUserId, userRole }: Pr
                         <div className="flex items-center justify-between gap-1 mb-0.5">
                           <p className="text-sm font-medium text-slate-800 truncate">{name}</p>
                           <span className="text-[11px] text-slate-400 shrink-0">
-                            {timeAgo(conv.started_at, lang)}
+                            {timeAgo(conv.last_message?.created_at ?? conv.started_at, lang)}
                           </span>
                         </div>
                         {conv.last_message && (
@@ -716,9 +722,9 @@ export default function InboxClient({ orgId, lang, currentUserId, userRole }: Pr
                             />
                           </a>
                         )}
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
                         <p className={`text-[10px] mt-1 ${isUser ? 'text-slate-400' : 'text-white/60'}`}>
-                          {formatTime(msg.created_at)}
+                          {formatTime(msg.created_at, lang)}
                         </p>
                       </div>
                     </div>
@@ -769,7 +775,7 @@ export default function InboxClient({ orgId, lang, currentUserId, userRole }: Pr
               <div className="flex flex-col items-center text-center">
                 <Avatar name={selected.contact?.full_name || selected.contact?.phone || '?'} size={56} />
                 <p className="text-sm font-semibold text-slate-800 mt-3">
-                  {selected.contact?.full_name || lang === 'tr' ? 'İsimsiz' : 'Unknown'}
+                  {selected.contact?.full_name || (lang === 'tr' ? 'İsimsiz' : 'Unknown')}
                 </p>
                 {selected.contact?.phone && (
                   <p className="text-xs text-slate-500 mt-0.5 font-mono">{selected.contact.phone}</p>

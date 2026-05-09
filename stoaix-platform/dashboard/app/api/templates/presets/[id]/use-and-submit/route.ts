@@ -9,7 +9,7 @@ function getServiceClient() {
   )
 }
 
-const GRAPH = 'https://graph.facebook.com/v19.0'
+import { META_GRAPH_URL as GRAPH } from '@/lib/meta-api'
 const MAX_RETRIES = 2
 const RETRY_DELAY_MS = 2000
 

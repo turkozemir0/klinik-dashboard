@@ -1,0 +1,325 @@
+================================================================================
+  WHATSAPP BUSINESS - META KURALLARI & EN IYI UYGULAMALAR
+  stoaix Platform - Dahili Dokumantasyon
+
+  Son Guncelleme: 30 Nisan 2026
+  Durum: Taslak (surekli guncelleniyor)
+================================================================================
+
+
+1. GENEL BAKIS
+================================================================================
+
+WhatsApp Business API kullanan isletmeler Meta'nin uc temel politikasina
+uymak zorundadir:
+
+  1) WhatsApp Business Hizmet Kosullari
+     https://www.whatsapp.com/legal/business-terms
+
+  2) WhatsApp Business Mesajlasma Ilkesi
+     https://business.whatsapp.com/policy
+
+  3) WhatsApp Ticaret Ilkesi
+     https://www.whatsapp.com/legal/commerce-policy
+
+Bu kurallarin ihlali hesabin gecici veya kalici olarak kisitlanmasina/
+kapatilmasina yol acar.
+
+
+2. HASSAS SEKTOR: SAGLIK & ESTETIK (SAC EKIMI, DIS, KLINIK)
+================================================================================
+
+Meta Pro Ekibi'nden alinan bilgi (Nisan 2026):
+
+  "Sac ekimi, Meta'nin 'Saglik ve Kisisel Bakim' politikalari kapsaminda
+   'hassas' bir kategoridir. Meta algoritmasi, bu kategorideki isletmelerin
+   kullanicilara dogrudan, kisisel durumlarini (sac dokulmesi gibi) hedef
+   alan mesajlar atmasini cok siki denetler."
+
+Saglik sektorunde dikkat edilmesi gerekenler:
+  - Meta algoritmalari bu kategoride COK DAHA TETIKTEDIR
+  - Kisisel saglik durumunu hedef alan mesajlar (orn: "Sac dokulmesi mi
+    yasiyorsunuz?") yuksek risk tasir
+  - Tibbi garanti iceren ifadeler ("kesin sonuc", "garantili iyilesme") yasak
+  - Telemedicine amacli kullanim kisitlidir
+  - Yeni numaralarda ilk gunden yuksek hacimle baslamak KALICI KAPATMA riski tasir
+
+
+3. OPT-IN (IZIN) KURALLARI
+================================================================================
+
+WhatsApp'tan mesaj gondermek icin iki kosul ZORUNLUDUR:
+
+  a) Kisi cep telefonu numarasini size vermis olmali
+  b) Kisi WhatsApp uzerinden mesaj almak istedigine dair ACIK IZIN vermis olmali
+
+GECERLI OPT-IN ORNEKLERI:
+  - Web formunda "WhatsApp uzerinden bilgi almak istiyorum" kutucugu (on-isaretsiz)
+  - SMS ile "WhatsApp'tan mesaj almak ister misiniz? EVET yazip gonderin"
+  - Yuz yuze gorusmede yazili onay formu
+  - Click-to-WhatsApp reklamina kisi kendi tiklayip mesaj baslatti
+
+GECERSIZ OPT-IN (YASAK):
+  - Onceden isaretli onay kutucuklari
+  - "Satis sozlesmesini kabul etti = WhatsApp izni de var" varsayimi
+  - Satin alma yapti diye otomatik listeye ekleme
+  - Baska bir kanaldan alinan izni WhatsApp'a tasima (acikca belirtilmediyse)
+  - Telefon numarasini baska bir kaynaktan edinme (liste satin alma vb.)
+
+OPT-OUT (CIKIS) ZORUNLULUKLARI:
+  - Her marketing template'ine cikar secenegi ekleyin (orn: "DUR yazin")
+  - "Mesaj almak istemiyorum" diyen kisiyi HEMEN listeden cikarin
+  - WhatsApp'ta veya WhatsApp disinda yapilan tum opt-out taleplerini kabul edin
+  - Cikarilmis kisiye bir daha ASLA mesaj gondermeyin
+
+
+4. MESAJ TIPLERI & 24 SAAT KURALI
+================================================================================
+
+TEMPLATE MESAJLAR (Dis mesaj baslatma):
+  - 24 saatlik pencere disinda sadece META ONAYLI template kullanilabilir
+  - Template kategorileri: Marketing, Utility (islem bildirimi), Authentication (OTP)
+  - Yanlis kategori kullanimi (promosyonu utility diye gonderme) = IHLAL
+  - Meta istedigiz zaman template'i durdurabilir veya reddedebilir
+
+24 SAATLIK PENCERE:
+  - Musteri son mesaj gonderdiginden itibaren 24 saat icinde template'siz yanit verilebilir
+  - 24 saat gecince SADECE onayli template ile iletisim baslatilabilir
+  - Click-to-WhatsApp reklamlari 72 saatlik pencere acar
+
+SERBEST MESAJ (Session message):
+  - Musteri siz mesaj yazdi → 24 saat boyunca serbest yanitlayabilirsiniz
+  - AI asistan yanitlari bu kategoriye girer (musteri yazdi, bot yanit veriyor)
+
+
+5. COLD OUTREACH (SOGUK MESAJLASMA) KURALLARI
+================================================================================
+
+Meta Support'tan alinan bilgi (Nisan 2026):
+
+  "Eger bir hesap surekli disariya mesaj atiyor ama hic cevap almiyorsa,
+   Meta bunu 'istenmeyen toplu mesaj' olarak isaretler."
+
+  "Organik trafiginiz fazlaysa, hesabinizin yanitlanma orani yuksek
+   gorunecektir. Bu da hesabin 'bot' degil, yasayan bir isletme oldugunu
+   kanitlar."
+
+DOGRU YAKLASIM:
+  1. Once reklam verin → Reklamlardan gelen mesajlari bu numaradan cevaplayin
+  2. Organik trafik olusturun (gelen mesaj > giden mesaj orani)
+  3. Numaranin "aktif ve guvenilir" gorunmesini saglayin
+  4. Ardindan yumusak ve kurallara uygun cold outreach baslatin
+  5. Kisisellestirin — toplu, jenerik mesajlar gondermeyin
+  6. Opt-out secenegi her zaman mesajda bulunsun
+
+YASAK OLAN:
+  - Opt-in almadan toplu mesaj gonderme
+  - Satin alinmis telefon listelerine mesaj atma
+  - Ayni mesaji yuzlerce kisiye kopyala-yapistir gonderme
+  - Kisisel saglik durumunu hedef alan mesajlar ("Sac dokulmesi sorunu mu var?")
+  - Gece saatlerinde toplu mesaj gonderme
+
+
+6. YENI NUMARA KURULUM STRATEJISI
+================================================================================
+
+Meta Support'tan alinan bilgi (Nisan 2026):
+
+  "Yeni bir numaranin WhatsApp gozunde bir Sender Quality Rating yoktur.
+   Eger ilk gunden 50-60 kisiye mesaj atarsaniz, sistem bunu 'toplu spam
+   saldirisi' olarak algilayip numarayi dakikalar icinde KALICI olarak
+   kapatabilir."
+
+ADIM ADIM NUMARA ISITMA (WARM-UP) PLANI:
+
+  Hafta 1-2: HAZIRLIK
+    - Business profili eksiksiz doldurun (logo, aciklama, adres, web, e-posta)
+    - Business dogrulamayi (verification) tamamlayin
+    - Reklam kampanyalarini bu numaraya yonlendirin
+    - Gelen mesajlari duzenli yanitlayin
+    - Gunluk giden mesaj: 5-10 kisi (SADECE opt-in almis)
+
+  Hafta 3-4: YAVAS ARTIS
+    - Kalite puani YESIL ise gunluk 15-20 kisiye cikarin
+    - Yanitlanma oranini izleyin (en az %50 hedefleyin)
+    - Block oranini izleyin (%2'nin altinda kalmali)
+    - Template red/durdurma varsa hemen duzeltin
+
+  Hafta 5-8: KADEMELI BUYUME
+    - Kalite yesil kaliyorsa gunluk 30-50'ye cikarin
+    - Meta otomatik tier yukseltmesi yapacaktir (her 6 saatte degerlendirme)
+    - Tier 0 → Tier 1 (250 → 1000/gun) otomatik olabilir
+
+  Hafta 9+: OLGUNLUK
+    - Tier 2'ye ulasmak icin 7 gun icinde limitin %50+'sini kullanmis olun
+    - Kalite puanini surekli yesil tutun
+    - Segmentasyon yapin, kisisellestirin
+
+  TIER SISTEMI:
+    Tier 0 (Dogrulanmamis): 250 mesaj/gun
+    Tier 1 (Dogrulanmis):   1.000 mesaj/gun
+    Tier 2:                 10.000 mesaj/gun
+    Tier 3:                 100.000 mesaj/gun
+    Tier 4 (Sinirsiz):     Limit yok
+
+
+7. KALITE PUANI (QUALITY RATING) SISTEMI
+================================================================================
+
+Meta, her WhatsApp Business hesabina bir kalite puani atar:
+
+  YESIL (Yuksek):   Her sey iyi, tier yukseltme mumkun
+  SARI  (Orta):     Uyari, duzeltilmezse daha da dusecek
+  KIRMIZI (Dusuk):  Tier yukseltme engellenir, kisitlama riski
+
+KALITE PUANINI ETKILEYEN FAKTORLER:
+  + Yuksek yanitlanma orani
+  + Dusuk block/spam raporu orani
+  + Template'lerin onaylanma ve aktif kalma orani
+  + Organik gelen mesaj trafigi
+
+  - Yuksek block orani (kullanicilar sizi engelliyor)
+  - Spam raporlari
+  - Dusuk yanitlanma orani (mesaj atiyorsunuz ama kimse cevap vermiyor)
+  - Template durdurma/reddetme gecmisi
+  - Cok fazla giden, cok az gelen mesaj orani
+
+PRATIK KURAL:
+  Block orani %2'yi gecerse → O template'i HEMEN durdurun ve revize edin
+
+
+8. TEMPLATE MESAJ EN IYI UYGULAMALAR
+================================================================================
+
+TEMPLATE YAZARKEN:
+  - Net ve deger sunan icerik yazin ("ucretsiz konsultasyon" > "hemen randevu al!")
+  - Agresif CTA'lardan kacinin ("kacirmayin!", "son sans!", "simdi ara!")
+  - Opt-out secenegi ekleyin ("Bu mesajlari almak istemiyorsaniz DUR yazin")
+  - Dogru kategori secin (marketing = marketing, bildirim = utility)
+  - Kisisel saglik durumunu dogrudan hedef almayin
+
+ORNEK - YANLIS (Saglik sektoru):
+  "Sac dokulmesi sorunu mu yasiyorsunuz? Sac ekimi ile
+   dogal saclariniza kavusun! Hemen randevu alin: [link]"
+  → SORUN: Kisisel saglik durumunu dogrudan hedef aliyor
+
+ORNEK - DOGRU (Saglik sektoru):
+  "Merhaba {{isim}}, Estelife Hair Aesthetik olarak sac bakim
+   ve estetik hizmetlerimiz hakkinda bilgi vermek isteriz.
+   Ucretsiz danismanlik icin bize yazabilirsiniz.
+   Bu mesajlari almak istemiyorsaniz DUR yazip gonderebilirsiniz."
+  → Bilgilendirici, kisi hedeflemiyor, opt-out var
+
+FREKANS KURALLARI:
+  - Ayni kisiye gunde 1'den fazla marketing template gondermeyin
+  - Meta, kullanici basina TUM markalardan toplam ~2 marketing template/gun siniri koyar
+  - Hata kodu 131049 aliyorsaniz → O kisi bugunku marketing kotasini doldurmus demektir
+
+
+9. HESAP KISITLAMA & KURTARMA
+================================================================================
+
+KISITLAMA TURLERI:
+  - Gecici kisitlama: Mesaj gonderim limiti dusurulur (genelde 250'ye)
+  - Kalici kapatma: Hesap tamamen devre disi birakilir
+  - Template durdurma: Belirli template'ler askiya alinir
+
+KISITLAMA OLURSA NE YAPMALI:
+  1. Panik yapmayin, hemen yeni numara acmayin
+  2. Meta Business Help Center uzerinden itiraz (appeal) gonderip
+  3. Itirazda sunlari vurgulayin:
+     - Opt-in sureclerinizi iyilestirdiginizi
+     - Opt-out mekanizmasi eklediginizi
+     - Gonderim hacmini dusurdugUnuzu
+     - Template iceriklerini politikaya uygun hale getirdiginizi
+  4. Hesap acilirsa Tier 0 (250/gun) ile bastan baslayin
+  5. Warm-up planini (Bolum 6) tekrar uygulayin
+
+DIKKAT: Kapatilan hesap icin ayni numarayla tekrar kayit olmak Meta'dan
+yazili izin gerektirir. Izinsiz yeni hesap acmak da ihlaldir.
+
+
+10. YASAKLI ICERIK & HIZMETLER
+================================================================================
+
+WHATSAPP'TA KESINLIKLE YASAK:
+  - Atesli silahlar
+  - Yasadisi ilaclar ve kontrollü maddeler
+  - Nesli tukenmekte olan turler
+  - Gercek/sanal/sahte para birimi (ICO, binary options dahil)
+  - Cok katmanli pazarlama (MLM)
+  - Yetiskin icerik ve hizmetler
+  - Flort/tanisma hizmetleri
+  - Organ, kan, vücut sivisi ticareti
+  - Aldatici, yaniltici is modelleri
+
+SAGLIK SEKTORUNDE OZEL KISITLAMALAR:
+  - Tibbi cihaz dogrudan satisi yasak
+  - Receteli ilac satisi yasak
+  - Telemedicine (uzaktan tani/tedavi) kisitli
+  - Besin takviyeleri (steroid, ephedra vb.) yasak
+  - Tibbi sonuc garantisi veren ifadeler yasak
+
+IZIN VERILEN (Saglik/Estetik):
+  - Isletme tanitimi ve bilgilendirme
+  - Randevu hatirlatmalari (utility template)
+  - Genel hizmet bilgisi sunma
+  - Musteri sorularina yanit verme (24 saat penceresi icinde)
+  - Ucretsiz danismanlik teklifi (agresif olmadan)
+
+
+11. AI ASISTAN ICIN OZEL KURALLAR (stoaix Platform)
+================================================================================
+
+Platformumuzdaki AI asistani su kurallara uymalidir:
+
+  1. SADECE opt-in almis veya kendisi mesaj baslatan kisilere yanit ver
+  2. 24 saat kurali gectiginde template kullan, serbest mesaj gonderme
+  3. Kisisel saglik durumunu sorgulayan acilis mesajlari kullanma
+  4. Her marketing mesajinda opt-out secenegi sun
+  5. Tibbi garanti veya kesin sonuc vaadi verme
+  6. Agresif satis dili kullanma ("hemen", "kacirmayin", "son sans")
+  7. Musteri "istemiyorum/dur/cikmak istiyorum" derse HEMEN dur
+  8. Gece 22:00 - sabah 09:00 arasi marketing mesaji gonderme
+
+  REACTIVATION WORKFLOW UYARISI:
+  WF_reactivation_chat gibi yeniden etkilesim workflow'lari SADECE
+  daha once opt-in vermis ve son 90 gun icinde etkilesim kurmus
+  kisilere gonderilmelidir. Uzun suredir sessiz leadlere toplu
+  reactivation = yuksek block/spam riski.
+
+
+12. KONTROL LISTESI (HER MUSTERIYE VER)
+================================================================================
+
+Yeni WhatsApp Business hesabi kurarken:
+
+  [ ] Business profili eksiksiz dolduruldu (logo, aciklama, adres, web, e-posta)
+  [ ] Business dogrulama (verification) tamamlandi
+  [ ] Gizlilik politikasi URL'si eklendi
+  [ ] Opt-in toplama mekanizmasi kuruldu (form, SMS, yuz yuze)
+  [ ] Opt-out mekanizmasi template'lere eklendi ("DUR yazin")
+  [ ] Template'ler dogru kategoride gonderiliyor
+  [ ] Warm-up plani hazirlandi (Bolum 6'ya bak)
+  [ ] Reklam kampanyalari bu numaraya yonlendirildi
+  [ ] Block/spam orani takip ediliyor
+  [ ] Kalite puani duzenli kontrol ediliyor
+  [ ] Gece saatlerinde mesaj gonderimi kapali
+  [ ] Saglik sektorune ozel dil kurallari AI asistana tanimlandi
+
+
+================================================================================
+  NOTLAR & GUNCELLEMELER
+================================================================================
+
+[30 Nisan 2026] - Ilk taslak olusturuldu
+  Kaynaklar: Meta Support gorusmesi (Estelife Hair Aesthetik vakasi),
+  WhatsApp Business Terms, WhatsApp Business Messaging Policy,
+  WhatsApp Commerce Policy, Chatarmin messaging limits rehberi
+
+[EKLENECEK] - Meta Support'tan gelen ek bilgiler buraya eklenecek
+[EKLENECEK] - Gercek vaka ornekleri ve dersler
+[EKLENECEK] - Template ornekleri (onaylanan ve reddedilen)
+
+
+================================================================================

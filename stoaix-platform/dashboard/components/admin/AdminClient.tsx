@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Building2, Users, Settings, BookOpen, AlertTriangle, UserPlus, Upload, Trash2 } from 'lucide-react'
+import { Plus, Building2, Users, Settings, BookOpen, AlertTriangle, UserPlus, Upload, Trash2, CreditCard, MessageCircle, Phone, Instagram } from 'lucide-react'
 import Link from 'next/link'
 import { useT } from '@/lib/lang-context'
 import NewOrgModal from './NewOrgModal'
@@ -17,6 +17,11 @@ interface Org {
   sector: string
   status: string
   updated_at: string
+  channel_config?: {
+    whatsapp?: { phone_number_id?: string; waba_id?: string }
+    voice_inbound?: { active?: boolean }
+    instagram?: { page_id?: string }
+  }
 }
 
 interface Props {
@@ -109,14 +114,15 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsBy
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.status}</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.leadsCount}</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Bilgi Bankası</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Kanallar</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t.lastActivity}</th>
               <th className="px-5 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {orgs.length === 0 ? (
-              <tr><td colSpan={7} className="px-5 py-10 text-center text-slate-400">{t.noData}</td></tr>
-            ) : orgs.map(org => (
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-slate-400">{t.noData}</td></tr>
+            ) : (orgs as Org[]).map(org => (
               <tr key={org.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-5 py-3">
                   <p className="font-medium text-slate-800">{org.name}</p>
@@ -151,11 +157,34 @@ export default function AdminClient({ orgs: initialOrgs, countsByOrg, kbCountsBy
                     return <span className="text-xs text-slate-600 font-medium">{count} öğe</span>
                   })()}
                 </td>
+                <td className="px-5 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <span title={org.channel_config?.whatsapp?.phone_number_id ? 'WhatsApp bağlı' : 'WhatsApp bağlı değil'}
+                      className={`p-1 rounded-md ${org.channel_config?.whatsapp?.phone_number_id ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-300'}`}>
+                      <MessageCircle size={12} />
+                    </span>
+                    <span title={org.channel_config?.voice_inbound?.active ? 'Ses bağlı' : 'Ses bağlı değil'}
+                      className={`p-1 rounded-md ${org.channel_config?.voice_inbound?.active ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-300'}`}>
+                      <Phone size={12} />
+                    </span>
+                    <span title={org.channel_config?.instagram?.page_id ? 'Instagram bağlı' : 'Instagram bağlı değil'}
+                      className={`p-1 rounded-md ${org.channel_config?.instagram?.page_id ? 'bg-pink-100 text-pink-600' : 'bg-slate-100 text-slate-300'}`}>
+                      <Instagram size={12} />
+                    </span>
+                  </div>
+                </td>
                 <td className="px-5 py-3 text-xs text-slate-400">
                   {new Date(org.updated_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </td>
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-1">
+                    <Link
+                      href={`/admin/billing/${org.id}`}
+                      className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                      title="Billing & Limitler"
+                    >
+                      <CreditCard size={15} />
+                    </Link>
                     <Link
                       href={`/admin/knowledge/${org.id}`}
                       className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"

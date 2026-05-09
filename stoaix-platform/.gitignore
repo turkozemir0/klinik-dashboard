@@ -41,9 +41,17 @@ n8n-workflows/.env.n8n
 .tmp-ata-review/
 Export_Contacts_*.csv
 
+# Client-specific test data (private)
+voice-agent/tests/fixtures/eurostar_fixtures.py
+voice-agent/tests/eval/eurostar_scenarios.py
+voice-agent/tests/eval/eurostar_judge.py
+voice-agent/tests/test_eurostar_inbound.py
+
 # Promptfoo eval output
 evals/output/
 
 # Logs
 *.log
 .vercel
+nul
+evals/

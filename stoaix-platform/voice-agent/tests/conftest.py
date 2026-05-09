@@ -7,6 +7,11 @@ DB tamamen mock — gerçek Supabase, LiveKit veya telefon bağlantısı yok.
 import os
 import pytest
 from tests.fixtures.clinic_fixtures import CLINIC_FIXTURES
+from tests.fixtures.eurostar_fixtures import (
+    EUROSTAR_ORG,
+    EUROSTAR_PLAYBOOK,
+    EUROSTAR_INTAKE,
+)
 
 # Test ortamı için sahte env vars (agent.py load_dotenv öncesi gerekli)
 os.environ.setdefault("PLATFORM_SUPABASE_URL", "https://test.supabase.co")
@@ -75,6 +80,21 @@ def mock_supabase(mocker, mock_org, mock_playbook, mock_intake):
     mocker.patch("agent.close_conversation")
     mocker.patch("agent.create_conversation", return_value="test-conv-id")
     mocker.patch("agent.upsert_contact_and_lead", return_value=("test-contact-id", "test-lead-id"))
+
+
+@pytest.fixture
+def eurostar_org():
+    return dict(EUROSTAR_ORG)
+
+
+@pytest.fixture
+def eurostar_playbook():
+    return dict(EUROSTAR_PLAYBOOK)
+
+
+@pytest.fixture
+def eurostar_intake():
+    return list(EUROSTAR_INTAKE)
 
 
 @pytest.fixture(params=list(CLINIC_FIXTURES.keys()))

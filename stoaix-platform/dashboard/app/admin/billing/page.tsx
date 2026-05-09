@@ -8,13 +8,7 @@ function getServiceClient() {
   )
 }
 
-const PLAN_PRICES: Record<string, number> = {
-  essential: 79,
-  professional: 149,
-  business: 299,
-  custom: 0,
-  legacy: 0,
-}
+// Plan prices loaded dynamically from DB — see below
 
 const PLAN_LABELS: Record<string, string> = {
   legacy: 'Legacy',
@@ -54,7 +48,17 @@ export default async function AdminBillingPage() {
 
   const { data: subs } = await service
     .from('org_subscriptions')
-    .select('organization_id, plan_id, status, stripe_customer_id, current_period_end, trial_ends_at')
+    .select('organization_id, plan_id, status, billing_interval, stripe_customer_id, current_period_end, trial_ends_at')
+
+  const { data: plans } = await service
+    .from('plans')
+    .select('id, price_monthly, price_annual')
+
+  // Build dynamic price map from DB
+  const PLAN_PRICES: Record<string, { monthly: number; annual: number }> = {}
+  for (const p of plans ?? []) {
+    PLAN_PRICES[p.id] = { monthly: p.price_monthly ?? 0, annual: p.price_annual ?? 0 }
+  }
 
   const subsByOrg: Record<string, any> = {}
   for (const sub of subs ?? []) {
@@ -74,7 +78,13 @@ export default async function AdminBillingPage() {
     const subStatus = sub?.status ?? 'legacy'
 
     if (subStatus === 'active') {
-      mrr += PLAN_PRICES[planId] ?? 0
+      const prices = PLAN_PRICES[planId]
+      if (prices) {
+        // Yıllık abone → price_annual / 12, aylık → price_monthly
+        mrr += sub?.billing_interval === 'annual'
+          ? Math.round((prices.annual / 12) * 100) / 100
+          : prices.monthly
+      }
     }
     if (subStatus === 'trialing') trialCount++
     if (planId === 'legacy' || subStatus === 'legacy') legacyCount++
@@ -96,7 +106,7 @@ export default async function AdminBillingPage() {
         <div className="bg-white rounded-xl border border-slate-200 px-5 py-4">
           <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Aylık Gelir (MRR)</p>
           <p className="text-3xl font-bold text-slate-900 mt-1">
-            ₺{mrr.toLocaleString('tr-TR')}
+            ${mrr.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </p>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 px-5 py-4">
@@ -131,7 +141,10 @@ export default async function AdminBillingPage() {
                 const sub = subsByOrg[org.id]
                 const planId = sub?.plan_id ?? 'legacy'
                 const subStatus = sub?.status ?? 'legacy'
-                const mrrKontribu = subStatus === 'active' ? (PLAN_PRICES[planId] ?? 0) : 0
+                const prices = PLAN_PRICES[planId]
+                const mrrKontribu = subStatus === 'active' && prices
+                  ? (sub?.billing_interval === 'annual' ? Math.round((prices.annual / 12) * 100) / 100 : prices.monthly)
+                  : 0
                 const trialEnds = sub?.trial_ends_at
                   ? new Date(sub.trial_ends_at).toLocaleDateString('tr-TR', {
                       day: 'numeric',
@@ -163,7 +176,7 @@ export default async function AdminBillingPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className={mrrKontribu > 0 ? 'text-slate-800 font-semibold' : 'text-slate-400'}>
-                        {mrrKontribu > 0 ? `₺${mrrKontribu}` : '—'}
+                        {mrrKontribu > 0 ? `$${mrrKontribu}` : '—'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-500 text-xs">{trialEnds}</td>

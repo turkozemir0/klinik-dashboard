@@ -18,19 +18,23 @@ export async function POST(req: NextRequest) {
   const service = getServiceClient()
   const now = new Date()
   const results = { grace_to_past_due: 0, past_due_to_suspended: 0, suspended_to_archived: 0 }
+  const errors: string[] = []
 
   // grace_period → past_due (3 gün sonra)
-  const { data: graceExpired } = await service
+  const { data: graceExpired, error: graceErr } = await service
     .from('org_subscriptions')
     .select('organization_id')
     .eq('status', 'grace_period')
     .lt('grace_period_ends_at', now.toISOString())
 
+  if (graceErr) errors.push(`grace query: ${graceErr.message}`)
+
   for (const row of graceExpired ?? []) {
-    await service.from('org_subscriptions').update({
+    const { error } = await service.from('org_subscriptions').update({
       status: 'past_due',
       updated_at: now.toISOString(),
     }).eq('organization_id', row.organization_id)
+    if (error) { errors.push(`grace→past_due ${row.organization_id}: ${error.message}`); continue }
     invalidateCache(row.organization_id)
     results.grace_to_past_due++
     // TODO: Email #2 gönder
@@ -38,17 +42,20 @@ export async function POST(req: NextRequest) {
 
   // past_due → suspended (7 gün sonra = grace_period_ends_at + 4 gün)
   const fourDaysAgo = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000)
-  const { data: pastDueExpired } = await service
+  const { data: pastDueExpired, error: pastDueErr } = await service
     .from('org_subscriptions')
     .select('organization_id')
     .eq('status', 'past_due')
     .lt('grace_period_ends_at', fourDaysAgo.toISOString())
 
+  if (pastDueErr) errors.push(`past_due query: ${pastDueErr.message}`)
+
   for (const row of pastDueExpired ?? []) {
-    await service.from('org_subscriptions').update({
+    const { error } = await service.from('org_subscriptions').update({
       status: 'suspended',
       updated_at: now.toISOString(),
     }).eq('organization_id', row.organization_id)
+    if (error) { errors.push(`past_due→suspended ${row.organization_id}: ${error.message}`); continue }
     invalidateCache(row.organization_id)
     results.past_due_to_suspended++
     // TODO: Email #3 gönder
@@ -56,19 +63,23 @@ export async function POST(req: NextRequest) {
 
   // suspended → archived (30 gün sonra)
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-  const { data: suspendedExpired } = await service
+  const { data: suspendedExpired, error: suspErr } = await service
     .from('org_subscriptions')
     .select('organization_id')
     .eq('status', 'suspended')
     .lt('grace_period_ends_at', thirtyDaysAgo.toISOString())
 
+  if (suspErr) errors.push(`suspended query: ${suspErr.message}`)
+
   for (const row of suspendedExpired ?? []) {
-    await service.from('organizations').update({ status: 'archived' }).eq('id', row.organization_id)
-    await service.from('org_subscriptions').update({ status: 'canceled', updated_at: now.toISOString() }).eq('organization_id', row.organization_id)
+    const { error: e1 } = await service.from('organizations').update({ status: 'archived' }).eq('id', row.organization_id)
+    const { error: e2 } = await service.from('org_subscriptions').update({ status: 'canceled', updated_at: now.toISOString() }).eq('organization_id', row.organization_id)
+    if (e1 || e2) { errors.push(`suspended→archived ${row.organization_id}: ${e1?.message ?? ''} ${e2?.message ?? ''}`); continue }
     invalidateCache(row.organization_id)
     results.suspended_to_archived++
   }
 
+  if (errors.length) console.error('[dunning] Errors:', errors)
   console.log('[dunning] Cron tamamlandı:', results)
-  return NextResponse.json({ ok: true, ...results })
+  return NextResponse.json({ ok: true, ...results, ...(errors.length ? { errors } : {}) })
 }

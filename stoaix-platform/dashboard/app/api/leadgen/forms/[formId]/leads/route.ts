@@ -9,7 +9,7 @@ function getServiceClient() {
   )
 }
 
-const GRAPH = 'https://graph.facebook.com/v19.0'
+import { META_GRAPH_URL as GRAPH } from '@/lib/meta-api'
 
 // ─── GET /api/leadgen/forms/[formId]/leads ──────────────────────────────────
 // Lists leads for a specific form.

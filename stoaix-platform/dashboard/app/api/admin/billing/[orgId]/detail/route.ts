@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabase } from '@supabase/supabase-js'
+import { currentBillingPeriod } from '@/lib/entitlements'
 
 function getServiceClient() {
   return createSupabase(
@@ -31,10 +32,10 @@ export async function GET(
 
   const service = getServiceClient()
 
-  const [orgRes, subRes, overridesRes, featuresRes] = await Promise.all([
+  const [orgRes, subRes, overridesRes, featuresRes, usageRes] = await Promise.all([
     service
       .from('organizations')
-      .select('id, name, slug, sector, status')
+      .select('id, name, slug, sector, status, setup_included')
       .eq('id', params.orgId)
       .single(),
     service
@@ -51,6 +52,11 @@ export async function GET(
       .from('features')
       .select('key, module, name, is_boolean, usage_metric')
       .order('module', { ascending: true }),
+    service
+      .from('usage_counters')
+      .select('metric, used_value')
+      .eq('organization_id', params.orgId)
+      .eq('billing_period', currentBillingPeriod()),
   ])
 
   if (orgRes.error || !orgRes.data) {
@@ -69,11 +75,17 @@ export async function GET(
     entitlements = ents ?? []
   }
 
+  const usageMap: Record<string, number> = {}
+  for (const row of usageRes.data ?? []) {
+    usageMap[row.metric] = row.used_value
+  }
+
   return NextResponse.json({
     org: orgRes.data,
     sub: subRes.data,
     overrides: overridesRes.data ?? [],
     features: featuresRes.data ?? [],
     entitlements,
+    usage: usageMap,
   })
 }

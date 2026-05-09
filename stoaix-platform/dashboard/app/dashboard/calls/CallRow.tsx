@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react'
-import { useT } from '@/lib/lang-context'
+import { useT, useLang } from '@/lib/lang-context'
 import { formatDuration } from '@/lib/types'
 import Sparkline from '@/components/Sparkline'
 
@@ -55,6 +55,7 @@ function makeSparkValues(durationSec: number): number[] {
 
 export default function CallRow({ call }: Props) {
   const t = useT()
+  const { lang } = useLang()
   const [expanded, setExpanded] = useState(false)
   const lead = call.lead
   const hasDetail = call.transcript || lead?.ai_summary || lead?.collected_data
@@ -103,7 +104,7 @@ export default function CallRow({ call }: Props) {
           ) : <span className="text-slate-300 text-xs">—</span>}
         </td>
         <td className="px-5 py-3 text-slate-400 text-xs">
-          {new Date(call.started_at).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          {new Date(call.started_at).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
         </td>
         <td className="px-5 py-3">
           {hasDetail && (

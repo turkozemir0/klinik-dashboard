@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter, Manrope } from 'next/font/google'
+import { cookies } from 'next/headers'
 import './globals.css'
 
 const inter = Inter({
@@ -22,8 +23,9 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const lang = cookies().get('lang')?.value === 'en' ? 'en' : 'tr'
   return (
-    <html lang="tr" className={`${inter.variable} ${manrope.variable}`}>
+    <html lang={lang} className={`${inter.variable} ${manrope.variable}`}>
       <body className="min-h-screen font-sans text-slate-900">{children}</body>
     </html>
   )

@@ -10,12 +10,29 @@ export function getStripe(): Stripe {
   })
 }
 
+export type BillingInterval = 'monthly' | 'quarterly' | 'semi_annual' | 'annual'
+
 // Plan ID → Stripe Price ID mapping (env var'lardan okunur)
-export function getPriceId(planId: string, interval: 'monthly' | 'annual'): string | null {
+export function getPriceId(planId: string, interval: BillingInterval): string | null {
   const map: Record<string, Record<string, string | undefined>> = {
-    essential:    { monthly: process.env.STRIPE_PRICE_ESSENTIAL_MONTHLY,    annual: process.env.STRIPE_PRICE_ESSENTIAL_ANNUAL },
-    professional: { monthly: process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY, annual: process.env.STRIPE_PRICE_PROFESSIONAL_ANNUAL },
-    business:     { monthly: process.env.STRIPE_PRICE_BUSINESS_MONTHLY,     annual: process.env.STRIPE_PRICE_BUSINESS_ANNUAL },
+    essential: {
+      monthly:     process.env.STRIPE_PRICE_ESSENTIAL_MONTHLY,
+      quarterly:   process.env.STRIPE_PRICE_ESSENTIAL_QUARTERLY,
+      semi_annual: process.env.STRIPE_PRICE_ESSENTIAL_SEMI_ANNUAL,
+      annual:      process.env.STRIPE_PRICE_ESSENTIAL_ANNUAL,
+    },
+    professional: {
+      monthly:     process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY,
+      quarterly:   process.env.STRIPE_PRICE_PROFESSIONAL_QUARTERLY,
+      semi_annual: process.env.STRIPE_PRICE_PROFESSIONAL_SEMI_ANNUAL,
+      annual:      process.env.STRIPE_PRICE_PROFESSIONAL_ANNUAL,
+    },
+    business: {
+      monthly:     process.env.STRIPE_PRICE_BUSINESS_MONTHLY,
+      quarterly:   process.env.STRIPE_PRICE_BUSINESS_QUARTERLY,
+      semi_annual: process.env.STRIPE_PRICE_BUSINESS_SEMI_ANNUAL,
+      annual:      process.env.STRIPE_PRICE_BUSINESS_ANNUAL,
+    },
   }
   return map[planId]?.[interval] ?? null
 }

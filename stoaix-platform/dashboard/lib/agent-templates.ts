@@ -68,7 +68,7 @@ Müşteri sinirli, gergin veya acil tıbbi durumdan bahsediyorsa → "Sizi hemen
           response: 'Fiyatlarımız hizmetin kapsamına ve yönteme göre değişiyor. Doğru fiyat için uzmanımız sizi arasın, uygun mu?',
         },
       ],
-      features: { calendar_booking: true, voice_language: 'tr', model: 'claude-sonnet-4-6' },
+      features: { calendar_booking: true, voice_language: 'tr', model: 'claude-haiku-4-5-20251001' },
       fewShots: [
         {
           user: 'Saç ekimi hakkında bilgi almak istiyorum.',
@@ -179,7 +179,7 @@ Sen {KLINIK_ADI} kliniğinin asistanısın. Adın {PERSONA_ADI}. Bir süredir g�
           response: 'Anlıyorum, sizi oyalamak istemem. Hazır hissettiğinizde bizi aramaktan çekinmeyin.',
         },
       ],
-      features: { calendar_booking: false, voice_language: 'tr', model: 'claude-sonnet-4-6' },
+      features: { calendar_booking: false, voice_language: 'tr', model: 'claude-haiku-4-5-20251001' },
       fewShots: [
         {
           user: 'Ah evet, kliniğinizi hatırladım. Tekrar gelmek istiyordum.',
@@ -1243,7 +1243,7 @@ export function buildClinicPlaybookDefaults(
       systemPrompt:   sub(systemPrompt),
       openingMessage: sub(ct.openingMessage),
       blocks:         ct.blocks,
-      features:       { calendar_booking: calendarBooking, model: 'claude-sonnet-4-6' },
+      features:       { calendar_booking: calendarBooking, model: 'claude-haiku-4-5-20251001' },
       fewShots:       ct.fewShots,
       noKbMatch:      ct.noKbMatch,
     }

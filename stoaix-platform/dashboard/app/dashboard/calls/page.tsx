@@ -1,5 +1,8 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+
+export const metadata: Metadata = { title: 'Calls — stoaix' }
 import { getT } from '@/lib/i18n'
 import { cookies } from 'next/headers'
 import { Phone, PhoneIncoming, PhoneOff, Clock } from 'lucide-react'
@@ -35,22 +38,26 @@ export default async function CallsPage() {
 
   if (!orgId) return <div className="p-8 text-slate-500">Organizasyon bulunamadı.</div>
 
-  const { data: calls } = await supabase
-    .from('voice_calls')
-    .select('id, phone_from, phone_to, direction, duration_seconds, status, started_at, transcript, lead_id, lead:leads(ai_summary, collected_data, qualification_score)')
-    .eq('organization_id', orgId)
-    .order('started_at', { ascending: false })
-    .limit(100)
+  // Fetch calls list + DB-side stats in parallel
+  const [{ data: calls }, { data: callStats }] = await Promise.all([
+    supabase
+      .from('voice_calls')
+      .select('id, phone_from, phone_to, direction, duration_seconds, status, started_at, transcript, lead_id, lead:leads(ai_summary, collected_data, qualification_score)')
+      .eq('organization_id', orgId)
+      .order('started_at', { ascending: false })
+      .limit(100),
+    supabase.rpc('get_call_stats', { p_org_id: orgId }),
+  ])
 
   const callList = calls ?? []
+  const cs = callStats ?? { total: 0, completed: 0, missed: 0, avg_duration: 0 }
 
-  // Compute stats
-  const totalCalls = callList.length
-  const answered = callList.filter(c => c.status === 'completed').length
-  const missed = callList.filter(c => c.status === 'missed').length
+  // Stats from DB aggregate (all records, not just first 100)
+  const totalCalls = cs.total ?? callList.length
+  const answered = cs.completed ?? 0
+  const missed = cs.missed ?? 0
   const answeredPct = totalCalls > 0 ? Math.round((answered / totalCalls) * 100) : 0
-  const totalDuration = callList.reduce((s, c) => s + (c.duration_seconds ?? 0), 0)
-  const avgDuration = answered > 0 ? Math.round(totalDuration / answered) : 0
+  const avgDuration = cs.avg_duration ?? 0
   const avgMin = Math.floor(avgDuration / 60)
   const avgSec = avgDuration % 60
 

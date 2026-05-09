@@ -1,24 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as sbAdmin } from '@supabase/supabase-js'
 import OpenAI from 'openai'
 
-function getOpenAI() {
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+function getOpenAI() { return new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) }
+function getServiceClient() {
+  return sbAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-const rateLimitMap = new Map<string, { count: number; date: string }>()
 const DAILY_LIMIT = 5
 
-function checkRateLimit(orgId: string): boolean {
-  const today = new Date().toISOString().slice(0, 10)
-  const entry = rateLimitMap.get(orgId)
-  if (!entry || entry.date !== today) {
-    rateLimitMap.set(orgId, { count: 1, date: today })
-    return true
+async function checkRateLimit(orgId: string): Promise<boolean> {
+  try {
+    const service = getServiceClient()
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const { data } = await service.rpc('check_form_rate_limit', {
+      p_api_key_hash: `scrape_${orgId}`,
+      p_window_start: todayStart.toISOString(),
+      p_max_requests: DAILY_LIMIT,
+    })
+    return data !== false
+  } catch {
+    return true // fail-open
   }
-  if (entry.count >= DAILY_LIMIT) return false
-  entry.count++
-  return true
 }
 
 const SCRAPE_SYSTEM_PROMPT = `Sen bir işletme için knowledge base içeriği çıkaran uzmansın.
@@ -56,7 +61,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'url ve organization_id zorunlu' }, { status: 400 })
   }
 
-  if (!checkRateLimit(organization_id)) {
+  if (!(await checkRateLimit(organization_id))) {
     return NextResponse.json({ error: 'Günlük tarama limitine ulaştınız (5/gün). Yarın tekrar deneyin.' }, { status: 429 })
   }
 

@@ -88,7 +88,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "const cfg     = $('Config').first().json;\nconst payload = $('Webhook').first().json.body;\nconst cfg2    = payload.config || {};\n\nconst tzOff  = parseInt(cfg.TZ_OFFSET_HOURS, 10);\nconst hStart = cfg2.working_hours_start ? parseInt(cfg2.working_hours_start.split(':')[0], 10) : 9;\nconst hEnd   = cfg2.working_hours_end   ? parseInt(cfg2.working_hours_end.split(':')[0],   10) : 19;\n\nconst nowUtc   = new Date();\nconst nowLocal = new Date(nowUtc.getTime() + tzOff * 3600 * 1000);\nconst hour     = nowLocal.getUTCHours();\nconst day      = nowLocal.getUTCDay();\n\nif (day === 0) return [];\nif (hour < hStart || hour >= hEnd) return [];\n\nreturn [{ json: payload }];"
+        "jsCode": "const _payload = $('Webhook').first().json.body;\nconst _attempt = parseInt(_payload.contact_data?.attempt ?? 1, 10);\nconst _maxRetries = parseInt(_payload.config?.retry_count ?? 2, 10);\nif (_attempt > _maxRetries) { return []; }\n\nconst cfg     = $('Config').first().json;\nconst payload = $('Webhook').first().json.body;\nconst cfg2    = payload.config || {};\n\nconst tzOff  = parseInt(cfg.TZ_OFFSET_HOURS, 10);\nconst hStart = cfg2.working_hours_start ? parseInt(cfg2.working_hours_start.split(':')[0], 10) : 9;\nconst hEnd   = cfg2.working_hours_end   ? parseInt(cfg2.working_hours_end.split(':')[0],   10) : 19;\n\nconst nowUtc   = new Date();\nconst nowLocal = new Date(nowUtc.getTime() + tzOff * 3600 * 1000);\nconst hour     = nowLocal.getUTCHours();\nconst day      = nowLocal.getUTCDay();\n\nif (day === 0) return [];\nif (hour < hStart || hour >= hEnd) return [];\n\nreturn [{ json: payload }];"
       }
     },
     {

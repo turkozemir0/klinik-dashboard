@@ -47,12 +47,25 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   const service = createServiceClient()
 
+  // Org ownership check — verify the KB item belongs to the caller's org
+  if (orgId) {
+    const { data: existing } = await service
+      .from('knowledge_items')
+      .select('id')
+      .eq('id', params.id)
+      .eq('organization_id', orgId)
+      .maybeSingle()
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   // If only toggling is_active (no title change needed)
   if (is_active !== undefined && !title && !itemData && !manualDescription) {
-    const { data, error } = await service
+    const updateQuery = service
       .from('knowledge_items')
       .update({ is_active, updated_at: new Date().toISOString() })
       .eq('id', params.id)
+    if (orgId) updateQuery.eq('organization_id', orgId)
+    const { data, error } = await updateQuery
       .select('id, item_type, title, description_for_ai, data, tags, is_active, updated_at')
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -88,10 +101,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (itemData !== undefined) updatePayload.data = itemData
   if (is_active !== undefined) updatePayload.is_active = is_active
 
-  const { data, error } = await service
+  const updateQuery = service
     .from('knowledge_items')
     .update(updatePayload)
     .eq('id', params.id)
+  if (orgId) updateQuery.eq('organization_id', orgId)
+  const { data, error } = await updateQuery
     .select('id, item_type, title, description_for_ai, data, tags, is_active, updated_at')
     .single()
 
@@ -106,12 +121,23 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
   const service = createServiceClient()
 
+  // Resolve caller's org for ownership check
+  const { data: orgUser } = await service
+    .from('org_users')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const callerOrgId = orgUser?.organization_id
+
   // Silmeden önce org_id'yi çek (usage decrement + demo check için)
-  const { data: item } = await service
+  const itemQuery = service
     .from('knowledge_items')
     .select('organization_id')
     .eq('id', params.id)
-    .single()
+  if (callerOrgId) itemQuery.eq('organization_id', callerOrgId)
+  const { data: item } = await itemQuery.maybeSingle()
+
+  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const demoBlock = demoWriteBlock(item?.organization_id)
   if (demoBlock) return demoBlock
@@ -120,6 +146,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     .from('knowledge_items')
     .delete()
     .eq('id', params.id)
+    .eq('organization_id', item.organization_id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (item?.organization_id) await decrementUsage(item.organization_id, 'kb_write')

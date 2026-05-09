@@ -147,12 +147,94 @@
       }
     },
     {
+      "id": "n05b",
+      "name": "Check Is Paused",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL }}/rest/v1/follow_up_tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Config').first().json.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ 'eq.' + $('Webhook').first().json.body.contact_data.conversation_id }}"
+            },
+            {
+              "name": "is_paused",
+              "value": "eq.true"
+            },
+            {
+              "name": "status",
+              "value": "eq.pending"
+            },
+            {
+              "name": "select",
+              "value": "id"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n05c",
+      "name": "Is Paused?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1520,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.length ?? 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
       "id": "n06",
       "name": "Fetch Org WA Credentials",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1300,
+        1740,
         200
       ],
       "parameters": {
@@ -196,7 +278,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1520,
+        1960,
         200
       ],
       "parameters": {
@@ -209,7 +291,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1740,
+        2180,
         200
       ],
       "parameters": {
@@ -239,7 +321,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1960,
+        2400,
         120
       ],
       "parameters": {
@@ -270,7 +352,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2180,
+        2620,
         120
       ],
       "parameters": {
@@ -298,11 +380,11 @@
       "typeVersion": 4.2,
       "position": [
         1960,
-        320
+        420
       ],
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.callback_url }}",
+        "url": "={{ $('Webhook').first().json.body.callback_url }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -315,7 +397,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"status\": \"failed\",\n  \"result\": { \"notes\": \"WhatsApp not configured or contact replied\" }\n}"
+        "jsonBody": "={\n  \"run_id\": \"{{ $('Webhook').first().json.body.run_id }}\",\n  \"status\": \"failed\",\n  \"result\": { \"notes\": \"Skipped: contact replied, paused, or WA not configured\" }\n}"
       }
     }
   ],
@@ -368,7 +450,7 @@
       "main": [
         [
           {
-            "node": "Fetch Org WA Credentials",
+            "node": "Check Is Paused",
             "type": "main",
             "index": 0
           }
@@ -376,6 +458,35 @@
         [
           {
             "node": "Callback — Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Is Paused": {
+      "main": [
+        [
+          {
+            "node": "Is Paused?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Paused?": {
+      "main": [
+        [
+          {
+            "node": "Callback — Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Org WA Credentials",
             "type": "main",
             "index": 0
           }
@@ -443,5 +554,5 @@
   "meta": {
     "instanceId": "stoaix-platform"
   },
-  "notes": "C2 Chatbot Follow-up. Triggered by no_reply event. Waits no_reply_hours, checks if contact still hasn't replied, then sends WA re-engagement template."
+  "notes": "C2 Chatbot Follow-up. Triggered by no_reply event. Waits no_reply_hours, checks if contact still hasn't replied, checks is_paused flag, then sends WA re-engagement template."
 }

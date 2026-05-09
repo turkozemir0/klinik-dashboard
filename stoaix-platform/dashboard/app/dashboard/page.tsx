@@ -1,5 +1,8 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+
+export const metadata: Metadata = { title: 'Dashboard — stoaix' }
 import { Users, Flame, TrendingUp, ArrowRight, Star, CalendarDays, Plus } from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import TrendChart from '@/components/TrendChart'
@@ -66,11 +69,8 @@ export default async function DashboardPage() {
   }
 
   // Fetch all stats in parallel
-  const [leadsResult, handoffResult, todayResult, trendResult, recentLeadsResult, recentCallsResult] = await Promise.all([
-    supabase
-      .from('leads')
-      .select('id, qualification_score, status, created_at', { count: 'exact' })
-      .eq('organization_id', orgId),
+  const [leadStatsResult, handoffResult, todayResult, trendResult, recentLeadsResult, recentCallsResult] = await Promise.all([
+    supabase.rpc('get_lead_stats', { p_org_id: orgId }),
     supabase
       .from('handoff_logs')
       .select('id', { count: 'exact', head: true })
@@ -98,12 +98,12 @@ export default async function DashboardPage() {
       .limit(5),
   ])
 
-  const leads = leadsResult.data ?? []
-  const totalLeads = leadsResult.count ?? leads.length
-  const hotLeads = leads.filter(l => l.qualification_score >= 70).length
-  const warmLeads = leads.filter(l => l.qualification_score >= 40 && l.qualification_score < 70).length
-  const coldLeads = leads.filter(l => l.qualification_score < 40).length
-  const avgScore = totalLeads > 0 ? Math.round(leads.reduce((s, l) => s + l.qualification_score, 0) / totalLeads) : 0
+  const ls = leadStatsResult.data ?? { total: 0, hot: 0, warm: 0, cold: 0, avg_score: 0 }
+  const totalLeads = ls.total ?? 0
+  const hotLeads = ls.hot ?? 0
+  const warmLeads = ls.warm ?? 0
+  const coldLeads = ls.cold ?? 0
+  const avgScore = ls.avg_score ?? 0
   const totalHandoffs = handoffResult.count ?? 0
   const todayNew = todayResult.count ?? 0
 

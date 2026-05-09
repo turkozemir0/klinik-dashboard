@@ -187,12 +187,14 @@ function ModulesSection() {
 
 // ─── Billing ──────────────────────────────────────────────────────────────────
 
-type Interval = 'monthly' | 'annual'
+type Interval = 'monthly' | 'quarterly' | 'semi_annual' | 'annual'
 
 interface Plan {
   id: string
   name: string
   monthlyPrice: number
+  quarterlyPrice: number
+  semiAnnualPrice: number
   annualPrice: number
   icon: React.ReactNode
   color: string
@@ -203,13 +205,16 @@ const PLANS: Plan[] = [
   {
     id: 'essential',
     name: 'Essential',
-    monthlyPrice: 79,
-    annualPrice: 63,
+    monthlyPrice: 199,
+    quarterlyPrice: 179,
+    semiAnnualPrice: 159,
+    annualPrice: 139,
     icon: <Zap size={18} />,
     color: 'text-slate-600',
     features: [
       { label: 'Full CRM', value: true },
       { label: 'WhatsApp & Instagram', value: 'Sınırsız' },
+      { label: 'AI Konuşma', value: '1.000/ay' },
       { label: 'Bilgi bankası', value: 'Sınırsız' },
       { label: 'Chat AI & Workflow', value: true },
       { label: 'Voice agent', value: false },
@@ -220,13 +225,16 @@ const PLANS: Plan[] = [
   {
     id: 'professional',
     name: 'Professional',
-    monthlyPrice: 149,
-    annualPrice: 119,
+    monthlyPrice: 299,
+    quarterlyPrice: 269,
+    semiAnnualPrice: 239,
+    annualPrice: 209,
     icon: <Star size={18} />,
     color: 'text-brand-500',
     features: [
       { label: 'Essential dahil her şey', value: true },
-      { label: 'Voice inbound', value: '150 dk/ay' },
+      { label: 'AI Konuşma', value: '2.000/ay' },
+      { label: 'Voice inbound', value: '200 dk/ay' },
       { label: 'Gelişmiş analitik', value: true },
       { label: 'Multi-pipeline', value: '3 adet' },
       { label: 'Voice outbound', value: false },
@@ -237,13 +245,16 @@ const PLANS: Plan[] = [
   {
     id: 'business',
     name: 'Business',
-    monthlyPrice: 299,
-    annualPrice: 239,
+    monthlyPrice: 599,
+    quarterlyPrice: 539,
+    semiAnnualPrice: 479,
+    annualPrice: 419,
     icon: <Rocket size={18} />,
     color: 'text-purple-500',
     features: [
       { label: 'Professional dahil her şey', value: true },
-      { label: 'Voice in+outbound', value: '300 dk/ay' },
+      { label: 'AI Konuşma', value: '5.000/ay' },
+      { label: 'Voice in+outbound', value: '500 dk/ay' },
       { label: 'Tüm voice workflow', value: true },
       { label: 'Çok dilli ses (8 dil)', value: true },
       { label: 'Analitik export', value: true },
@@ -255,11 +266,14 @@ const PLANS: Plan[] = [
     id: 'custom',
     name: 'Custom',
     monthlyPrice: 0,
+    quarterlyPrice: 0,
+    semiAnnualPrice: 0,
     annualPrice: 0,
     icon: <Building2 size={18} />,
     color: 'text-emerald-500',
     features: [
       { label: 'Business dahil her şey', value: true },
+      { label: 'AI Konuşma', value: 'Sınırsız' },
       { label: 'Özel dakika paketleri', value: true },
       { label: 'Sınırsız kullanıcı', value: true },
       { label: 'Birebir destek', value: true },
@@ -358,11 +372,13 @@ function BillingSection() {
   async function handleSelect(planId: string) {
     if (isDemo) return
     setSelectingPlan(planId)
+    // Daha önce abonelik yaşamış kullanıcılara trial uygulanmaz
+    const noTrial = status === 'canceled' || status === 'past_due'
     try {
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId, interval }),
+        body: JSON.stringify({ planId, interval, noTrial }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -427,18 +443,35 @@ function BillingSection() {
     fetch('/api/billing/limits').then(r => r.ok ? r.json() : null).then(d => { if (d) setLimitsData(d) })
   }
 
-  async function handleBuyAddon() {
+  async function handleBuyAddon(addonId: string) {
     if (isDemo) return
     setAddonLoading(true)
     try {
       const res = await fetch('/api/billing/addon', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ addon_id: 'reactivation_10k' }),
+        body: JSON.stringify({ addon_id: addonId }),
       })
       if (res.ok) {
         const data = await res.json()
         if (data.url) window.location.href = data.url
+      }
+    } catch { /* ignore */ }
+    finally { setAddonLoading(false) }
+  }
+
+  async function handleCancelSupport() {
+    if (!confirm('Dedicated Support aboneliğinizi iptal etmek istediğinize emin misiniz?')) return
+    setAddonLoading(true)
+    try {
+      const res = await fetch('/api/billing/addon', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addon_id: 'support_monthly' }),
+      })
+      if (res.ok) {
+        const limitsRes = await fetch('/api/billing/limits')
+        if (limitsRes.ok) setLimitsData(await limitsRes.json())
       }
     } catch { /* ignore */ }
     finally { setAddonLoading(false) }
@@ -454,6 +487,18 @@ function BillingSection() {
         <div className="space-y-3">
           <DunningBanner status={status} />
           <TrialBanner trialEndsAt={trialEndsAt} planId={currentPlanId} />
+          {status === 'canceled' && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-start gap-3">
+              <span className="text-amber-500 text-lg leading-none mt-0.5">!</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Aboneliğiniz iptal edildi</p>
+                <p className="mt-0.5 text-sm text-amber-700">
+                  Daha önce deneme sürenizi kullandığınız için yeniden abonelik başlatırken ücretsiz deneme uygulanmaz.
+                  Seçtiğiniz plan anında aktif olur.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -475,25 +520,27 @@ function BillingSection() {
       {(!isLegacy || hasNoPlan) && (
         <div className="flex items-center justify-center gap-2">
           <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-            <button
-              onClick={() => setInterval('monthly')}
-              className={`rounded-lg px-5 py-2 text-sm font-medium transition-colors ${
-                interval === 'monthly' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Aylık
-            </button>
-            <button
-              onClick={() => setInterval('annual')}
-              className={`flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-colors ${
-                interval === 'annual' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Yıllık
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                %20 indirim
-              </span>
-            </button>
+            {([
+              { key: 'monthly' as Interval, label: 'Aylık', badge: null },
+              { key: 'quarterly' as Interval, label: '3 Aylık', badge: '%10 indirim' },
+              { key: 'semi_annual' as Interval, label: '6 Aylık', badge: '%20 indirim' },
+              { key: 'annual' as Interval, label: 'Yıllık', badge: '%30 indirim' },
+            ]).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setInterval(tab.key)}
+                className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  interval === tab.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {tab.label}
+                {tab.badge && (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -504,7 +551,8 @@ function BillingSection() {
             const isCurrent = plan.id === currentPlanId
             const isPlanCustom = plan.id === 'custom'
             const isMostPopular = plan.id === 'business'
-            const price = interval === 'annual' ? plan.annualPrice : plan.monthlyPrice
+            const priceMap: Record<Interval, number> = { monthly: plan.monthlyPrice, quarterly: plan.quarterlyPrice, semi_annual: plan.semiAnnualPrice, annual: plan.annualPrice }
+            const price = priceMap[interval]
             const isBusy = selectingPlan === plan.id
 
             const currentIndex = PLANS.findIndex(p => p.id === currentPlanId)
@@ -549,8 +597,12 @@ function BillingSection() {
                         <span className="text-3xl font-bold text-slate-900">${price}</span>
                         <span className="mb-1 text-sm text-slate-400">/ay</span>
                       </div>
-                      {interval === 'annual' && (
-                        <p className="mt-0.5 text-xs text-slate-400">Yıllık ödeme (${price * 12}/yıl)</p>
+                      {interval !== 'monthly' && (
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {interval === 'quarterly' && `3 aylık ödeme ($${price * 3} / 3 ay)`}
+                          {interval === 'semi_annual' && `6 aylık ödeme ($${price * 6} / 6 ay)`}
+                          {interval === 'annual' && `Yıllık ödeme ($${price * 12}/yıl)`}
+                        </p>
                       )}
                     </>
                   )}
@@ -613,7 +665,7 @@ function BillingSection() {
               <div className="mt-1 flex items-center gap-3 text-sm text-slate-500">
                 <span className="font-medium text-slate-700">{planLabel}</span>
                 <span className="text-slate-300">|</span>
-                <span>{billingInterval === 'annual' ? 'Yıllık' : 'Aylık'}</span>
+                <span>{{ monthly: 'Aylık', quarterly: '3 Aylık', semi_annual: '6 Aylık', annual: 'Yıllık' }[billingInterval ?? 'monthly']}</span>
                 {periodEndStr && (
                   <>
                     <span className="text-slate-300">|</span>
@@ -658,6 +710,25 @@ function BillingSection() {
             </button>
           ) : null}
         </div>
+      )}
+
+      {/* ── Kullanım Detayları Linki ── */}
+      {!loading && (hasSub || isLegacy) && (
+        <Link
+          href="/dashboard/billing/usage"
+          className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 hover:bg-slate-50 transition-colors group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 border border-brand-100">
+              <Zap size={18} className="text-brand-500" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">Kullanım Detayları</h3>
+              <p className="text-xs text-slate-500">AI konuşma, ses dakikası, WhatsApp ve daha fazlası</p>
+            </div>
+          </div>
+          <ChevronDown size={16} className="text-slate-400 -rotate-90 group-hover:text-slate-600 transition-colors" />
+        </Link>
       )}
 
       {/* ── Ödeme Yöntemi Kartı ── */}
@@ -763,12 +834,12 @@ function BillingSection() {
                 <p className="text-xs text-slate-500 mt-0.5">{remaining.toLocaleString('tr-TR')} lead kaldı</p>
               </div>
               <button
-                onClick={handleBuyAddon}
+                onClick={() => handleBuyAddon('reactivation')}
                 disabled={addonLoading || isDemo}
                 className="flex items-center gap-1.5 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white hover:bg-purple-600 disabled:opacity-60 transition-colors"
               >
                 {addonLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                +10.000 Lead — $19
+                +5.000 Lead — $29.99
               </button>
             </div>
             <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -780,6 +851,74 @@ function BillingSection() {
           </div>
         )
       })()}
+
+      {/* ── Dedicated Support ── */}
+      {!loading && hasSub && (() => {
+        const supportActive = limitsData?.entitlements?.dedicated_support?.enabled
+        return (
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Dedicated Support</h3>
+                <p className="text-xs text-slate-500">Haftalık 1:1 destek · Öncelikli yanıt</p>
+              </div>
+              {supportActive ? (
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">Aktif</span>
+                  <button
+                    onClick={handleCancelSupport}
+                    disabled={addonLoading || isDemo}
+                    className="text-xs text-red-500 hover:underline disabled:opacity-60"
+                  >
+                    İptal Et
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleBuyAddon('support_monthly')}
+                  disabled={addonLoading || isDemo}
+                  className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60 transition-colors"
+                >
+                  $99/ay — Abone Ol
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Ek Paketler ── */}
+      {!loading && (hasSub || isLegacy) && (
+        <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-slate-800">Ek Paketler</h3>
+          <p className="text-xs text-slate-500">Mevcut fatura dönemine ek kredi satın alın. Dönem sonunda sıfırlanır.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              { id: 'voice_100', label: '+100 dk Ses', price: '$15' },
+              { id: 'voice_200', label: '+200 dk Ses', price: '$25' },
+              { id: 'voice_500', label: '+500 dk Ses', price: '$55' },
+              { id: 'conv_500',  label: '+500 AI Konuşma', price: '$35' },
+              { id: 'conv_1000', label: '+1.000 AI Konuşma', price: '$59' },
+              { id: 'reactivation', label: '+5.000 Lead Reactivation', price: '$29.99' },
+              { id: 'setup_onboarding', label: '1:1 Kurulum & Onboarding', price: '$99' },
+            ].map(pkg => (
+              <div key={pkg.id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">{pkg.label}</p>
+                  <p className="text-xs text-slate-400">{pkg.price}</p>
+                </div>
+                <button
+                  onClick={() => handleBuyAddon(pkg.id)}
+                  disabled={addonLoading || isDemo}
+                  className="shrink-0 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-60 transition-colors"
+                >
+                  {addonLoading ? '...' : 'Satın Al'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

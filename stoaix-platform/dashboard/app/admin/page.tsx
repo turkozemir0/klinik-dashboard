@@ -1,12 +1,15 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import AdminClient from '@/components/admin/AdminClient'
+
+export const metadata: Metadata = { title: 'Admin — stoaix' }
 
 export default async function AdminPage() {
   const supabase = createClient()
 
   const { data: orgs } = await supabase
     .from('organizations')
-    .select('id, name, slug, sector, status, created_at, updated_at')
+    .select('id, name, slug, sector, status, created_at, updated_at, channel_config')
     .order('created_at', { ascending: false })
 
   const { data: leadCounts } = await supabase

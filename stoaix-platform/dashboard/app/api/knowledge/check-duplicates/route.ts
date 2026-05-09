@@ -68,7 +68,6 @@ export async function GET(request: NextRequest) {
 
   const { data: pairs, error } = await service.rpc('find_duplicate_kb_items', {
     p_org_id: orgId,
-    p_threshold: 0.85,
   })
 
   if (error) {

@@ -30,6 +30,20 @@ export interface IntegrationHealthResult {
 function checkWhatsApp(cc: any): ChannelHealth {
   if (!cc?.whatsapp) return { status: 'not_configured', detail: null }
   const wa = cc.whatsapp
+
+  // WasenderAPI provider
+  if (wa.provider === 'wasender') {
+    const creds = wa.credentials ?? {}
+    if (wa.active && creds.api_key && creds.status === 'connected') {
+      return { status: 'connected', detail: creds.phone_number ?? 'WasenderAPI' }
+    }
+    if (creds.api_key || creds.session_id) {
+      return { status: 'missing_config', detail: 'WasenderAPI bağlantısı gerekli' }
+    }
+    return { status: 'not_configured', detail: null }
+  }
+
+  // WhatsApp Cloud API / 360dialog
   const creds = wa.credentials ?? {}
   // manual-connect saves inside credentials; embedded signup may save at top level
   const wabaId = wa.waba_id || creds.waba_id

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as sbAdmin } from '@supabase/supabase-js'
 import { checkEntitlement, incrementUsage } from '@/lib/entitlements'
+import { META_GRAPH_URL } from '@/lib/meta-api'
 
 function getServiceClient() {
   return sbAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -104,6 +105,8 @@ export async function POST(request: NextRequest) {
 
   const text = content.trim()
 
+  let wasenderMsgId: string | null = null
+
   if (conv.channel === 'whatsapp') {
     const waProvider = channelConfig?.whatsapp?.provider ?? '360dialog'
     const creds = channelConfig?.whatsapp?.credentials
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'WhatsApp Cloud credentials eksik' }, { status: 400 })
       }
       const res = await fetch(
-        `https://graph.facebook.com/v19.0/${creds.phone_number_id}/messages`,
+        `${META_GRAPH_URL}/${creds.phone_number_id}/messages`,
         {
           method: 'POST',
           headers: { Authorization: `Bearer ${creds.access_token}`, 'Content-Type': 'application/json' },
@@ -127,6 +130,29 @@ export async function POST(request: NextRequest) {
         console.error(`[inbox/reply] Meta WA send failed ${res.status}: ${errText}`)
         return NextResponse.json({ error: 'Mesaj gönderilemedi' }, { status: 502 })
       }
+    } else if (waProvider === 'wasender') {
+      const apiKey = creds?.api_key
+      if (!apiKey) {
+        return NextResponse.json({ error: 'WasenderAPI yapılandırılmamış' }, { status: 400 })
+      }
+      const res = await fetch('https://www.wasenderapi.com/api/send-message', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ to: waId, text }),
+      })
+      if (!res.ok) {
+        const errText = await res.text()
+        console.error(`[inbox/reply] WasenderAPI send failed ${res.status}: ${errText}`)
+        return NextResponse.json({ error: 'Mesaj gönderilemedi' }, { status: 502 })
+      }
+      // Extract message ID for dedup with messages.upsert webhook
+      try {
+        const resBody = await res.json()
+        wasenderMsgId = resBody?.data?.key?.id ?? null
+      } catch { /* ignore parse errors */ }
     } else {
       // 360dialog (default)
       if (!creds?.client_token) {
@@ -158,7 +184,7 @@ export async function POST(request: NextRequest) {
     const recipientId = (contact.channel_identifiers as any)?.instagram_id
     if (!recipientId) return NextResponse.json({ error: 'Instagram ID bulunamadı' }, { status: 400 })
 
-    const res = await fetch(`https://graph.facebook.com/v19.0/${igCreds.fb_page_id}/messages`, {
+    const res = await fetch(`${META_GRAPH_URL}/${igCreds.fb_page_id}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${igCreds.access_token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ recipient: { id: recipientId }, message: { text }, messaging_type: 'RESPONSE' }),
@@ -182,6 +208,7 @@ export async function POST(request: NextRequest) {
       role: 'assistant',
       content: text,
       channel: conv.channel,
+      ...(wasenderMsgId ? { external_id: wasenderMsgId } : {}),
     })
     .select('id, role, content, created_at')
     .single()

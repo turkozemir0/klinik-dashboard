@@ -1,6 +1,9 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+
+export const metadata: Metadata = { title: 'Inbox — stoaix' }
 import InboxClient from './InboxClient'
 
 export default async function InboxPage() {

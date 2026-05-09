@@ -344,8 +344,7 @@ function CustomKanban({ orgId, pipeline, readOnly }: { orgId: string; pipeline: 
   }, [pipeline.id])
 
   useEffect(() => {
-    stages.forEach(s => fetchCol(s.id, '', 0, false))
-    // Re-init col state when pipeline/stages change
+    // Re-init col state when pipeline/stages change, then fetch
     setCols(Object.fromEntries(stages.map(s => [s.id, initCol()])))
     stages.forEach(s => fetchCol(s.id, '', 0, false))
   }, [pipeline.id]) // eslint-disable-line react-hooks/exhaustive-deps

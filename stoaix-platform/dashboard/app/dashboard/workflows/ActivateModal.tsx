@@ -26,6 +26,7 @@ interface Props {
   template: TemplateWithStatus
   orgSector: string
   orgLang: string
+  waProvider?: string
   onClose: () => void
   onSaved: () => void
 }
@@ -39,10 +40,17 @@ function interpolate(text: string, config: Record<string, any>): string {
 }
 
 // Extract body text from components for preview
-function getBodyPreview(components: any[]): string {
+function getBodyPreview(components: any[], maxLen = 100): string {
   const body = components?.find((c: any) => c.type === 'BODY')
   if (!body?.text) return ''
-  return body.text.length > 100 ? body.text.slice(0, 100) + '...' : body.text
+  return maxLen > 0 && body.text.length > maxLen ? body.text.slice(0, maxLen) + '...' : body.text
+}
+
+// Full body text (no truncation)
+function getFullBody(components: any[] | null): string {
+  if (!components) return ''
+  const body = components.find((c: any) => c.type === 'BODY')
+  return body?.text ?? ''
 }
 
 // Count {{1}}, {{2}}, etc. parameters in template body
@@ -222,6 +230,9 @@ function TemplatePicker({
   // ── State A: Approved templates exist for this purpose
   if (approvedByPurpose.length > 0) {
     const displayTemplates = showAll ? allApproved : approvedByPurpose
+    const selectedTpl = value ? displayTemplates.find(t => t.name === value) : null
+    const selectedBody = selectedTpl ? getFullBody(selectedTpl.components ?? null) : ''
+
     return (
       <div className="space-y-1.5">
         <select
@@ -239,6 +250,15 @@ function TemplatePicker({
             <option key={t.id} value={t.name}>{t.name}</option>
           ))}
         </select>
+
+        {/* Message preview */}
+        {selectedBody && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Mesaj Önizleme</p>
+            <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed">{selectedBody}</p>
+          </div>
+        )}
+
         {!showAll && allApproved.length > approvedByPurpose.length && (
           <button
             type="button"
@@ -336,6 +356,7 @@ function ConfigFieldInput({
   orgSector,
   orgLang,
   onTemplateCreated,
+  waProvider,
 }: {
   field: ConfigField
   value: any
@@ -345,7 +366,19 @@ function ConfigFieldInput({
   orgSector: string
   orgLang: string
   onTemplateCreated: () => void
+  waProvider?: string
 }) {
+  if (field.type === 'template_picker' && waProvider === 'wasender') {
+    return (
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+        <p className="text-xs font-medium text-emerald-800">AI otomatik mesaj üretir</p>
+        <p className="text-xs text-emerald-600 mt-0.5">
+          WasenderAPI bağlantınız var — template seçimi gerekmez. AI, lead bilgilerine göre kişiselleştirilmiş mesaj yazar.
+        </p>
+      </div>
+    )
+  }
+
   if (field.type === 'template_picker') {
     return (
       <TemplatePicker
@@ -551,7 +584,7 @@ function SequenceEditor({
 
 // ─── ActivateModal ──────────────────────────────────────────────────────────
 
-export default function ActivateModal({ template, orgSector, orgLang, onClose, onSaved }: Props) {
+export default function ActivateModal({ template, orgSector, orgLang, waProvider, onClose, onSaved }: Props) {
   const [config, setConfig] = useState<Record<string, any>>(() => {
     const initial: Record<string, any> = {}
     for (const field of template.config_fields) {
@@ -607,17 +640,20 @@ export default function ActivateModal({ template, orgSector, orgLang, onClose, o
       if (!step1?.template) return false
     }
 
-    const templateFields = template.config_fields.filter(f => f.type === 'template_picker')
-    for (const field of templateFields) {
-      const val = config[field.key]
-      if (val) continue // Has a value
-      // Check if there's a pending template for this purpose
-      const purpose = field.template_purpose
-      if (purpose) {
-        const hasPending = orgTemplates.some(t => t.status === 'pending' && t.purpose === purpose)
-        if (hasPending) continue
+    // Wasender kullanan orglar için template zorunlu değil — AI üretir
+    if (waProvider !== 'wasender') {
+      const templateFields = template.config_fields.filter(f => f.type === 'template_picker')
+      for (const field of templateFields) {
+        const val = config[field.key]
+        if (val) continue // Has a value
+        // Check if there's a pending template for this purpose
+        const purpose = field.template_purpose
+        if (purpose) {
+          const hasPending = orgTemplates.some(t => t.status === 'pending' && t.purpose === purpose)
+          if (hasPending) continue
+        }
+        return false // No value and no pending template
       }
-      return false // No value and no pending template
     }
     return true
   }
@@ -690,6 +726,7 @@ export default function ActivateModal({ template, orgSector, orgLang, onClose, o
                   orgSector={orgSector}
                   orgLang={orgLang}
                   onTemplateCreated={fetchOrgTemplates}
+                  waProvider={waProvider}
                 />
               </div>
             ))
@@ -733,12 +770,28 @@ export default function ActivateModal({ template, orgSector, orgLang, onClose, o
         )}
 
         {/* Footer */}
-        <div className="px-6 pb-6 pt-2 flex gap-2">
+        <div className="px-6 pb-6 pt-2 flex items-center gap-2">
           <button
             onClick={onClose}
             className="flex-1 border border-slate-200 text-slate-600 rounded-xl py-2.5 text-sm hover:bg-slate-50 transition-colors"
           >
             İptal
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const defaults: Record<string, any> = {}
+              for (const field of template.config_fields) {
+                defaults[field.key] = field.default
+              }
+              if ((template as any).default_sequence) {
+                defaults.sequence = (template as any).default_sequence
+              }
+              setConfig(defaults)
+            }}
+            className="text-xs text-slate-400 hover:text-slate-600 underline px-2 py-2 transition-colors"
+          >
+            Varsayılana dön
           </button>
           <button
             onClick={handleSave}

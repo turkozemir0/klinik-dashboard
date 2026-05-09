@@ -33,12 +33,40 @@ export interface ConfigFieldOption {
 export interface ConfigField {
   key: string
   label: string
-  type: 'number' | 'text' | 'time' | 'select' | 'boolean' | 'template_picker'
-  default: string | number | boolean
+  type: 'number' | 'text' | 'time' | 'select' | 'boolean' | 'template_picker' | 'sequence_editor'
+  default: string | number | boolean | any[]
   unit?: string
   options?: ConfigFieldOption[]
   description?: string
   template_purpose?: string  // followup | reengagement | appointment_reminder | satisfaction
+
+  // Validation & UX
+  group?: string                        // 'channel' | 'followup' | 'stop_conditions' | 'working_hours'
+  min?: number
+  max?: number
+  preset_values?: (string | number)[]   // sadece bu değerler geçerli
+  warning_threshold?: {
+    above?: number
+    below?: number
+    message_tr: string
+    message_en: string
+  }
+  depends_on?: { field: string; value: any }
+  danger_combo?: Array<{
+    when: Record<string, any>
+    message_tr: string
+    message_en: string
+  }>
+
+  // Access control
+  clinic_editable?: boolean  // default: true — false = only super admin can edit
+}
+
+export interface ConfigFieldGroup {
+  key: string
+  label_tr: string
+  label_en: string
+  icon: string
 }
 
 export interface SequenceStep {
@@ -59,8 +87,10 @@ export interface WorkflowTemplate {
   required_feature: string   // checkEntitlement ile kontrol
   config_fields: ConfigField[]
   n8n_workflow_id: string    // n8n webhook key
+  n8n_workflow_id_wasender?: string  // WasenderAPI gateway workflow key
   steps_summary: string[]    // {{variable}} interpolasyonu
-  comingSoon?: boolean       // n8n karşılığı henüz yok → UI'da devre dışı
+  comingSoon?: boolean            // n8n karşılığı henüz yok → UI'da devre dışı
+  supports_manual_trigger?: boolean  // default: true — false for scheduled workflows
   default_sequence?: SequenceStep[]  // drip sequence varsayılan adımları
 }
 
@@ -158,5 +188,6 @@ export interface N8nResultPayload {
     score?: number
     next_action?: 'retry' | 'whatsapp' | 'done' | null
     notes?: string
+    attempt?: number | string
   }
 }

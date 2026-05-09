@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MessageSquare, Phone, BookOpen } from 'lucide-react'
+import { MessageSquare, Phone, BookOpen, Bot } from 'lucide-react'
 
 interface UsageItem {
   key: string
@@ -37,9 +37,10 @@ export default function UsageWidget({ orgId, collapsed }: Props) {
 
         // metricKey = DB metric, featureKey = entitlements key
         const metered: { metricKey: string; featureKey: string; label: string; icon: React.ReactNode }[] = [
-          { metricKey: 'whatsapp_outbound_msgs', featureKey: 'whatsapp_outbound', label: 'WhatsApp', icon: <MessageSquare size={12} /> },
-          { metricKey: 'voice_minutes',          featureKey: 'voice_agent_inbound', label: 'Ses (dk)',  icon: <Phone size={12} /> },
-          { metricKey: 'kb_item_count',          featureKey: 'kb_write',            label: 'KB Öğesi',  icon: <BookOpen size={12} /> },
+          { metricKey: 'ai_conversation_count',  featureKey: 'ai_conversations',    label: 'AI Konuşma', icon: <Bot size={12} /> },
+          { metricKey: 'whatsapp_outbound_msgs', featureKey: 'whatsapp_outbound',   label: 'WhatsApp',   icon: <MessageSquare size={12} /> },
+          { metricKey: 'voice_minutes',          featureKey: 'voice_agent_inbound', label: 'Ses (dk)',   icon: <Phone size={12} /> },
+          { metricKey: 'kb_item_count',          featureKey: 'kb_write',            label: 'KB Öğesi',   icon: <BookOpen size={12} /> },
         ]
 
         const built: UsageItem[] = []

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabase } from '@supabase/supabase-js'
+import { META_GRAPH_URL } from '@/lib/meta-api'
 
 function getServiceClient() {
   return createSupabase(
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
   let shortLivedToken: string
   try {
     const tokenRes = await fetch(
-      `https://graph.facebook.com/v19.0/oauth/access_token?` +
+      `${META_GRAPH_URL}/oauth/access_token?` +
       new URLSearchParams({ client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code })
     )
     if (!tokenRes.ok) {
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
   let longLivedToken: string
   try {
     const llRes = await fetch(
-      `https://graph.facebook.com/v19.0/oauth/access_token?` +
+      `${META_GRAPH_URL}/oauth/access_token?` +
       new URLSearchParams({ grant_type: 'fb_exchange_token', client_id: appId, client_secret: appSecret, fb_exchange_token: shortLivedToken })
     )
     if (!llRes.ok) {
@@ -84,7 +85,7 @@ export async function GET(req: NextRequest) {
   let username: string
   try {
     const pagesRes = await fetch(
-      `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${longLivedToken}`
+      `${META_GRAPH_URL}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${longLivedToken}`
     )
     if (!pagesRes.ok) {
       console.error('[instagram/callback] pages fetch failed:', await pagesRes.text())

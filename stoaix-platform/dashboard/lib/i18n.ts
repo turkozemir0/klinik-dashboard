@@ -150,3 +150,8 @@ export const t = tr
 export function getT(_lang: Lang): Translations {
   return tr
 }
+
+/** Returns 'tr-TR' or 'en-US' based on lang */
+export function getLocale(lang: string): string {
+  return lang === 'en' ? 'en-US' : 'tr-TR'
+}

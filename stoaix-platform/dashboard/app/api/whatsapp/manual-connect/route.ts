@@ -9,7 +9,7 @@ function getServiceClient() {
   )
 }
 
-const GRAPH = 'https://graph.facebook.com/v19.0'
+import { META_GRAPH_URL as GRAPH } from '@/lib/meta-api'
 
 // ─── POST /api/whatsapp/manual-connect ────────────────────────────────────────
 // Body: { phone_number_id: string, access_token: string, waba_id?: string }

@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Phone, MessageSquare, Flame, Target, Loader2, LayoutGrid, List,
   ChevronLeft, ChevronRight, FileText, Wallet, Send, Clock, AlertCircle,
-  CalendarDays, Plus, X, Check,
+  CalendarDays, Plus, X, Check, Globe,
 } from 'lucide-react'
 import Avatar from '@/components/Avatar'
 import ChannelBadge from '@/components/ChannelBadge'
@@ -22,7 +22,15 @@ import ManualTasksPanel from '@/components/followup/ManualTasksPanel'
 import FollowupTabs from '@/components/followup/FollowupTabs'
 import dynamic from 'next/dynamic'
 
+const NewLeadModal = dynamic(() => import('@/components/crm/NewLeadModal'), {
+  loading: () => null,
+})
+
 const LeadFormsTab = dynamic(() => import('@/components/leadgen/LeadFormsTab'), {
+  loading: () => <div className="flex items-center gap-2 text-slate-400 py-12 justify-center"><Loader2 size={16} className="animate-spin" /> Yükleniyor...</div>,
+})
+
+const WebFormLeadsTab = dynamic(() => import('./WebFormLeadsTab'), {
   loading: () => <div className="flex items-center gap-2 text-slate-400 py-12 justify-center"><Loader2 size={16} className="animate-spin" /> Yükleniyor...</div>,
 })
 
@@ -108,6 +116,7 @@ function LeadsTab({ orgId }: { orgId: string }) {
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table')
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
+  const [nextFollowupMap, setNextFollowupMap] = useState<Record<string, string>>({})
   const [statusCounts, setStatusCounts] = useState({ all: 0, new: 0, handed_off: 0, in_progress: 0, hot: 0, warm: 0, cold: 0, today: 0 })
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
   const [activePipelineId, setActivePipelineId] = useState<string>('')
@@ -118,6 +127,9 @@ function LeadsTab({ orgId }: { orgId: string }) {
   // Date filter
   const [dateRange, setDateRange] = useState<DateRange>('all')
   const [dateField, setDateField] = useState<DateField>('updated_at')
+
+  // New lead modal
+  const [showNewLead, setShowNewLead] = useState(false)
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -178,8 +190,27 @@ function LeadsTab({ orgId }: { orgId: string }) {
     const dateFrom = getDateFrom(dateRange)
     if (dateFrom) query = query.gte(dateField, dateFrom)
     const { data, count } = await query
-    setLeads((data as unknown as Lead[]) ?? [])
+    const leads = (data as unknown as Lead[]) ?? []
+    setLeads(leads)
     setTotal(count ?? 0)
+
+    // Fetch next pending follow-up for each lead
+    const leadIds = leads.map(l => l.id)
+    if (leadIds.length > 0) {
+      const { data: tasks } = await supabase
+        .from('follow_up_tasks')
+        .select('lead_id,scheduled_at')
+        .in('lead_id', leadIds)
+        .eq('status', 'pending')
+        .eq('is_paused', false)
+        .order('scheduled_at', { ascending: true })
+      const map: Record<string, string> = {}
+      for (const t of tasks ?? []) {
+        if (!map[(t as any).lead_id]) map[(t as any).lead_id] = (t as any).scheduled_at
+      }
+      setNextFollowupMap(map)
+    }
+
     setLoading(false)
   }, [orgId, pageSize, dateRange, dateField])
 
@@ -227,13 +258,22 @@ function LeadsTab({ orgId }: { orgId: string }) {
             />
           )}
           {!isDemo && (
-            <Link
-              href="/dashboard/admin/import"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors"
-            >
-              <Plus size={13} />
-              Import
-            </Link>
+            <>
+              <button
+                onClick={() => setShowNewLead(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-xs font-medium transition-colors"
+              >
+                <Plus size={13} />
+                Yeni Lead
+              </button>
+              <Link
+                href="/dashboard/admin/import"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors"
+              >
+                <Plus size={13} />
+                Import
+              </Link>
+            </>
           )}
           <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
             <button
@@ -381,6 +421,7 @@ function LeadsTab({ orgId }: { orgId: string }) {
                       <th className="text-left px-4 py-3">Skor</th>
                       <th className="text-left px-4 py-3">Durum</th>
                       <th className="text-left px-4 py-3">Son Aktiv.</th>
+                      <th className="text-left px-4 py-3">Sonraki Takip</th>
                       <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
@@ -427,6 +468,14 @@ function LeadsTab({ orgId }: { orgId: string }) {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{updatedAt}</td>
+                          <td className="px-4 py-3 text-xs whitespace-nowrap">
+                            {nextFollowupMap[lead.id] ? (
+                              <span className={`inline-flex items-center gap-1 ${new Date(nextFollowupMap[lead.id]) < new Date() ? 'text-red-500' : 'text-slate-400'}`}>
+                                <Clock size={10} />
+                                {new Date(nextFollowupMap[lead.id]).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+                              </span>
+                            ) : <span className="text-slate-300">—</span>}
+                          </td>
                           <td className="px-4 py-3">
                             <Link href={`/dashboard/leads/${lead.id}`} className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors">
                               <MessageSquare size={12} /> Detay
@@ -470,6 +519,10 @@ function LeadsTab({ orgId }: { orgId: string }) {
             </>
           )}
         </>
+      )}
+
+      {showNewLead && (
+        <NewLeadModal onClose={() => { setShowNewLead(false); loadLeads(filter, page) }} />
       )}
     </div>
   )
@@ -802,20 +855,21 @@ function FollowupTab({ orgId }: { orgId: string }) {
 
 // ─── CRM Page ─────────────────────────────────────────────────────────────────
 
-type CRMTab = 'leads' | 'leadforms' | 'proposals' | 'followup'
+type CRMTab = 'leads' | 'leadforms' | 'webforms' | 'proposals' | 'followup'
 
 function CRMPageInner() {
   const searchParams = useSearchParams()
   const initialTab = (searchParams.get('tab') as CRMTab) ?? 'leads'
   const [activeTab, setActiveTab] = useState<CRMTab>(
-    ['leads', 'leadforms', 'proposals', 'followup'].includes(initialTab) ? initialTab : 'leads'
+    ['leads', 'leadforms', 'webforms', 'proposals', 'followup'].includes(initialTab) ? initialTab : 'leads'
   )
   const { orgId } = useOrg()
   const loading = false
 
-  const tabs: { key: CRMTab; label: string }[] = [
+  const tabs: { key: CRMTab; label: string; icon?: any }[] = [
     { key: 'leads',     label: 'Leads' },
     { key: 'leadforms', label: 'Lead Formlar' },
+    { key: 'webforms',  label: 'Web Formları', icon: Globe },
     { key: 'proposals', label: 'Teklifler & Ödemeler' },
     { key: 'followup',  label: 'Takip' },
   ]
@@ -830,12 +884,13 @@ function CRMPageInner() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === tab.key
                 ? 'bg-white text-slate-800 shadow-sm'
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
+            {tab.icon && <tab.icon size={14} />}
             {tab.label}
           </button>
         ))}
@@ -851,6 +906,7 @@ function CRMPageInner() {
         <>
           {activeTab === 'leads'     && <LeadsTab orgId={orgId} />}
           {activeTab === 'leadforms' && <LeadFormsTab />}
+          {activeTab === 'webforms'  && <WebFormLeadsTab />}
           {activeTab === 'proposals' && <ProposalsPaymentsTab orgId={orgId} />}
           {activeTab === 'followup'  && <FollowupTab orgId={orgId} />}
         </>

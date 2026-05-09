@@ -121,6 +121,16 @@ export function ZapierIcon({ size = 20, className }: IconProps) {
   )
 }
 
+export function MetaCapiIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <rect width="24" height="24" rx="6" fill="#0081FB" />
+      <path d="M12 6l5 3v6l-5 3-5-3V9l5-3z" fill="white" fillOpacity="0.9" />
+      <path d="M12 8l3 1.8v3.6L12 15.2 9 13.4V9.8L12 8z" fill="#0081FB" />
+    </svg>
+  )
+}
+
 export function CalendlyIcon({ size = 20, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>

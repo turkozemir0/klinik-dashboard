@@ -398,7 +398,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "=https://graph.facebook.com/v19.0/{{ $('Build Voice + WA Payload').first().json.wa_phone_id }}/messages",
+        "url": "=https://graph.facebook.com/v21.0/{{ $('Build Voice + WA Payload').first().json.wa_phone_id }}/messages",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

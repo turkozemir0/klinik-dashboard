@@ -22,30 +22,38 @@ function corsJson(body: Record<string, any>, status = 200) {
   return NextResponse.json(body, { status, headers: CORS_HEADERS })
 }
 
-// ─── Rate limiting (in-memory, per-key, 60 req/min) ─────────────────────────
+// ─── Rate limiting (DB-backed, per-key, 60 req/min) ─────────────────────────
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 const RATE_LIMIT = 60
-const RATE_WINDOW_MS = 60_000
 
-function isRateLimited(apiKey: string): boolean {
-  const now = Date.now()
-  const entry = rateLimitMap.get(apiKey)
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(apiKey, { count: 1, resetAt: now + RATE_WINDOW_MS })
-    return false
-  }
-  entry.count++
-  return entry.count > RATE_LIMIT
+function getMinuteWindow(): string {
+  const now = new Date()
+  now.setSeconds(0, 0)
+  return now.toISOString()
 }
 
-// Periodic cleanup to prevent memory leaks
-setInterval(() => {
-  const now = Date.now()
-  rateLimitMap.forEach((entry, key) => {
-    if (now > entry.resetAt) rateLimitMap.delete(key)
-  })
-}, 5 * 60_000)
+function hashApiKey(key: string): string {
+  // Simple fast hash for rate limit bucketing (not security-critical)
+  let h = 0
+  for (let i = 0; i < key.length; i++) {
+    h = ((h << 5) - h + key.charCodeAt(i)) | 0
+  }
+  return 'k_' + (h >>> 0).toString(36)
+}
+
+async function isRateLimited(apiKey: string, service: any): Promise<boolean> {
+  try {
+    const { data } = await service.rpc('check_form_rate_limit', {
+      p_api_key_hash: hashApiKey(apiKey),
+      p_window_start: getMinuteWindow(),
+      p_max_requests: RATE_LIMIT,
+    })
+    return data === false
+  } catch {
+    // If DB rate limit fails, allow the request (fail-open)
+    return false
+  }
+}
 
 // ─── Field length limits ─────────────────────────────────────────────────────
 
@@ -122,12 +130,12 @@ export async function POST(request: NextRequest) {
     delete body._turnstile
     delete body['g-recaptcha-response']
 
-    // 5. Rate limit
-    if (isRateLimited(apiKey)) {
+    const service = getServiceClient()
+
+    // 5. Rate limit (DB-backed)
+    if (await isRateLimited(apiKey, service)) {
       return corsJson({ error: 'rate_limited', message: 'Too many requests. Max 60/min per key.' }, 429)
     }
-
-    const service = getServiceClient()
 
     // 6. Look up org by API key
     const { data: orgs, error: orgErr } = await service

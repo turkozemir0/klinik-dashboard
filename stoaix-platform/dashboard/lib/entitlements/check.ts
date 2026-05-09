@@ -12,40 +12,42 @@ export async function checkEntitlement(
     // 1. Cache'den plan/status bilgisi
     const cached = getFromCache(orgId)
 
-    // 2. Legacy bypass — her şey açık
-    if (cached?.planId === 'legacy') return ALLOW_ALL
-
-    // 3. Cache güncel → DB'ye gitme
-    if (cached && !isExpired(cached)) {
+    // 2. Cache güncel → DB'ye gitme (legacy olmayan)
+    if (cached && !isExpired(cached) && cached.planId !== 'legacy') {
       if (['suspended', 'canceled'].includes(cached.status)) return DENY_ALL
-      // Cache sadece plan/status tutar, feature detayı için DB'ye gidiyoruz
     }
 
-    // 4. DB'den subscription çek
+    // 3. DB'den subscription çek
     const sub = await fetchSubscription(orgId)
 
     if (!sub) {
-      // Subscription yoksa legacy gibi davran (eski müşteri güvencesi)
       setCache(orgId, 'legacy', 'legacy')
       return ALLOW_ALL
     }
 
     setCache(orgId, sub.plan_id, sub.status)
 
-    if (sub.plan_id === 'legacy') return ALLOW_ALL
     if (['suspended', 'canceled'].includes(sub.status)) return DENY_ALL
 
-    // 5. Override > Plan default
+    // 4. Override > Plan default (legacy dahil — per-org limit desteği)
     const override = await fetchOverride(orgId, featureKey)
+
+    // Legacy + override yoksa → sınırsız
+    if (sub.plan_id === 'legacy' && !override) return ALLOW_ALL
+
     const planEnt = await fetchPlanEntitlement(sub.plan_id, featureKey)
     const effective = override ?? planEnt
 
-    if (!effective || !effective.enabled) return DENY_ALL
+    if (!effective || !effective.enabled) {
+      // Legacy plan'da entitlement tanımlı değilse yine izin ver
+      if (sub.plan_id === 'legacy') return ALLOW_ALL
+      return DENY_ALL
+    }
 
-    // 6. Limitsiz feature
+    // 5. Limitsiz feature
     if (effective.limit_value === null) return ALLOW_ALL
 
-    // 7. Metered feature — kullanım kontrolü
+    // 6. Metered feature — kullanım kontrolü
     const metric = featureKeyToMetric(featureKey)
     const used = metric
       ? await getUsage(orgId, metric, currentBillingPeriod())
@@ -73,15 +75,12 @@ export async function checkAllEntitlements(
   const allDeny = Object.fromEntries(featureKeys.map(k => [k, DENY_ALL]))
 
   try {
-    // 1. Cache'den plan/status bilgisi
+    // 1. Subscription çek
     const cached = getFromCache(orgId)
-    if (cached?.planId === 'legacy') return allAllow
-
-    // 2. Subscription çek (cache güncel değilse)
     let planId: string
     let status: string
 
-    if (cached && !isExpired(cached)) {
+    if (cached && !isExpired(cached) && cached.planId !== 'legacy') {
       planId = cached.planId
       status = cached.status
     } else {
@@ -95,15 +94,17 @@ export async function checkAllEntitlements(
       setCache(orgId, planId, status)
     }
 
-    if (planId === 'legacy') return allAllow
     if (['suspended', 'canceled'].includes(status)) return allDeny
 
-    // 3. Batch fetch: 3 paralel sorgu
+    // 2. Batch fetch: overrides + plan entitlements + usage
     const [overrides, planEnts, usageRows] = await Promise.all([
       fetchAllOverrides(orgId),
       fetchAllPlanEntitlements(planId),
       getAllUsage(orgId),
     ])
+
+    // Legacy + override yoksa → tüm feature'lar sınırsız
+    if (planId === 'legacy' && overrides.length === 0) return allAllow
 
     // Map'lere çevir
     const overrideMap = new Map(
@@ -118,7 +119,7 @@ export async function checkAllEntitlements(
       usageRows.map(u => [u.metric, u.used_value as number])
     )
 
-    // 4. Feature'ları hesapla (0 ek sorgu)
+    // 3. Feature'ları hesapla
     const result: Record<string, EntitlementResult> = {}
     for (const featureKey of featureKeys) {
       const override = overrideMap.get(featureKey)
@@ -126,7 +127,8 @@ export async function checkAllEntitlements(
       const effective = override ?? planEnt
 
       if (!effective || !effective.enabled) {
-        result[featureKey] = DENY_ALL
+        // Legacy plan'da tanımsız feature → izin ver
+        result[featureKey] = planId === 'legacy' ? ALLOW_ALL : DENY_ALL
         continue
       }
       if (effective.limit_value === null) {

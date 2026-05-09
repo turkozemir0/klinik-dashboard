@@ -8,11 +8,13 @@ import TopBar from '@/components/TopBar'
 import { IntegrationCard } from '@/components/integrations/IntegrationCard'
 import { ConfigDrawer } from '@/components/integrations/ConfigDrawer'
 import { WhatsAppConfig } from '@/components/integrations/WhatsAppConfig'
+import { WasenderConfig } from '@/components/integrations/WasenderConfig'
 import { InstagramConfig } from '@/components/integrations/InstagramConfig'
 import { CalendarConfig } from '@/components/integrations/CalendarConfig'
 import { DentSoftConfig } from '@/components/integrations/DentSoftConfig'
 import { ExcludedPhonesConfig } from '@/components/integrations/ExcludedPhonesConfig'
 import { VoiceProviderConfig } from '@/components/integrations/VoiceProviderConfig'
+import { CapiConfig } from '@/components/integrations/CapiConfig'
 import { VOICE_PROVIDERS, PROVIDER_LIST } from '@/lib/voice-providers'
 import { useIsDemo } from '@/lib/demo-context'
 import { useLang } from '@/lib/lang-context'
@@ -29,14 +31,17 @@ import {
   PipedriveIcon,
   ZapierIcon,
   CalendlyIcon,
+  MetaCapiIcon,
 } from '@/components/integrations/ProviderIcons'
 
 type DrawerId =
   | 'whatsapp'
+  | 'wasender'
   | 'instagram'
   | 'calendar'
   | 'dentsoft'
   | 'excluded-phones'
+  | 'meta_capi'
   | 'netgsm'
   | 'verimor'
   | 'twilio'
@@ -50,7 +55,7 @@ const VOICE_ICON_MAP: Record<string, React.ReactNode> = {
   telnyx: <TelnyxIcon size={24} />,
 }
 
-type CategoryKey = 'all' | 'channels' | 'calendar' | 'crm' | 'clinic_pms' | 'automation'
+type CategoryKey = 'all' | 'channels' | 'calendar' | 'crm' | 'clinic_pms' | 'advertising' | 'automation'
 
 const SECTION_LABELS: Record<string, { tr: string; en: string }> = {
   channels: { tr: 'Kanallar', en: 'Channels' },
@@ -58,6 +63,7 @@ const SECTION_LABELS: Record<string, { tr: string; en: string }> = {
   calendar: { tr: 'Takvim', en: 'Calendar' },
   clinic_pms: { tr: 'Klinik PMS', en: 'Clinic PMS' },
   crm: { tr: 'CRM', en: 'CRM' },
+  advertising: { tr: 'Reklam & Dönüşüm', en: 'Advertising & Conversion' },
   automation: { tr: 'Otomasyon', en: 'Automation' },
   other: { tr: 'Diğer', en: 'Other' },
 }
@@ -75,10 +81,12 @@ export default function IntegrationsPage() {
 
   // Status tracking for cards
   const [waStatus, setWaStatus] = useState<{ connected: boolean; label?: string }>({ connected: false })
+  const [wasenderStatus, setWasenderStatus] = useState<{ connected: boolean; label?: string }>({ connected: false })
   const [igStatus, setIgStatus] = useState<{ connected: boolean; label?: string }>({ connected: false })
   const [calStatus, setCalStatus] = useState<{ connected: boolean }>({ connected: false })
   const [dsStatus, setDsStatus] = useState<{ connected: boolean }>({ connected: false })
   const [voiceStatus, setVoiceStatus] = useState<Record<string, boolean>>({})
+  const [capiStatus, setCapiStatus] = useState<{ connected: boolean }>({ connected: false })
   const [activeCategory, setActiveCategory] = useState<CategoryKey>('all')
 
   const categories: { key: CategoryKey; label: string }[] = [
@@ -87,6 +95,7 @@ export default function IntegrationsPage() {
     { key: 'calendar', label: isTr ? 'Takvim' : 'Calendar' },
     { key: 'crm', label: 'CRM' },
     { key: 'clinic_pms', label: isTr ? 'Klinik PMS' : 'Clinic PMS' },
+    { key: 'advertising', label: isTr ? 'Reklam' : 'Advertising' },
     { key: 'automation', label: isTr ? 'Otomasyon' : 'Automation' },
   ]
 
@@ -145,6 +154,19 @@ export default function IntegrationsPage() {
               badge={isTr ? '1 hafta sonra' : 'In 1 week'}
               category="channels"
               status="coming_soon"
+            />
+          </Suspense>
+          <Suspense fallback={<CardSkeleton />}>
+            <IntegrationCard
+              icon={<WhatsAppIcon size={24} />}
+              name="WhatsApp QR"
+              description={isTr ? 'QR kod ile bağlan, BSP gerektirmez' : 'Connect via QR code, no BSP required'}
+              helperText={isTr ? 'Bu 3. parti entegrasyondur. QR kod okut ve WhatsApp\'ını bağla.' : 'This is a 3rd-party integration. Scan QR code to connect your WhatsApp.'}
+              badge="3rd Party"
+              category="channels"
+              status={wasenderStatus.connected ? 'connected' : 'disconnected'}
+              statusLabel={wasenderStatus.label}
+              onClick={() => openDrawer('wasender')}
             />
           </Suspense>
           <Suspense fallback={<CardSkeleton />}>
@@ -258,6 +280,23 @@ export default function IntegrationsPage() {
         </div>
       </section>}
 
+      {/* ── Advertising & Conversion ──────────────────────────────── */}
+      {(activeCategory === 'all' || activeCategory === 'advertising') && <section className="mb-8">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          {sectionTitle('advertising')}
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <IntegrationCard
+            icon={<MetaCapiIcon size={24} />}
+            name="Meta Conversions API"
+            description={isTr ? 'Nitelikli lead geri bildirimi ile reklam optimizasyonu' : 'Ad optimization via qualified lead feedback'}
+            category="advertising"
+            status={capiStatus.connected ? 'connected' : 'disconnected'}
+            onClick={() => openDrawer('meta_capi')}
+          />
+        </div>
+      </section>}
+
       {/* ── Automation ───────────────────────────────────────────── */}
       {(activeCategory === 'all' || activeCategory === 'automation') && <section className="mb-8">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
@@ -301,7 +340,31 @@ export default function IntegrationsPage() {
       >
         <Suspense fallback={<DrawerSkeleton />}>
           <WhatsAppConfig
-            onStatusChange={(c, phone) => setWaStatus({ connected: c, label: phone ? `${isTr ? 'Bağlı' : 'Connected'} — ${phone}` : undefined })}
+            onStatusChange={async (c, phone) => {
+              setWaStatus({ connected: c, label: phone ? `${isTr ? 'Bağlı' : 'Connected'} — ${phone}` : undefined })
+              // Mutual exclusion: if Cloud API connected, disconnect any active wasender session
+              if (c && wasenderStatus.connected) {
+                await fetch('/api/wasender/disconnect', { method: 'DELETE' }).catch(() => {})
+                setWasenderStatus({ connected: false })
+              }
+            }}
+          />
+        </Suspense>
+      </ConfigDrawer>
+
+      <ConfigDrawer
+        open={activeDrawer === 'wasender'}
+        onClose={() => setActiveDrawer(null)}
+        title="WasenderAPI"
+        icon={<WhatsAppIcon size={18} />}
+      >
+        <Suspense fallback={<DrawerSkeleton />}>
+          <WasenderConfig
+            onStatusChange={(c, phone) => setWasenderStatus({ connected: c, label: phone ? `${isTr ? 'Bağlı' : 'Connected'} — ${phone}` : undefined })}
+            onCloudDisconnect={async () => {
+              await fetch('/api/whatsapp/disconnect', { method: 'DELETE' })
+              setWaStatus({ connected: false })
+            }}
           />
         </Suspense>
       </ConfigDrawer>
@@ -352,6 +415,19 @@ export default function IntegrationsPage() {
         icon={<Ban size={18} className="text-slate-500" />}
       >
         <ExcludedPhonesConfig />
+      </ConfigDrawer>
+
+      <ConfigDrawer
+        open={activeDrawer === 'meta_capi'}
+        onClose={() => setActiveDrawer(null)}
+        title="Meta Conversions API"
+        icon={<MetaCapiIcon size={18} />}
+      >
+        <Suspense fallback={<DrawerSkeleton />}>
+          <CapiConfig
+            onStatusChange={(c) => setCapiStatus({ connected: c })}
+          />
+        </Suspense>
       </ConfigDrawer>
 
       {PROVIDER_LIST.map((p) => (

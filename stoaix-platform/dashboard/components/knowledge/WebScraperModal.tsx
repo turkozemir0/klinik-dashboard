@@ -133,6 +133,8 @@ export default function WebScraperModal({ orgId, onClose, onSaved }: Props) {
     const toSave = selectedArr.map(i => suggestions[i])
     const results: any[] = []
     const newSavedIds = new Set(savedIds)
+    let firstError = ''
+    let skippedDuplicates = 0
 
     for (let idx = 0; idx < toSave.length; idx++) {
       const item = toSave[idx]
@@ -153,23 +155,37 @@ export default function WebScraperModal({ orgId, onClose, onSaved }: Props) {
         if (res.ok) {
           results.push(data)
           newSavedIds.add(originalIdx)
+        } else if (res.status === 409) {
+          // Already exists — treat as saved, skip silently
+          skippedDuplicates++
+          newSavedIds.add(originalIdx)
+        } else if (!firstError) {
+          if (data.error === 'usage_limit_exceeded') {
+            firstError = `KB madde limitine ulaşıldı (${data.used}/${data.limit}). Plan yükseltin.`
+          } else if (data.error === 'upgrade_required') {
+            firstError = 'Bu özellik mevcut planınızda kullanılamaz.'
+          } else {
+            firstError = data.error ?? data.message ?? 'Kayıt başarısız'
+          }
         }
       } catch {
-        // continue saving others
+        if (!firstError) firstError = 'Bağlantı hatası'
       }
     }
 
     setSavedIds(newSavedIds)
     setSaving(false)
 
-    if (results.length === 0) {
-      setSaveError('Hiçbiri kaydedilemedi')
+    if (results.length === 0 && skippedDuplicates === 0) {
+      setSaveError(firstError ? `Hiçbiri kaydedilemedi: ${firstError}` : 'Hiçbiri kaydedilemedi')
       return
     }
 
-    if (results.length < toSave.length) {
-      setSaveError(`${results.length}/${toSave.length} kayıt eklendi`)
-    }
+    const parts: string[] = []
+    if (results.length > 0) parts.push(`${results.length} yeni eklendi`)
+    if (skippedDuplicates > 0) parts.push(`${skippedDuplicates} zaten mevcuttu`)
+    if (firstError) parts.push(firstError)
+    if (results.length < toSave.length) setSaveError(parts.join(' — '))
 
     onSaved(results)
 

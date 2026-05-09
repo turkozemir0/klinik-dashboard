@@ -7,6 +7,13 @@ import { createClient as createSupabase } from '@supabase/supabase-js'
 // Not: Bu 'use client' sayfasında Supabase'e direkt ulaşamayız service key ile.
 // Veri çekme işlemlerini API route üzerinden yapıyoruz.
 
+const QUICK_FEATURES = [
+  { featureKey: 'ai_conversations',    metric: 'ai_conversation_count',  label: 'AI Konusma',    icon: '\u{1F916}' },
+  { featureKey: 'voice_agent_inbound', metric: 'voice_minutes',          label: 'Ses Dakikasi',  icon: '\u{1F4DE}' },
+  { featureKey: 'kb_write',            metric: 'kb_item_count',          label: 'Bilgi Bankasi', icon: '\u{1F4DA}' },
+  { featureKey: 'multi_team',          metric: 'team_member_count',      label: 'Ekip Uyesi',    icon: '\u{1F465}' },
+]
+
 const PLAN_LABELS: Record<string, string> = {
   legacy: 'Legacy',
   essential: 'Essential',
@@ -65,6 +72,7 @@ interface OrgData {
   slug: string
   sector: string
   status: string
+  setup_included?: boolean
 }
 
 interface SubData {
@@ -102,6 +110,15 @@ export default function OrgBillingPage() {
   const [saving, setSaving] = useState(false)
   const [deletingKey, setDeletingKey] = useState<string | null>(null)
 
+  // Quick limits state
+  const [usage, setUsage] = useState<Record<string, number>>({})
+  const [quickLimits, setQuickLimits] = useState<Record<string, string>>({})
+  const [quickSaving, setQuickSaving] = useState(false)
+  const [quickSuccess, setQuickSuccess] = useState(false)
+
+  // Setup toggle state
+  const [setupToggling, setSetupToggling] = useState(false)
+
   // Offer modal state
   const [showOfferModal, setShowOfferModal] = useState(false)
   const [offerForm, setOfferForm] = useState({ plan_id: 'professional', interval: 'monthly', discount_percent: '' })
@@ -124,6 +141,22 @@ export default function OrgBillingPage() {
       setFeatures(data.features ?? [])
       setOverrides(data.overrides ?? [])
       setEntitlements(data.entitlements ?? [])
+      setUsage(data.usage ?? {})
+
+      // Initialize quick limits from overrides or plan entitlements
+      const initLimits: Record<string, string> = {}
+      for (const qf of QUICK_FEATURES) {
+        const ovr = (data.overrides ?? []).find((o: Override) => o.feature_key === qf.featureKey)
+        const ent = (data.entitlements ?? []).find((e: PlanEntitlement) => e.feature_key === qf.featureKey)
+        if (ovr?.limit_override != null) {
+          initLimits[qf.featureKey] = String(ovr.limit_override)
+        } else if (ent?.limit_value != null) {
+          initLimits[qf.featureKey] = String(ent.limit_value)
+        } else {
+          initLimits[qf.featureKey] = ''
+        }
+      }
+      setQuickLimits(initLimits)
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -241,6 +274,73 @@ export default function OrgBillingPage() {
     }
   }
 
+  async function handleQuickSave() {
+    setQuickSaving(true)
+    setQuickSuccess(false)
+    try {
+      const changes: { featureKey: string; newLimit: number }[] = []
+      for (const qf of QUICK_FEATURES) {
+        const inputVal = quickLimits[qf.featureKey]
+        if (inputVal === '') continue
+        const newLimit = Number(inputVal)
+        if (isNaN(newLimit)) continue
+
+        // Check if different from current effective limit
+        const ovr = overrides.find(o => o.feature_key === qf.featureKey)
+        const ent = entitlements.find(e => e.feature_key === qf.featureKey)
+        const currentLimit = ovr?.limit_override ?? ent?.limit_value ?? null
+
+        if (currentLimit !== newLimit) {
+          changes.push({ featureKey: qf.featureKey, newLimit })
+        }
+      }
+
+      if (changes.length === 0) {
+        setQuickSaving(false)
+        return
+      }
+
+      await Promise.all(
+        changes.map(c =>
+          fetch(`/api/admin/billing/${orgId}/override`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              feature_key: c.featureKey,
+              enabled: true,
+              limit_override: c.newLimit,
+              reason: 'admin_grant',
+            }),
+          })
+        )
+      )
+
+      setQuickSuccess(true)
+      setTimeout(() => setQuickSuccess(false), 2000)
+      await fetchData()
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setQuickSaving(false)
+    }
+  }
+
+  async function handleToggleSetup() {
+    if (!org) return
+    setSetupToggling(true)
+    try {
+      const res = await fetch(`/api/admin/billing/${orgId}/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setup_included: !org.setup_included }),
+      })
+      if (res.ok) {
+        setOrg({ ...org, setup_included: !org.setup_included })
+      }
+    } catch { /* ignore */ }
+    finally { setSetupToggling(false) }
+  }
+
   const planId = sub?.plan_id ?? 'legacy'
 
   // Entitlement map (plan default'ları)
@@ -323,12 +423,117 @@ export default function OrgBillingPage() {
         </div>
       </div>
 
+      {/* Setup & Support Durumu */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-4 py-2.5">
+          <span className="text-sm text-slate-600">Setup & Onboarding:</span>
+          {org.setup_included ? (
+            <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">Dahil</span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium">Yok</span>
+          )}
+          <button
+            onClick={handleToggleSetup}
+            disabled={setupToggling}
+            className="ml-2 text-xs text-blue-600 hover:underline disabled:opacity-50"
+          >
+            {setupToggling ? '...' : org.setup_included ? 'Kaldır' : 'Tanımla'}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-4 py-2.5">
+          <span className="text-sm text-slate-600">Dedicated Support:</span>
+          {overrideMap['dedicated_support']?.enabled ? (
+            <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">Aktif</span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium">Yok</span>
+          )}
+          <button
+            onClick={() => {
+              if (overrideMap['dedicated_support']?.enabled) {
+                handleDelete('dedicated_support')
+              } else {
+                setForm({ feature_key: 'dedicated_support', enabled: true, limit_override: '', reason: 'admin_grant', expires_at: '' })
+                setEditingOverride(null)
+                setShowModal(true)
+              }
+            }}
+            className="ml-2 text-xs text-blue-600 hover:underline"
+          >
+            {overrideMap['dedicated_support']?.enabled ? 'Kaldır' : 'Aç'}
+          </button>
+        </div>
+      </div>
+
       {/* Stripe Bilgi */}
       {sub?.stripe_customer_id && (
         <div className="bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-xs text-slate-500">
           Stripe Customer: <span className="font-mono font-medium text-slate-700">{sub.stripe_customer_id}</span>
         </div>
       )}
+
+      {/* Hızlı Limit Ayarları */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700">Hizli Limit Ayarlari</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Temel olcumlu ozellikleri toplu olarak ayarlayin</p>
+          </div>
+          <button
+            onClick={handleQuickSave}
+            disabled={quickSaving}
+            className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              quickSuccess
+                ? 'bg-green-100 text-green-700'
+                : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50'
+            }`}
+          >
+            {quickSaving ? 'Kaydediliyor...' : quickSuccess ? '✓ Kaydedildi' : 'Kaydet'}
+          </button>
+        </div>
+        <div className="divide-y divide-slate-50">
+          {QUICK_FEATURES.map(qf => {
+            const ent = entitlementMap[qf.featureKey]
+            const ovr = overrideMap[qf.featureKey]
+            const effectiveLimit = ovr?.limit_override ?? ent?.limit_value ?? null
+            const used = usage[qf.metric] ?? 0
+            const pct = effectiveLimit ? Math.min((used / effectiveLimit) * 100, 100) : 0
+            const barColor = pct > 95 ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-500'
+
+            return (
+              <div key={qf.featureKey} className="px-5 py-3 flex items-center gap-4">
+                <span className="text-lg w-7 text-center">{qf.icon}</span>
+                <div className="w-32">
+                  <p className="text-sm font-medium text-slate-700">{qf.label}</p>
+                </div>
+                <div className="text-xs text-slate-400 w-24">
+                  Plan: <span className="font-medium text-slate-600">{effectiveLimit != null ? effectiveLimit : '\u221E'}</span>
+                  {ovr?.limit_override != null && <span className="ml-1 text-blue-500">(ovr)</span>}
+                </div>
+                <div className="text-xs text-slate-400 w-24">
+                  Kullanim: <span className="font-medium text-slate-600">{used}</span>
+                </div>
+                <div className="flex-1 max-w-32">
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${barColor}`}
+                      style={{ width: effectiveLimit ? `${pct}%` : '0%' }}
+                    />
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  value={quickLimits[qf.featureKey] ?? ''}
+                  onChange={e => setQuickLimits(prev => ({ ...prev, [qf.featureKey]: e.target.value }))}
+                  placeholder={effectiveLimit != null ? String(effectiveLimit) : '\u221E'}
+                  className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Feature Override Tablosu */}
       <div className="space-y-6">
@@ -459,9 +664,9 @@ export default function OrgBillingPage() {
                   onChange={e => setOfferForm(f => ({ ...f, plan_id: e.target.value }))}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="essential">Essential — $79/ay</option>
-                  <option value="professional">Professional — $149/ay</option>
-                  <option value="business">Business — $299/ay</option>
+                  <option value="essential">Essential — $129/ay</option>
+                  <option value="professional">Professional — $249/ay</option>
+                  <option value="business">Business — $599/ay</option>
                   <option value="custom">Custom — Görüşmeli</option>
                 </select>
               </div>
