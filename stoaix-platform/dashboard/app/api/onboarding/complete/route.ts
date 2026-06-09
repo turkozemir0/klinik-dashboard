@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { buildClinicPlaybookDefaults } from '@/lib/agent-templates'
-import { CLINIC_INTAKE_SCHEMAS } from '@/lib/clinic-intake-schemas'
+import { CLINIC_INTAKE_SCHEMAS, getChatIntakeFields } from '@/lib/clinic-intake-schemas'
 import { demoWriteBlock } from '@/lib/demo-guard'
+
+// Klinik tipine göre acil durum anahtar kelimeleri (multi-lang)
+const CLINIC_EMERGENCY_MAP: Record<string, string[]> = {
+  dental:    ['ağrı', 'kanama', 'şişlik', 'apse', 'ateş', 'kırık diş', 'pain', 'bleeding', 'abscess', 'schmerzen', 'blutung', 'abszess'],
+  aesthetic: ['ağrı', 'şişlik', 'enfeksiyon', 'morarma', 'ateş', 'alerji', 'pain', 'infection', 'swelling', 'infektion', 'schwellung'],
+  hair:      ['enfeksiyon', 'alerji', 'şişlik', 'kanama', 'ateş', 'infection', 'allergic', 'bleeding', 'infektion', 'allergie'],
+  eye:       ['görme kaybı', 'ağrı', 'kanama', 'şişlik', 'vision loss', 'pain', 'sehverlust', 'schmerzen'],
+  other:     ['ağrı', 'kanama', 'şişlik', 'ateş', 'enfeksiyon', 'pain', 'bleeding', 'swelling', 'fever', 'schmerzen', 'blutung'],
+}
 
 export async function POST(request: NextRequest) {
   const supabase = createClient()
@@ -82,12 +91,20 @@ export async function POST(request: NextRequest) {
       few_shot_examples: defaults.fewShots,
       fallback_responses: { no_kb_match: defaults.noKbMatch },
       routing_rules: { transfer_numbers: {}, rules: [] },
+      handoff_triggers: {
+        keywords: ['insan', 'danışman', 'müdür', 'temsilci', 'yönetici', 'uzman', 'aranmak', 'arasın'],
+        emergency_keywords: CLINIC_EMERGENCY_MAP[clinicType] ?? CLINIC_EMERGENCY_MAP['other'],
+        frustration_keywords: ['saçma', 'berbat', 'anlayamıyorsunuz'],
+        missing_required_after_turns: 10,
+        kb_empty_consecutive: 3,
+      },
       is_active: true,
     })
   }
 
   if (!existingChannels.has('whatsapp')) {
-    const defaults = buildClinicPlaybookDefaults(org.name, personaName, 'whatsapp', clinicType)
+    const waFields = getChatIntakeFields(clinicType, 'whatsapp')
+    const defaults = buildClinicPlaybookDefaults(org.name, personaName, 'whatsapp', clinicType, false, waFields)
     const hard_blocks = defaults.blocks.map((b, i) => ({
       trigger_id: `block_${i}`,
       action: 'soft_block',
@@ -105,6 +122,75 @@ export async function POST(request: NextRequest) {
       few_shot_examples: defaults.fewShots,
       fallback_responses: { no_kb_match: defaults.noKbMatch },
       routing_rules: { transfer_numbers: {}, rules: [] },
+      handoff_triggers: {
+        keywords: ['insan', 'danışman', 'müdür', 'temsilci', 'yönetici', 'uzman', 'aranmak', 'arasın'],
+        emergency_keywords: CLINIC_EMERGENCY_MAP[clinicType] ?? CLINIC_EMERGENCY_MAP['other'],
+        frustration_keywords: ['saçma', 'berbat', 'anlayamıyorsunuz'],
+        missing_required_after_turns: 10,
+        kb_empty_consecutive: 3,
+      },
+      is_active: true,
+    })
+  }
+
+  if (!existingChannels.has('instagram')) {
+    const igFields = getChatIntakeFields(clinicType, 'instagram')
+    const defaults = buildClinicPlaybookDefaults(org.name, personaName, 'whatsapp', clinicType, false, igFields)
+    const hard_blocks = defaults.blocks.map((b, i) => ({
+      trigger_id: `block_${i}`,
+      action: 'soft_block',
+      keywords: b.keywords.split(',').map((k: string) => k.trim()).filter(Boolean),
+      response: b.response.trim(),
+    }))
+    playbookInserts.push({
+      organization_id: orgId,
+      name: `${org.name} — Instagram/Chat`,
+      channel: 'instagram',
+      system_prompt_template: defaults.systemPrompt,
+      opening_message: defaults.openingMessage,
+      hard_blocks,
+      features: defaults.features,
+      few_shot_examples: defaults.fewShots,
+      fallback_responses: { no_kb_match: defaults.noKbMatch },
+      routing_rules: { transfer_numbers: {}, rules: [] },
+      handoff_triggers: {
+        keywords: ['insan', 'danışman', 'müdür', 'temsilci', 'yönetici', 'uzman', 'aranmak', 'arasın'],
+        emergency_keywords: CLINIC_EMERGENCY_MAP[clinicType] ?? CLINIC_EMERGENCY_MAP['other'],
+        frustration_keywords: ['saçma', 'berbat', 'anlayamıyorsunuz'],
+        missing_required_after_turns: 10,
+        kb_empty_consecutive: 3,
+      },
+      is_active: true,
+    })
+  }
+
+  if (!existingChannels.has('web')) {
+    const webFields = getChatIntakeFields(clinicType, 'web')
+    const defaults = buildClinicPlaybookDefaults(org.name, personaName, 'web', clinicType, false, webFields)
+    const hard_blocks = defaults.blocks.map((b, i) => ({
+      trigger_id: `block_${i}`,
+      action: 'soft_block',
+      keywords: b.keywords.split(',').map((k: string) => k.trim()).filter(Boolean),
+      response: b.response.trim(),
+    }))
+    playbookInserts.push({
+      organization_id: orgId,
+      name: `${org.name} — Web Chat`,
+      channel: 'web',
+      system_prompt_template: defaults.systemPrompt,
+      opening_message: defaults.openingMessage,
+      hard_blocks,
+      features: defaults.features,
+      few_shot_examples: defaults.fewShots,
+      fallback_responses: { no_kb_match: defaults.noKbMatch },
+      routing_rules: { transfer_numbers: {}, rules: [] },
+      handoff_triggers: {
+        keywords: ['insan', 'danışman', 'müdür', 'temsilci', 'yönetici', 'uzman', 'aranmak', 'arasın'],
+        emergency_keywords: CLINIC_EMERGENCY_MAP[clinicType] ?? CLINIC_EMERGENCY_MAP['other'],
+        frustration_keywords: ['saçma', 'berbat', 'anlayamıyorsunuz'],
+        missing_required_after_turns: 10,
+        kb_empty_consecutive: 3,
+      },
       is_active: true,
     })
   }
@@ -124,13 +210,6 @@ export async function POST(request: NextRequest) {
 
   const voiceDefaultFields = CLINIC_INTAKE_SCHEMAS[clinicType] ?? CLINIC_INTAKE_SCHEMAS['other']
 
-  // WhatsApp'ta telefon payload'dan otomatik geliyor, sohbetten extract etmeye gerek yok
-  const whatsappDefaultFields = [
-    { key: 'full_name',        label: 'Ad Soyad',           type: 'text', priority: 'must' },
-    { key: 'service_interest', label: 'İlgilenilen Hizmet', type: 'text', priority: 'must' },
-    { key: 'timeline',         label: 'Zaman Çizelgesi',    type: 'text', priority: 'should' },
-  ]
-
   if (!existingSchemaChannels.has('voice')) {
     schemaInserts.push({
       organization_id: orgId,
@@ -144,7 +223,23 @@ export async function POST(request: NextRequest) {
       organization_id: orgId,
       channel: 'whatsapp',
       name: `${org.name} WhatsApp Başvuru Formu`,
-      fields: whatsappDefaultFields,
+      fields: getChatIntakeFields(clinicType, 'whatsapp'),
+    })
+  }
+  if (!existingSchemaChannels.has('instagram')) {
+    schemaInserts.push({
+      organization_id: orgId,
+      channel: 'instagram',
+      name: `${org.name} Instagram Başvuru Formu`,
+      fields: getChatIntakeFields(clinicType, 'instagram'),
+    })
+  }
+  if (!existingSchemaChannels.has('web')) {
+    schemaInserts.push({
+      organization_id: orgId,
+      channel: 'web',
+      name: `${org.name} Web Chat Başvuru Formu`,
+      fields: getChatIntakeFields(clinicType, 'web'),
     })
   }
   if (schemaInserts.length > 0) {
