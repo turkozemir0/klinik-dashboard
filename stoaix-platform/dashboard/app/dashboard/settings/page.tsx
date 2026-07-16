@@ -5,7 +5,7 @@ import {
   Settings, Loader2, Lock, ToggleLeft, ToggleRight, CreditCard,
   Check, X, Zap, Star, Building2, Rocket,
   Plus, ChevronDown, LifeBuoy, Download, RefreshCw,
-  XCircle, Calendar, Globe, Copy, Eye, EyeOff, Trash2, TestTube2,
+  XCircle, Calendar, Globe, Copy, Eye, EyeOff, Trash2, TestTube2, Users,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -17,6 +17,8 @@ import DunningBanner from '@/components/billing/DunningBanner'
 import TrialBanner from '@/components/billing/TrialBanner'
 import CancelSubscriptionModal from '@/components/billing/CancelSubscriptionModal'
 import PipelineSettings from '@/components/settings/PipelineSettings'
+import PartnerApiSection from '@/components/settings/PartnerApiSection'
+import Avatar from '@/components/Avatar'
 
 // ─── Module labels ────────────────────────────────────────────────────────────
 
@@ -205,10 +207,10 @@ const PLANS: Plan[] = [
   {
     id: 'essential',
     name: 'Essential',
-    monthlyPrice: 199,
-    quarterlyPrice: 179,
-    semiAnnualPrice: 159,
-    annualPrice: 139,
+    monthlyPrice: 497,
+    quarterlyPrice: 447,
+    semiAnnualPrice: 397,
+    annualPrice: 347,
     icon: <Zap size={18} />,
     color: 'text-slate-600',
     features: [
@@ -225,19 +227,19 @@ const PLANS: Plan[] = [
   {
     id: 'professional',
     name: 'Professional',
-    monthlyPrice: 299,
-    quarterlyPrice: 269,
-    semiAnnualPrice: 239,
-    annualPrice: 209,
+    monthlyPrice: 747,
+    quarterlyPrice: 677,
+    semiAnnualPrice: 607,
+    annualPrice: 537,
     icon: <Star size={18} />,
     color: 'text-brand-500',
     features: [
       { label: 'Essential dahil her şey', value: true },
       { label: 'AI Konuşma', value: '2.000/ay' },
-      { label: 'Voice inbound', value: '200 dk/ay' },
+      { label: 'Gelen Arama', value: '200 dk/ay' },
       { label: 'Gelişmiş analitik', value: true },
       { label: 'Multi-pipeline', value: '3 adet' },
-      { label: 'Voice outbound', value: false },
+      { label: 'Giden Arama', value: false },
       { label: 'Çok dilli ses', value: false },
       { label: 'Ekip üyesi', value: '10' },
     ],
@@ -245,16 +247,16 @@ const PLANS: Plan[] = [
   {
     id: 'business',
     name: 'Business',
-    monthlyPrice: 599,
-    quarterlyPrice: 539,
-    semiAnnualPrice: 479,
-    annualPrice: 419,
+    monthlyPrice: 997,
+    quarterlyPrice: 897,
+    semiAnnualPrice: 797,
+    annualPrice: 697,
     icon: <Rocket size={18} />,
     color: 'text-purple-500',
     features: [
       { label: 'Professional dahil her şey', value: true },
       { label: 'AI Konuşma', value: '5.000/ay' },
-      { label: 'Voice in+outbound', value: '500 dk/ay' },
+      { label: 'Gelen + Giden Arama', value: '500 dk/ay' },
       { label: 'Tüm voice workflow', value: true },
       { label: 'Çok dilli ses (8 dil)', value: true },
       { label: 'Analitik export', value: true },
@@ -309,10 +311,12 @@ function InvoiceStatus({ status }: { status: string }) {
 
 function BillingSection() {
   const isDemo = useIsDemo()
+  const searchParams = useSearchParams()
   const [interval, setInterval] = useState<Interval>('monthly')
   const [limitsData, setLimitsData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [selectingPlan, setSelectingPlan] = useState<string | null>(null)
+  const [checkoutToast, setCheckoutToast] = useState<'success' | 'canceled' | null>(null)
 
   // Subscription management state
   const [cancelModalOpen, setCancelModalOpen] = useState(false)
@@ -324,6 +328,17 @@ function BillingSection() {
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [payingInvoice, setPayingInvoice] = useState<string | null>(null)
   const [addonLoading, setAddonLoading] = useState(false)
+
+  // Checkout result toast
+  useEffect(() => {
+    const result = searchParams.get('checkout')
+    if (result === 'success' || result === 'canceled') {
+      setCheckoutToast(result)
+      window.history.replaceState({}, '', '/dashboard/settings?tab=billing')
+      const timer = setTimeout(() => setCheckoutToast(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams])
 
   const currentPlanId: string | null = limitsData?.plan_id ?? null
   const status: string = limitsData?.status ?? ''
@@ -373,7 +388,7 @@ function BillingSection() {
     if (isDemo) return
     setSelectingPlan(planId)
     // Daha önce abonelik yaşamış kullanıcılara trial uygulanmaz
-    const noTrial = status === 'canceled' || status === 'past_due'
+    const noTrial = status === 'canceled' || status === 'past_due' || status === 'grace_period' || status === 'suspended'
     try {
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
@@ -483,10 +498,34 @@ function BillingSection() {
 
   return (
     <div className="space-y-6">
+      {checkoutToast === 'success' && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Check size={18} className="text-emerald-600" />
+            <p className="text-sm font-medium text-emerald-800">Ödemeniz başarıyla tamamlandı! Planınız aktif edildi.</p>
+          </div>
+          <button onClick={() => setCheckoutToast(null)} className="text-emerald-400 hover:text-emerald-600">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      {checkoutToast === 'canceled' && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <XCircle size={18} className="text-amber-600" />
+            <p className="text-sm font-medium text-amber-800">Ödeme işlemi iptal edildi. Dilediğiniz zaman tekrar deneyebilirsiniz.</p>
+          </div>
+          <button onClick={() => setCheckoutToast(null)} className="text-amber-400 hover:text-amber-600">
+            <X size={16} />
+          </button>
+        </div>
+      )}
       {!loading && (
         <div className="space-y-3">
           <DunningBanner status={status} />
-          <TrialBanner trialEndsAt={trialEndsAt} planId={currentPlanId} />
+          {!['grace_period', 'past_due', 'suspended'].includes(status) && (
+            <TrialBanner trialEndsAt={trialEndsAt} planId={currentPlanId} />
+          )}
           {status === 'canceled' && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-start gap-3">
               <span className="text-amber-500 text-lg leading-none mt-0.5">!</span>
@@ -1776,25 +1815,203 @@ function GeneralSection() {
   )
 }
 
+// ─── Team (Ekip) ──────────────────────────────────────────────────────────────
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Yönetici',
+  yönetici: 'Yönetici',
+  satisci: 'Satışçı',
+  viewer: 'İzleyici',
+  muhasebe: 'Muhasebe',
+}
+
+const ROLE_BADGE: Record<string, string> = {
+  admin: 'bg-purple-50 text-purple-700',
+  yönetici: 'bg-purple-50 text-purple-700',
+  satisci: 'bg-blue-50 text-blue-700',
+  viewer: 'bg-slate-100 text-slate-500',
+  muhasebe: 'bg-amber-50 text-amber-700',
+}
+
+interface TeamMember {
+  user_id: string
+  role: string
+  is_active_for_routing: boolean
+  email: string
+  name: string
+}
+
+function TeamSection() {
+  const isDemo = useIsDemo()
+  const [members, setMembers] = useState<TeamMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/org/members')
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => setMembers(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function toggleRouting(userId: string, next: boolean) {
+    if (isDemo) return
+    setTogglingId(userId)
+    try {
+      const res = await fetch(`/api/org/members/${userId}/toggle-routing`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active_for_routing: next }),
+      })
+      if (res.ok) {
+        setMembers(prev => prev.map(m => (m.user_id === userId ? { ...m, is_active_for_routing: next } : m)))
+      }
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const reps = members.filter(m => m.role === 'satisci')
+  const others = members.filter(m => m.role !== 'satisci')
+  const availableCount = reps.filter(r => r.is_active_for_routing).length
+
+  if (loading) {
+    return (
+      <div className="max-w-3xl space-y-3">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="animate-pulse bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-slate-100" />
+              <div className="space-y-1.5">
+                <div className="h-3 w-32 bg-slate-100 rounded" />
+                <div className="h-2.5 w-40 bg-slate-100 rounded" />
+              </div>
+            </div>
+            <div className="h-6 w-12 bg-slate-100 rounded-full" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      <div>
+        <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <Users size={18} className="text-brand-600" /> Ekip & Lead Dağıtımı
+        </h2>
+        <p className="text-sm text-slate-500 mt-1">
+          Satışçıların gelen lead dağıtımına (round-robin) dahil olup olmadığını buradan yönetin.
+          Müsaitliği kapalı satışçıya <span className="font-medium text-slate-600">yeni lead atanmaz</span>;
+          mevcut lead'leri korunur.
+        </p>
+      </div>
+
+      {/* Satışçılar — müsaitlik toggle */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Satışçılar</h3>
+          {reps.length > 0 && (
+            <span className="text-xs text-slate-400">{availableCount}/{reps.length} müsait</span>
+          )}
+        </div>
+        {reps.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-slate-400">
+            Henüz satışçı yok. Satışçı davet ederek lead dağıtımını başlatabilirsiniz.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-50">
+            {reps.map(m => {
+              const busy = togglingId === m.user_id
+              const active = m.is_active_for_routing
+              return (
+                <div key={m.user_id} className="flex items-center justify-between px-5 py-3.5">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar name={m.name} size={32} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-700 truncate">{m.name}</p>
+                      <p className="text-xs text-slate-400 truncate">{m.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className={`text-xs font-medium ${active ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {active ? 'Müsait' : 'Müsait değil'}
+                    </span>
+                    <button
+                      onClick={() => toggleRouting(m.user_id, !active)}
+                      disabled={busy || isDemo}
+                      title={isDemo ? 'Demo modunda değiştirilemez' : active ? 'Lead dağıtımından çıkar' : 'Lead dağıtımına dahil et'}
+                      className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50"
+                    >
+                      {busy ? (
+                        <Loader2 size={22} className="animate-spin" />
+                      ) : active ? (
+                        <ToggleRight size={26} className="text-emerald-500" />
+                      ) : (
+                        <ToggleLeft size={26} className="text-slate-300" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Diğer ekip üyeleri — rol görünümü (salt bilgi) */}
+      {others.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Diğer Ekip Üyeleri</h3>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {others.map(m => (
+              <div key={m.user_id} className="flex items-center justify-between px-5 py-3.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar name={m.name} size={32} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-700 truncate">{m.name}</p>
+                    <p className="text-xs text-slate-400 truncate">{m.email}</p>
+                  </div>
+                </div>
+                <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_BADGE[m.role] ?? 'bg-slate-100 text-slate-500'}`}>
+                  {ROLE_LABELS[m.role] ?? m.role}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Settings Page ───────────────────────────────────────────────────────
 
-type SettingsTab = 'genel' | 'moduller' | 'billing' | 'pipelinelar' | 'formwebhook' | 'support'
+type SettingsTab = 'genel' | 'moduller' | 'billing' | 'pipelinelar' | 'ekip' | 'formwebhook' | 'partnerapi' | 'support'
 
 function SettingsPageInner() {
   const searchParams = useSearchParams()
-  const initialTab = (searchParams.get('tab') as SettingsTab) ?? 'genel'
-  const [activeTab, setActiveTab] = useState<SettingsTab>(
-    ['genel', 'moduller', 'billing', 'pipelinelar', 'formwebhook', 'support'].includes(initialTab) ? initialTab : 'genel'
-  )
+  const { userRole } = useOrg()
+  const isManager = ['admin', 'yönetici'].includes(userRole ?? '')
 
   const tabs: { key: SettingsTab; label: string }[] = [
     { key: 'genel',       label: 'Genel' },
     { key: 'moduller',    label: 'Modüller' },
     { key: 'billing',     label: 'Plan & Fatura' },
-    { key: 'pipelinelar', label: 'Pipelinelar' },
+    ...(isManager ? [{ key: 'pipelinelar' as SettingsTab, label: 'Pipelinelar' }] : []),
+    ...(isManager ? [{ key: 'ekip' as SettingsTab, label: 'Ekip' }] : []),
     { key: 'formwebhook', label: 'Form Webhook' },
+    { key: 'partnerapi', label: 'Partner API' },
     { key: 'support',     label: 'Destek Talebi' },
   ]
+
+  const initialTab = (searchParams.get('tab') as SettingsTab) ?? 'genel'
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    tabs.some(t => t.key === initialTab) ? initialTab : 'genel'
+  )
 
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
@@ -1823,8 +2040,10 @@ function SettingsPageInner() {
       {activeTab === 'genel'       && <GeneralSection />}
       {activeTab === 'moduller'    && <ModulesSection />}
       {activeTab === 'billing'     && <BillingSection />}
-      {activeTab === 'pipelinelar' && <PipelineSettings />}
+      {activeTab === 'pipelinelar' && isManager && <PipelineSettings />}
+      {activeTab === 'ekip'        && isManager && <TeamSection />}
       {activeTab === 'formwebhook' && <FormWebhookSection />}
+      {activeTab === 'partnerapi' && <PartnerApiSection />}
       {activeTab === 'support'     && <SupportSection />}
     </div>
   )

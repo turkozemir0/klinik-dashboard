@@ -73,6 +73,7 @@ interface OrgData {
   sector: string
   status: string
   setup_included?: boolean
+  voice_mode?: string | null
 }
 
 interface SubData {
@@ -118,6 +119,10 @@ export default function OrgBillingPage() {
 
   // Setup toggle state
   const [setupToggling, setSetupToggling] = useState(false)
+
+  // Voice mode state
+  const [voiceModeSaving, setVoiceModeSaving] = useState(false)
+  const [voiceModeSuccess, setVoiceModeSuccess] = useState(false)
 
   // Offer modal state
   const [showOfferModal, setShowOfferModal] = useState(false)
@@ -341,6 +346,30 @@ export default function OrgBillingPage() {
     finally { setSetupToggling(false) }
   }
 
+  async function handleVoiceModeChange(newMode: 'inbound' | 'outbound') {
+    if (!org) return
+    setVoiceModeSaving(true)
+    setVoiceModeSuccess(false)
+    try {
+      const res = await fetch(`/api/admin/billing/${orgId}/voice-mode`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voice_mode: newMode }),
+      })
+      if (!res.ok) {
+        const j = await res.json()
+        throw new Error(j.error ?? 'Kayıt başarısız')
+      }
+      setOrg({ ...org, voice_mode: newMode })
+      setVoiceModeSuccess(true)
+      setTimeout(() => setVoiceModeSuccess(false), 2000)
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setVoiceModeSaving(false)
+    }
+  }
+
   const planId = sub?.plan_id ?? 'legacy'
 
   // Entitlement map (plan default'ları)
@@ -464,6 +493,42 @@ export default function OrgBillingPage() {
           </button>
         </div>
       </div>
+
+      {/* Voice Mode — sadece Professional plan */}
+      {planId === 'professional' && (
+        <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 flex items-center gap-4 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-slate-700">Ses Modu</p>
+            <p className="text-xs text-slate-400 mt-0.5">Professional plan için gelen/giden arama seçimi</p>
+          </div>
+          <div className="flex gap-2 ml-auto">
+            <button
+              onClick={() => handleVoiceModeChange('inbound')}
+              disabled={voiceModeSaving}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 ${
+                org?.voice_mode === 'inbound' || !org?.voice_mode
+                  ? 'bg-violet-600 text-white border-violet-600'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              📞 Gelen Arama
+            </button>
+            <button
+              onClick={() => handleVoiceModeChange('outbound')}
+              disabled={voiceModeSaving}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 ${
+                org?.voice_mode === 'outbound'
+                  ? 'bg-violet-600 text-white border-violet-600'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              📲 Giden Arama
+            </button>
+            {voiceModeSaving && <span className="text-xs text-slate-400 self-center">Kaydediliyor...</span>}
+            {voiceModeSuccess && <span className="text-xs text-emerald-600 self-center">✓ Kaydedildi</span>}
+          </div>
+        </div>
+      )}
 
       {/* Stripe Bilgi */}
       {sub?.stripe_customer_id && (
@@ -664,9 +729,9 @@ export default function OrgBillingPage() {
                   onChange={e => setOfferForm(f => ({ ...f, plan_id: e.target.value }))}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="essential">Essential — $129/ay</option>
-                  <option value="professional">Professional — $249/ay</option>
-                  <option value="business">Business — $599/ay</option>
+                  <option value="essential">Essential — $497/ay</option>
+                  <option value="professional">Professional — $747/ay</option>
+                  <option value="business">Business — $997/ay</option>
                   <option value="custom">Custom — Görüşmeli</option>
                 </select>
               </div>
